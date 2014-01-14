@@ -1,0 +1,42 @@
+Auf dem Server mit der CA (BIS Devel)
+
+1) Create a Certificate Request (CSR)
+   cd /etc/pki/CA
+   openssl req -config openssl.cnf -new -nodes -keyout private/$domain.key -out $domain.csr -days 365
+   Country Name: IT
+   State or Province Name: BZ
+   Locality Name: Naturns
+   Organization Name: BI-S
+   Organizational Unit Name: Osiris 2.0 NMS
+   Common Name: $url
+   Email Address: info@bi-s.it
+   Challenge password: [ENTER]
+   Optional company name: [ENTER]
+   
+   chown root:apache private/$domain.key
+   chmod 0440 private/$domain.key
+  
+2) Sign a Certificate Request (CSR)
+   cd /etc/pki/CA
+   openssl ca -config openssl.cnf -policy policy_anything -out certs/$domain.crt -infiles $domain.csr
+   CA Password eingeben (Password ist in Keepass.db von BIS-Devel)
+   rm -f $domain.csr
+   
+3) Zertifikate in Apache einbinden
+   Zertifikate auf den Zielserver kopieren
+   scp root@<SERVERNAME>:/etc/pki/CA/certs/ca.crt /etc/pki/tls/certs/
+   scp root@<SERVERNAME>:/etc/pki/CA/certs/$domain.crt /etc/pki/tls/certs/
+   scp root@<SERVERNAME>:/etc/pki/CA/private/$domain.key /etc/pki/tls/private/
+   vi /etc/httpd/conf.d/ssl.conf
+   SSLCertificateFile /etc/pki/tls/certs/$domain.crt
+   SSLCertificateKeyFile /etc/pki/tls/private/$domain.key
+   SSLCACertificateFile /etc/pki/tls/certs/ca.crt
+   service httpd reload
+   
+4) Zertifikate prüfen
+   Verify the subject and issuer of a certificate
+   openssl x509 -subject -issuer -enddate -noout -in certs/$domain.crt
+   Verify all content of a certificate
+   openssl x509 -in certs/$domain.crt -noout -text
+   Verify that the certificate is valid for server authentication
+   openssl verify -purpose sslserver -CAfile certs/ca.crt certs/$domain.crt

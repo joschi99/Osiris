@@ -1,0 +1,54 @@
+How to install OpenSSL on CentOS RedHat Linux
+
+    Install OpenSSL
+    yum install openssl
+    Note: This is typically installed on CentOS by default.
+
+How to configure OpenSSL on CentOS RedHat Linux
+
+    Change your working directory to /etc/pki/CA
+    cd /etc/pki/CA
+    Create a folder to hold the Certificates
+    mkdir certs
+    Create a folder to hold the Certificate Revocation List
+    mkdir crl
+    Create a folder to hold the Server Certificates in PEM (unencrypted) format
+    mkdir newcerts
+    Create a file that holds the database of certificates
+    touch index.txt
+    Create a file that holds the next certificate serial number
+    echo '01' > serial
+    Create a file that holds the next Certificate Revocation List serial number
+    echo '01' > crlnumber
+    Make a copy the systems default openssl configuration file for our use
+    cp /etc/pki/tls/openssl.cnf openssl.cnf
+    Edit the /etc/pki/CA/openssl.cnf file making the following changes
+        Change line 37
+        from dir             = ../../CA              # Where everything is kept
+        to dir             = .                     # Where everything is kept
+        Change line 45
+        from certificate     = $dir/cacert.pem       # The CA certificate
+        to certificate     = $dir/certs/ca.crt     # The CA certificate
+        Change line 50
+        from private_key     = $dir/private/cakey.pem# The private key
+        to private_key     = $dir/private/ca.key   # The private key
+    Make the /etc/pki/CA/openssl.cnf file not world readable
+    chmod 0600 openssl.cnf
+
+    
+Create a Certificate Authority (CA)
+
+    cd /etc/pki/CA
+    CA für 30 Jahre erstellen
+    openssl req -config openssl.cnf -new -x509 -extensions v3_ca -keyout private/ca.key -out certs/ca.crt -days 10950
+    Enter PEM pass phrase: $password
+    Re-Enter PEM pass phrase: $password
+    Country Name: $country
+    State or Province Name: $state
+    Locality Name: $city
+    Organization Name: $company
+    Organizational Unit Name: $department = Certificate Authority
+    Common Name: ca.$domain
+    Email Address: ca@$domain
+    Restrict access to the private key so that only root can read it
+    chmod 0400 private/ca.key    

@@ -1,0 +1,13 @@
+Das CA-Zertifikate liegt auf \\osiris2\tools\ca
+
+
+Windows
+mmc öffnen
+Snap-In Certificate -> local computer einbinden
+Das CA-Zertifikate unter "Trusted Root Certification Authority" installieren
+
+
+Firefox
+Optionen -> Advanced
+Encryption -> View Certificates
+Authorities -> Import CA-Zertifikat
