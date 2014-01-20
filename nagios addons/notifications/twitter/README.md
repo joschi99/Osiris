@@ -2,7 +2,7 @@
 ##Tweepy
     unzip tweepy-2.1-py2.6.zip
 
-move the 4 files (api.py, auth.py, binder.py, streaming.py) from directory "SSL workaround" to tweepy-master/tweepy
+move the file auth.py from directory "SSL workaround" to tweepy-master/tweepy or download the latest version from git
 
     cd tweepy-master
     python setup.py install

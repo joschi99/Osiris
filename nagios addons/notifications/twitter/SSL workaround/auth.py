@@ -3,6 +3,7 @@
 # See LICENSE for details.
 
 from urllib2 import Request, urlopen
+import base64
 
 from tweepy import oauth
 from tweepy.error import TweepError
@@ -26,22 +27,22 @@ class OAuthHandler(AuthHandler):
     OAUTH_HOST = 'api.twitter.com'
     OAUTH_ROOT = '/oauth/'
 
-    def __init__(self, consumer_key, consumer_secret, callback=None, secure=False):
-        if type(consumer_key) == unicode:
-            consumer_key = bytes(consumer_key)
-
-        if type(consumer_secret) == unicode:
-            consumer_secret = bytes(consumer_secret)
-
+    def __init__(self, consumer_key, consumer_secret, callback=None, secure=True):
         self._consumer = oauth.OAuthConsumer(consumer_key, consumer_secret)
         self._sigmethod = oauth.OAuthSignatureMethod_HMAC_SHA1()
         self.request_token = None
         self.access_token = None
         self.callback = callback
         self.username = None
+        self.secure = secure
 
-    def _get_oauth_url(self, endpoint):
-        return 'https://' + self.OAUTH_HOST + self.OAUTH_ROOT + endpoint
+    def _get_oauth_url(self, endpoint, secure=True):
+        if self.secure or secure:
+            prefix = 'https://'
+        else:
+            prefix = 'http://'
+
+        return prefix + self.OAUTH_HOST + self.OAUTH_ROOT + endpoint
 
     def apply_auth(self, url, method, headers, parameters):
         request = oauth.OAuthRequest.from_consumer_and_token(
@@ -90,9 +91,9 @@ class OAuthHandler(AuthHandler):
 
     def get_access_token(self, verifier=None):
         """
-After user has authorized the request token, get access token
-with user supplied verifier.
-"""
+        After user has authorized the request token, get access token
+        with user supplied verifier.
+        """
         try:
             url = self._get_oauth_url('access_token')
 
@@ -113,17 +114,17 @@ with user supplied verifier.
 
     def get_xauth_access_token(self, username, password):
         """
-Get an access token from an username and password combination.
-In order to get this working you need to create an app at
-http://twitter.com/apps, after that send a mail to api@twitter.com
-and request activation of xAuth for it.
-"""
+        Get an access token from an username and password combination.
+        In order to get this working you need to create an app at
+        http://twitter.com/apps, after that send a mail to api@twitter.com
+        and request activation of xAuth for it.
+        """
         try:
-            url = self._get_oauth_url('access_token')
+            url = self._get_oauth_url('access_token', secure=True) # must use HTTPS
             request = oauth.OAuthRequest.from_consumer_and_token(
                 oauth_consumer=self._consumer,
                 http_method='POST', http_url=url,
-                parameters={
+                parameters = {
                     'x_auth_mode': 'client_auth',
                     'x_auth_username': username,
                     'x_auth_password': password
@@ -146,3 +147,4 @@ and request activation of xAuth for it.
             else:
                 raise TweepError("Unable to get username, invalid oauth token!")
         return self.username
+
