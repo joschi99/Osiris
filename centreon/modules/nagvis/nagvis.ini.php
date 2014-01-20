@@ -195,6 +195,11 @@ backend="mklive"
 ;servicegroupurl="[htmlcgi]/status.cgi?servicegroup=[servicegroup_name]&style=detail"
 ; URL template for nested map links
 ;mapurl="[htmlbase]/index.php?mod=Map&act=view&show=[map_name]"
+mapurl="/centreon/main.php?p=403&mod=Map&show=[map_name]"
+hosturl="/centreon/main.php?p=20201&o=svc&host_search=[host_name]"
+serviceurl="/centreon/main.php?o=svcd&p=202&host_name=[host_name]&service_description=[service_description]"
+hostgroupurl="/centreon/main.php?p=20201&o=svc&hg=[hostgroup_name]"
+servicegroupurl="/centreon/main.php?p=20212&o=svcOVSG"
 
 ; Options to configure the Overview page of NagVis
 [index]
