@@ -12,6 +12,7 @@
 # Version 2.0
 #
 # Changelog
+#   23.01.2014: Backup DB LogAnalyser
 #   09.09.2011: Anpassung an Osiris 2.0
 #   22.09.2010: Backup um Jasper Server Repository erweitert
 #   22.09.2010: Backup um die MySQL-DB von OTRS & JasperServer erweitert
@@ -74,6 +75,10 @@ echo "End backup db GLPI"
 echo "Start backup db OCSWEB"
 mysqldump -u $DB_USER -p$DB_PWD ocsweb | gzip > $BACKUP_PATH/$DIR/ocsweb_$FILE
 echo "End backup db OCSWEB"
+
+echo "Start backup db LOGANALYZER"
+mysqldump -u $DB_USER -p$DB_PWD loganalyzer | gzip > $BACKUP_PATH/$DIR/loganalyzer_$FILE
+echo "End backup db LOGANALYZER"
 
 echo "$(date +%Y.%m.%d-%H:%M:%S) End MySQL database backup"
 # END BACKUP
