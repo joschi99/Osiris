@@ -12,6 +12,7 @@
 # Version 2.0
 #
 # Changelog
+#   18.03.2014: Syslog Verzeichnis sichern
 #   23.01.2014: Backup DB LogAnalyser
 #   09.09.2011: Anpassung an Osiris 2.0
 #   22.09.2010: Backup um Jasper Server Repository erweitert
@@ -31,7 +32,7 @@
 BACKUP_PATH=/opt/bi-s/cifs/backup
 DIR=$(date +%Y%m%d)
 FILE=$(date +%Y%m%d_%H%M).sql.gz
-BACKUP_RETTIME=60
+BACKUP_RETTIME=5
 DB_USER=backup
 DB_PWD=mFRiQYIuwHhCIk6s753Q
 
@@ -95,6 +96,7 @@ tar czfvP $BACKUP_PATH/$DIR/files/std_plugins.tar.gz /usr/local/nagios/libexec/
 tar czfvP $BACKUP_PATH/$DIR/files/smokeping.tar.gz /usr/local/smokeping/etc/
 tar czfvP $BACKUP_PATH/$DIR/files/bis_scripts.tar.gz /opt/bi-s/software/scripts/
 tar czfvP $BACKUP_PATH/$DIR/files/rancid_cvs.tar.gz /usr/local/rancid/var/
+tar czfvP $BACKUP_PATH/$DIR/files/syslog.tar.gz /opt/bi-s/cifs/rsyslog
 #tar czfvP $BACKUP_PATH/$DIR/files/bis_plugins.tar.gz /opt/bi-s/software/plugins/
 #tar czfvP $BACKUP_PATH/$DIR/files/rsyslog.tar.gz /opt/bi-s/cifs/rsyslog/
 echo "$(date +%Y.%m.%d-%H:%M:%S) File backup completed"
