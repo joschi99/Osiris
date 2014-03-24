@@ -166,8 +166,8 @@ cluster.name: logstash
 #
 # path.plugins: /path/to/plugins
 
-path.data: /opt/elasticsearch/index
-
+path.data: /opt/elasticsearch
+path.work: /opt/elasticsearch
 #################################### Plugin ###################################
 
 # If a plugin listed here is not installed for current node, the node will not start.

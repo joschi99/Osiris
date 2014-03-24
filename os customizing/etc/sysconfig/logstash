@@ -1,5 +1,5 @@
 # Set 'START' to true to have logstash start.
-START=false
+START=true
 
 # The 'ulimit -n' setting for logstash.
 # You may need to increase this if you are using
@@ -11,4 +11,4 @@ START=false
 #FILTER_THREADS=1
 
 # The flags to provide to java
-#LS_JAVA_OPTS="-Xmx256m -Djava.io.tmpdir=$LS_HOME/tmp"
+#LS_JAVA_OPTS="-Xmx512m -Djava.io.tmpdir=$LS_HOME/tmp"
