@@ -1,0 +1,23 @@
+# Configuration for /etc/init.d/selenium
+
+# If run selenium at startup default: NO
+RUN_AT_STARTUP="YES"
+
+# Path to selenium JAR
+SELENIUM_LIB="/usr/local/selenium/selenium-server-standalone.jar"
+
+# Selenium port default: 4444
+SELENIUM_PORT=4444
+
+# Selenium user default: selenium
+SELENIUM_USER="root"
+
+# Selenium log dir default: /var/log/selenium
+SELENIUM_LOGDIR="/var/log/selenium"
+
+# The default firefox profile for use as template in selenium
+SELENIUM_FFPROFILE="/usr/local/selenium/firefox-profile"
+#SELENIUM_FFPROFILE=""
+
+# X display port default: :99
+X_DISPLAY=":99"

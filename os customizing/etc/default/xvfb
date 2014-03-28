@@ -1,0 +1,8 @@
+# If run XVFB at startup default: NO
+RUN_AT_STARTUP="YES"
+
+# X number default: :99
+X_SERVER_NUMBER=":99"
+
+# Directory for files containing memory mapping
+FBDIR="/usr/local/labkey/"
