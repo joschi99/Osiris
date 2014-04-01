@@ -38,6 +38,7 @@ cluster.name: logstash
 # from configuring them manually. You can tie this node to a specific name:
 #
 # node.name: "Franz Kafka"
+node.name: "Osiris Node 1"
 
 # Every node can be configured to allow or deny being eligible as the master,
 # and to allow or deny to store the data.
@@ -167,7 +168,7 @@ cluster.name: logstash
 # path.plugins: /path/to/plugins
 
 path.data: /opt/elasticsearch
-path.work: /opt/elasticsearch
+
 #################################### Plugin ###################################
 
 # If a plugin listed here is not installed for current node, the node will not start.
