@@ -11,4 +11,4 @@ START=true
 #FILTER_THREADS=1
 
 # The flags to provide to java
-#LS_JAVA_OPTS="-Xmx512m -Djava.io.tmpdir=$LS_HOME/tmp"
+LS_JAVA_OPTS="-Xmx512m -Djava.io.tmpdir=$LS_HOME/tmp"
