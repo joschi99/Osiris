@@ -1,0 +1,4 @@
+# start jede Stunde
+0 * * * * rancid /usr/local/rancid/bin/rancid-run 2>&1
+# alte Logfiles loeschen
+50 23 * * * rancid /usr/bin/find /usr/local/rancid/var/logs -type f -mtime +2 -exec rm {} \;

@@ -1,0 +1,1 @@
+#30 0 * * * nedi /usr/local/nedi/nedi.pl -oprF > /usr/local/nedi/log/nedi.lastrun 2>&1
