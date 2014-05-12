@@ -61,9 +61,9 @@ echo "Start backup db NEDI"
 mysqldump -u $DB_USER -p$DB_PWD nedi | gzip > $BACKUP_PATH/$DIR/nedi_$FILE
 echo "End backup db NEDI"
 
-echo "Start backup db SYSLOG"
-mysqldump -u $DB_USER -p$DB_PWD syslog | gzip > $BACKUP_PATH/$DIR/syslog_$FILE
-echo "End backup db SYSLOG"
+echo "Start backup db CENTREON_SYSLOG"
+mysqldump -u $DB_USER -p$DB_PWD centreon_syslog | gzip > $BACKUP_PATH/$DIR/centreon_syslog_$FILE
+echo "End backup db CENTREON_SYSLOG"
 
 echo "Start backup db MEDIAWIKI"
 mysqldump -u $DB_USER -p$DB_PWD mediawiki | gzip > $BACKUP_PATH/$DIR/wikidb_$FILE
