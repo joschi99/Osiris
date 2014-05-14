@@ -73,10 +73,6 @@ echo "Start backup db GLPI"
 mysqldump -u $DB_USER -p$DB_PWD glpi | gzip > $BACKUP_PATH/$DIR/glpi_$FILE
 echo "End backup db GLPI"
 
-echo "Start backup db OCSWEB"
-mysqldump -u $DB_USER -p$DB_PWD ocsweb | gzip > $BACKUP_PATH/$DIR/ocsweb_$FILE
-echo "End backup db OCSWEB"
-
 echo "Start backup db PHPMYADMIN"
 mysqldump -u $DB_USER -p$DB_PWD phpmyadmin | gzip > $BACKUP_PATH/$DIR/phpmyadmin_$FILE
 echo "End backup db OCSWEB"
