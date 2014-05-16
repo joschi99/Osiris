@@ -1,14 +1,35 @@
-# Set 'START' to true to have logstash start.
-START=true
+###############################
+# Default settings for logstash
+###############################
 
-# The 'ulimit -n' setting for logstash.
-# You may need to increase this if you are using
-# the elasticsearch output with 'embedded => true'
-#OPEN_FILES=16384
+# Override Java location
+#JAVACMD=/usr/bin/java
 
-# How many filter workers to run.
-# Note this requires you use thread-safe filters
-#FILTER_THREADS=1
+# Set a home directory
+#LS_HOME=/var/lib/logstash
 
-# The flags to provide to java
-LS_JAVA_OPTS="-Xmx512m -Djava.io.tmpdir=$LS_HOME/tmp"
+# Arguments to pass to java
+#LS_HEAP_SIZE="256m"
+#LS_JAVA_OPTS="-Djava.io.tmpdir=$HOME"
+
+# Logstash filter worker threads
+#LS_WORKER_THREADS=1
+
+# pidfiles aren't used for upstart; this is for sysv users.
+#LS_PIDFILE=/var/run/logstash.pid
+
+# user id to be invoked as; for upstart: edit /etc/init/logstash.conf
+#LS_USER=logstash
+
+# logstash logging
+#LS_LOG_FILE=/var/log/logstash/logstash-web.log
+#LS_USE_GC_LOGGING="true"
+
+# logstash configuration directory
+#LS_CONF_DIR=/etc/logstash/conf.d
+
+# Open file limit; cannot be overridden in upstart
+#LS_OPEN_FILES=2048
+
+# Nice level
+#LS_NICE=0
