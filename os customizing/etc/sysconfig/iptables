@@ -21,6 +21,7 @@
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 5544 -j ACCEPT	#Logstash Syslog Port
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 9200 -j ACCEPT	#Elasticsearch
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 9300 -j ACCEPT	#Elasticsearch
+-A INPUT -m state --state NEW -m tcp -p tcp --dport 62354 -j ACCEPT  #Fusioninventory Agent
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 162 -j ACCEPT
 -A INPUT -m state --state NEW -m udp -p udp --dport 162 -j ACCEPT
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 4444 -j ACCEPT
