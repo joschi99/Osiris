@@ -1,4 +1,0 @@
-<Directory /usr/share/glpi/plugins/massocsimport/scripts>
-    Order Allow,Deny
-    Deny from all
-</Directory>
