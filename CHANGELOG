@@ -15,14 +15,17 @@ Osiris 2.1
 	OCS Inventory
 		- No more OCS Server 2.1
 		- No more OCS Agent 2.1
-		- New Fusion Inventory Server for GLPI 0.84+2.2
+		- New Fusion Inventory Server for GLPI 0.84+3.1
 		- New Fusion Inventory Agent 2.3.9.1
 	Syslog & Logmanagement
-		- Upgrade Rsyslog 7.6.3
+		- Upgrade Rsyslog 8.2.2
 		- New logstash 1.3.3
-		- New elasticsearch 1.2.2
+		- New elasticsearch 1.2.3
 		- New kibana 3.1.0
 		- New elasticHQ
+		- New elasticsearch-head
+		- New curator 1.2.1
+		- New redis 1.8.13 (https://gist.github.com/SkyRocknRoll/7927304)
 		- Upgrade Centreon Syslog Server 1.5.2
 		- Upgrade Centreon Syslog Viewer 1.2.5
 		- No more Loganalyzer
@@ -31,7 +34,6 @@ Osiris 2.1
 		- Upgrade rancid 3.1
 		- No more NTOP
 		- No more Nessus
-		- New observium
 	Others
 		- Upgrade Mediawiki 1.22.6
 		- all HTTP traffic is redirected to HTTPS
