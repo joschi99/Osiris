@@ -1,0 +1,1 @@
+00 01 * * * root curator delete --older-than 30 && curator bloom --older-than 1 && curator optimize --older-than 2 > /var/log/curator.log 2>&1
