@@ -1,10 +1,10 @@
 Osiris 2.1
 	Monitoring
 		- Upgrade Centreon Core 2.5.2
-		- New Centreon Engine 1.4.6
+		- New Centreon Engine 1.4.7
 		- New Centreon Broker 2.6.3
 		- New Centreon SNMPTrap handler
-		- Upgrade Selenium 2.42.2
+		- Upgrade Selenium 2.43.1
 		- Upgrade mklivestatus 1.2.4p5
 		- Upgrade Nagvis 1.8.x
 		- No more Nagios Engine
@@ -15,12 +15,12 @@ Osiris 2.1
 	OCS Inventory
 		- No more OCS Server 2.1
 		- No more OCS Agent 2.1
-		- New Fusion Inventory Server for GLPI 0.84+3.2
+		- New Fusion Inventory Server for GLPI 0.84+3.3
 		- New Fusion Inventory Agent 2.3.10.1
 	Syslog & Logmanagement
 		- Upgrade Rsyslog 8.4.0
 		- New logstash 1.3.3
-		- New elasticsearch 1.3.3
+		- New elasticsearch 1.3.2
 		- New kibana 3.1.0
 		- New elasticHQ
 		- New elasticsearch-head
@@ -39,3 +39,4 @@ Osiris 2.1
 		- all HTTP traffic is redirected to HTTPS
 		- No more MySQL
 		- New MariaDB
+		- Upgrade phpmyadmin 4.2.x
