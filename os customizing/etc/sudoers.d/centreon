@@ -2,8 +2,6 @@
 #Add by CENTREON installation script
 User_Alias      CENTREON=apache,nagios,centreon,centreon-engine,centreon-broker
 Defaults:CENTREON !requiretty
-## Snmptrapd Restart
-CENTREON   ALL = NOPASSWD: /etc/init.d/snmptt restart
 ## CentStorage
 CENTREON   ALL = NOPASSWD: /etc/init.d/centstorage *
 # Centengine Restart
@@ -27,3 +25,12 @@ CENTREON   ALL = NOPASSWD: /etc/init.d/cbd start
 # Broker Central stop
 CENTREON   ALL = NOPASSWD: /etc/init.d/cbd stop
 ## END: CENTREON SUDO
+
+##07.11.2014: Jochen
+# Snmptrapd Restart
+CENTREON   ALL = NOPASSWD: /etc/init.d/snmptrapd restart
+# Centreontrapd restart
+CENTREON   ALL = NOPASSWD: /etc/init.d/centreontrapd restart
+# Centreontrapd reload
+CENTREON   ALL = NOPASSWD: /etc/init.d/centreontrapd reload
+##End Jochen
