@@ -1,4 +1,5 @@
 #! /usr/bin/perl -w
+# nagios: +epn
 
 my %ERRORS=( OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 );
 my %ERRORCODES=( 0 => 'OK', 1 => 'WARNING', 2 => 'CRITICAL', 3 => 'UNKNOWN' );
@@ -54,6 +55,7 @@ sub init {
               $self->{delta_sum_physical_reads_direct_lob} -
               $self->{delta_sum_physical_reads_direct}) /
               $self->{delta_sum_session_logical_reads}) : 0;
+      $self->protect_value(\%params, 'hitratio', 'hitratio', 'percent');
     }
   }
 }
@@ -225,9 +227,9 @@ sub nagios {
         /server::instance::sga::sharedpool::librarycache::pinhitratio/) {
       $self->add_nagios(
           $self->check_thresholds($self->{pin_hitratio}, "98:", "95:"),
-          sprintf "SGA library cache (pin) hit ratio %.2f%%", $self->{get_hitratio});
+          sprintf "SGA library cache (pin) hit ratio %.2f%%", $self->{pin_hitratio});
       $self->add_perfdata(sprintf "sga_library_cache_hit_ratio=%.2f%%;%s;%s",
-          $self->{get_hitratio}, $self->{warningrange}, $self->{criticalrange});
+          $self->{pin_hitratio}, $self->{warningrange}, $self->{criticalrange});
     } elsif ($params{mode} =~ 
         /server::instance::sga::sharedpool::librarycache::reloads/) {
       $self->add_nagios(
@@ -2210,6 +2212,104 @@ sub nagios {
 
 
 
+package DBD::Oracle::Server::Database::Dataguard;
+
+use strict;
+
+our @ISA = qw(DBD::Oracle::Server::Database);
+
+sub new {
+  my $class = shift;
+  my %params = @_;
+  my $self = {
+    verbose => $params{verbose},
+    handle => $params{handle},
+    name => $params{name},
+    last_applied_time => undef,
+    lag_minutes => undef,
+    log_transport => undef,
+    mrp_process => undef,
+    mrp_status => undef,
+    warningrange => $params{warningrange},
+    criticalrange => $params{criticalrange},
+  };
+  bless $self, $class;
+  $self->init(%params);
+  return $self;
+}
+
+sub init {
+  my $self = shift;
+  my %params = @_;
+  $self->init_nagios();
+  if ($params{mode} =~ /server::database::dataguard::lag/) {
+    ($self->{last_applied_time}, $self->{lag_minutes}) =
+        $self->{handle}->fetchrow_array(q{
+          select to_char(max(first_time),'YYYYMMDDHH24MISS')
+            , ceil((sysdate-max(first_time))*24*60)
+          from v$archived_log
+          where applied='YES' and registrar='RFS'
+        });     
+    if (! defined $self->{last_applied_time}) {
+      $self->add_nagios_critical("Unable to get archived log apply time");
+    }
+  } elsif ($params{mode} =~ /server::database::dataguard::mrp_status/) {
+    ($self->{log_transport}) =
+        $self->{handle}->fetchrow_array(q{
+          select decode(count(*),0,'ARCH','LGWR') as log_transport
+          from v$managed_standby
+          where client_process='LGWR'
+        });     
+    if (! defined $self->{log_transport}) {
+      $self->add_nagios_critical("Unable to identify log transport method");
+    }
+
+    ($self->{mrp_process}, $self->{mrp_status}) =
+        $self->{handle}->fetchrow_array(q{
+          select process, status
+          from v$managed_standby
+          where process like 'MR%'
+        });     
+    if (! defined $self->{mrp_process}) {
+      $self->add_nagios_critical("Unable to find MRP process, managed recovery may be stopped");
+    }
+  }
+}
+
+sub nagios {
+  my $self = shift;
+  my %params = @_;
+  if (! $self->{nagios_level}) {
+    if ($params{mode} =~ /server::database::dataguard::lag/) {
+      $self->add_nagios(
+          $self->check_thresholds($self->{lag_minutes}, "60", "120"),
+          sprintf "Dataguard standby lag %d minutes.", $self->{lag_minutes});
+      $self->{warningrange} =~ s/://g;
+      $self->{criticalrange} =~ s/://g;
+      $self->add_perfdata(sprintf "dataguard_lag=%d;%d;%d",
+          $self->{lag_minutes}, 
+          $self->{warningrange}, $self->{criticalrange});
+    } elsif ($params{mode} =~ /server::database::dataguard::mrp_status/) {
+      my $mrp_message = sprintf "Dataguard managed recovery process %s status is %s.", $self->{mrp_process}, $self->{mrp_status};
+      if ($self->{mrp_status} eq "APPLYING_LOG") {
+        $self->add_nagios_ok($mrp_message);
+      } elsif ($self->{mrp_status} eq "WAIT_FOR_LOG") {
+	# OK if log_transport is ARCH, but not if LGWR
+        $mrp_message .= sprintf " Log transport is %s.", $self->{log_transport};
+        if ($self->{log_transport} eq "LGWR") {
+          $self->add_nagios_warning($mrp_message);
+        } else {
+          $self->add_nagios_ok($mrp_message);
+        }
+      } else {
+        $self->add_nagios_critical($mrp_message);
+      }
+      $self->add_perfdata(sprintf "dataguard_mrp_status=%s", $self->{mrp_status});
+      $self->add_perfdata(sprintf "dataguard_log_transport=%s", $self->{log_transport});
+    }
+  }
+}
+
 package DBD::Oracle::Server::Database::FlashRecoveryArea;
 
 use strict;
@@ -3262,7 +3362,9 @@ sub init {
   $self->init_nagios();
   $self->set_local_db_thresholds(%params);
   if ($params{mode} =~ /server::database::tablespace::(usage|free)/) {
-    if (! defined $self->{bytes_max}) {
+    if (! defined $self->{bytes_max} || $self->{bytes_max} eq '') { 
+      # eq '' kommt z.b. vor, wenn ein datafile online_status recover hat
+      # in dba_data_files sind dann bytes und maxbytes nicht belegt (Null)
       $self->{bytes} = 0;
       $self->{bytes_max} = 0;
       $self->{bytes_free} = 0;
@@ -3459,15 +3561,6 @@ sub nagios {
             $self->add_nagios(
                 defined $params{mitigation} ? $params{mitigation} : 2,
                 sprintf("tbs %s has has a problem, maybe needs recovery?", $self->{name})
-            );
-          }
-          if ($self->{status} eq 'offline') {
-            $self->add_nagios_warning(
-                sprintf("tbs %s is offline", $self->{name})
-            );
-          } else {
-            $self->add_nagios_critical(
-                sprintf("tbs %s has has a problem, maybe needs recovery?", $self->{name}) 
             );
           }
         } else {
@@ -3725,6 +3818,291 @@ printf "%s\n", $self->dump();
 }
 
 
+package DBD::Oracle::Server::Database::Asm::Diskgroup;
+
+use strict;
+
+our @ISA = qw(DBD::Oracle::Server::Database::Asm);
+
+
+{
+  my @diskgroups = ();
+  my $initerrors = undef;
+ 
+  sub add_diskgroup {
+    push(@diskgroups, shift);
+  }
+  
+  sub return_diskgroups {
+    return @diskgroups;
+    	#sort { $a->{name} cmp $b->{name} } @diskgroups;
+  }
+  
+  sub init_diskgroups {
+    my %params = @_;
+    my $num_diskgroups = 0;
+  
+    my @diskgroupresult = ();
+    @diskgroupresult = $params{handle}->fetchall_array(q{
+          SELECT
+                  name,
+                  state,
+                  type,
+                  total_mb,
+                  usable_file_mb,
+                  offline_disks
+          FROM
+                  V$ASM_DISKGROUP
+  
+    });
+  
+    if ($params{mode} =~ /server::database::asm::diskgroup::(usage|free|listdiskgroups)/) {
+        foreach (@diskgroupresult) {
+          my ($name, $state, $type, $total_mb, $usable_file_mb, $offline_disks) = @{$_};
+          if ($params{regexp}) {
+            next if $params{selectname} && $name !~ /$params{selectname}/;
+          } else {
+            next if $params{selectname} && lc $params{selectname} ne lc $name;
+          }
+  
+  	  my %thisparams = %params;
+          $thisparams{name} = $name;
+          $thisparams{state} = lc $state;
+          $thisparams{type} = lc $type;
+          $thisparams{total_mb} = $total_mb;
+          $thisparams{usable_file_mb} = $usable_file_mb;
+          $thisparams{offline_disks} = $offline_disks;
+  
+          my $diskgroup = DBD::Oracle::Server::Database::Asm::Diskgroup->new(
+              %thisparams);
+          add_diskgroup($diskgroup);
+          $num_diskgroups++;
+        }
+        if (! $num_diskgroups) {
+          $initerrors = 1;
+          return undef;
+        }
+    } # end mode usage 
+  }
+}
+
+sub new {
+  my $class = shift;
+  my %params = @_;
+  my $self = {
+    verbose => $params{verbose},
+    handle => $params{handle},
+    name => $params{name},
+    state => $params{state},
+    type => $params{type},
+    total_mb => $params{total_mb},
+    usable_file_mb => $params{usable_file_mb},
+    offline_disks => $params{offline_disks},
+    warningrange => $params{warningrange},
+    criticalrange => $params{criticalrange},
+  };
+  bless $self, $class;
+  $self->init(%params);
+  return $self;
+}
+
+sub init {
+  my $self = shift;
+  my %params = @_;
+  $self->init_nagios();
+  $self->set_local_db_thresholds(%params);
+  if ($params{mode} =~ /server::database::asm::diskgroup::(usage|free)/) {
+    $self->{percent_used} =
+	($self->{total_mb} - $self->{usable_file_mb}) / $self->{total_mb} * 100;
+    $self->{percent_free} = 100 - $self->{percent_used};
+    $self->{bytes_free} = $self->{usable_file_mb} * 1024 * 1024;
+    $self->{bytes_max} = $self->{total_mb} * 1024 * 1024;
+
+    my $tlen = 20;
+    my $len = int((($params{mode} =~ /asm::diskgroup::usage/) ?
+        $self->{percent_used} : $self->{percent_free} / 100 * $tlen) + 0.5);
+    $self->{percent_as_bar} = '=' x $len . '_' x ($tlen - $len);
+
+  }
+}
+
+sub nagios {
+  my $self = shift;
+  my %params = @_;
+  if (! $self->{nagios_level}) {
+    if ($params{mode} =~ /server::database::asm::diskgroup/) {
+      ## if offline disk is greater 0 and is redundancy is external then critical
+      # TODO: add check for voting disk
+      if ( ($self->{offline_disks} > 0 && $self->{type} eq 'extern' ) ||
+           ($self->{offline_disks} > 1 && $self->{type} eq 'high' ) ) { 
+           
+        $self->add_nagios(
+            defined $params{mitigation} ? $params{mitigation} : 2,
+                sprintf("dg %s has %s offline disks", $self->{name}, $self->{offline_disks})
+        );
+      } elsif ($self->{offline_disks} > 0 && ( $self->{type} eq 'normal' || $self->{type} eq 'high') ) {
+           $self->add_nagios(
+               defined $params{mitigation} ? $params{mitigation} : 1,
+                   sprintf("dg %s has %s offline disks", $self->{name}, $self->{offline_disks})
+           );
+      }
+
+      if ($self->{state} eq 'mounted' || $self->{state} eq 'dismounted' || $self->{state} eq 'connected') {
+        # 'dg_system_usage_pct'=99.01%;90;98 percent used, warn, crit
+        # 'dg_system_usage'=693MB;630;686;0;700 used, warn, crit, 0, max=total
+        if ($params{mode} =~ /server::database::asm::diskgroup::usage/) {
+          $self->add_nagios(
+              $self->check_thresholds($self->{percent_used}, "90", "98"),
+              $params{eyecandy} ?
+                  sprintf("[%s] %s", $self->{percent_as_bar}, $self->{name}) :
+                  sprintf("dg %s usage is %.2f%%",
+                      $self->{name}, $self->{percent_used})
+          );
+  
+          $self->add_perfdata(sprintf "\'dg_%s_usage_pct\'=%.2f%%;%d;%d",
+              lc $self->{name},
+              $self->{percent_used},
+              $self->{warningrange}, $self->{criticalrange});
+          $self->add_perfdata(sprintf "\'dg_%s_usage\'=%dMB;%d;%d;%d;%d",
+              lc $self->{name},
+              $self->{usable_file_mb},
+              $self->{warningrange} * $self->{total_mb} / 100,
+              $self->{criticalrange} * $self->{total_mb} / 100,
+              0, $self->{total_mb});
+        } elsif ($params{mode} =~ /server::database::asm::diskgroup::free/) {
+          if (! $params{units}) {
+            $params{units} = "%";
+          }
+          if ($params{units} eq "%") {
+            $self->add_nagios(
+                $self->check_thresholds($self->{percent_free}, "5:", "2:"),
+                sprintf("dg %s has %.2f%% free space left",
+                    $self->{name}, $self->{percent_free})
+            );
+            $self->{warningrange} =~ s/://g;
+            $self->{criticalrange} =~ s/://g;
+            $self->add_perfdata(sprintf "\'dg_%s_free_pct\'=%.2f%%;%d:;%d:",
+                lc $self->{name},
+                $self->{percent_free},
+                $self->{warningrange}, $self->{criticalrange});
+            $self->add_perfdata(sprintf "\'dg_%s_free\'=%dMB;%.2f:;%.2f:;0;%.2f",
+                lc $self->{name},
+                $self->{bytes_free} / 1048576,
+                $self->{warningrange} * $self->{bytes_max} / 100 / 1048576,
+                $self->{criticalrange} * $self->{bytes_max} / 100 / 1048576,
+                $self->{bytes_max} / 1048576);
+          } else {
+            my $factor = 1024 * 1024; # default MB
+            if ($params{units} eq "GB") {
+              $factor = 1024 * 1024 * 1024;
+            } elsif ($params{units} eq "MB") {
+              $factor = 1024 * 1024;
+            } elsif ($params{units} eq "KB") {
+              $factor = 1024;
+            }
+            $self->{warningrange} ||= "5:";
+            $self->{criticalrange} ||= "2:";
+            my $saved_warningrange = $self->{warningrange};
+            my $saved_criticalrange = $self->{criticalrange};
+            # : entfernen weil gerechnet werden muss
+            $self->{warningrange} =~ s/://g;
+            $self->{criticalrange} =~ s/://g;
+            $self->{warningrange} = $self->{warningrange} ?
+                $self->{warningrange} * $factor : 5 * $factor;
+            $self->{criticalrange} = $self->{criticalrange} ?
+                $self->{criticalrange} * $factor : 2 * $factor;
+            $self->{percent_warning} = 100 * $self->{warningrange} / $self->{bytes_max};
+            $self->{percent_critical} = 100 * $self->{criticalrange} / $self->{bytes_max};
+            $self->{warningrange} .= ':';
+            $self->{criticalrange} .= ':';
+            $self->add_nagios(
+                $self->check_thresholds($self->{bytes_free}, "5242880:", "1048576:"),
+                    sprintf("dg %s has %.2f%s free space left", $self->{name},
+                        $self->{bytes_free} / $factor, $params{units})
+            );
+            $self->{warningrange} = $saved_warningrange;
+            $self->{criticalrange} = $saved_criticalrange;
+            $self->{warningrange} =~ s/://g;
+            $self->{criticalrange} =~ s/://g;
+            $self->add_perfdata(sprintf "\'dg_%s_free_pct\'=%.2f%%;%.2f:;%.2f:",
+                lc $self->{name},
+                $self->{percent_free}, $self->{percent_warning},
+                $self->{percent_critical});
+            $self->add_perfdata(sprintf "\'dg_%s_free\'=%.2f%s;%.2f:;%.2f:;0;%.2f",
+                lc $self->{name},
+                $self->{bytes_free} / $factor, $params{units},
+                $self->{warningrange},
+                $self->{criticalrange},
+                $self->{bytes_max} / $factor);
+          }
+        }
+      } else {
+        $self->add_nagios(
+          defined $params{mitigation} ? $params{mitigation} : 2,
+            sprintf("dg %s has a problem, state is %s", $self->{name}, $self->{state})
+        );
+      }
+    } 
+  }
+}
+
+
+package DBD::Oracle::Server::Database::Asm;
+
+use strict;
+
+our @ISA = qw(DBD::Oracle::Server::Database);
+
+
+
+sub new {
+  my $class = shift;
+  my %params = @_;
+  my $self = {
+    handle => $params{handle},
+    warningrange => $params{warningrange},
+    criticalrange => $params{criticalrange},
+    diskgroups => [],
+  };
+  bless $self, $class;
+  $self->init(%params);
+  return $self;
+}
+
+sub init {
+  my $self = shift;
+  my %params = @_;
+  $self->init_nagios();
+  if ($params{mode} =~ /server::database::asm::diskgroup/) {
+    DBD::Oracle::Server::Database::Asm::Diskgroup::init_diskgroups(%params);
+    if (my @diskgroups =
+        DBD::Oracle::Server::Database::Asm::Diskgroup::return_diskgroups()) {
+      $self->{diskgroups} = \@diskgroups;
+    } else {
+      $self->add_nagios_critical("unable to aquire diskgroup info");
+    }
+  }
+}
+
+sub nagios {
+  my $self = shift;
+  my %params = @_;
+  if (! $self->{nagios_level}) {
+    if ($params{mode} =~ /server::database::asm::diskgroup::listdiskgroups/) {
+	my $list = "Available DG: ";
+      foreach ( sort { $a->{name} cmp $b->{name} }  @{$self->{diskgroups}} ) {
+        $list .= $_->{name} . ", ";
+      }
+      $self->add_nagios_ok($list);
+    } elsif ($params{mode} =~ /asm::diskgroup/) {
+      foreach (@{$self->{diskgroups}}) {
+        $_->nagios(%params);
+        $self->merge_nagios($_);
+      }
+    }
+  } 
+}
+
 package DBD::Oracle::Server::Database;
 
 use strict;
@@ -3777,6 +4155,10 @@ sub init {
     } else {
       $self->add_nagios_critical("unable to aquire flash recovery area info");
     }
+  } elsif ($params{mode} =~ /server::database::dataguard/) {
+    $self->{dataguard} = DBD::Oracle::Server::Database::Dataguard->new(%params);
+  } elsif ($params{mode} =~ /server::database::asm/) {
+    $self->{asm} = DBD::Oracle::Server::Database::Asm->new(%params);
   } elsif ($params{mode} =~ /server::database::invalidobjects/) {
     $self->init_invalid_objects(%params);
   } elsif ($params{mode} =~ /server::database::stalestats/) {
@@ -3811,41 +4193,102 @@ sub init_invalid_objects {
   my $invalid_objects = undef;
   my $invalid_indexes = undef;
   my $invalid_ind_partitions = undef;
+  my $invalid_ind_subpartitions = undef;
   my $unrecoverable_datafiles = undef;
-  $self->{invalidobjects}->{invalid_objects} =
-      $self->{handle}->fetchrow_array(q{
-          SELECT COUNT(*) 
-          FROM dba_objects 
-          WHERE status = 'INVALID' AND object_name NOT LIKE 'BIN$%'
-      });
+  @{$self->{invalidobjects}->{invalid_objects_list}} =
+      $self->{handle}->fetchall_array(q{
+          SELECT
+            'dba_objects', O.object_type||' '||O.owner||'.'||O.object_name||' is '||O.status
+          FROM
+            dba_objects O
+          LEFT OUTER JOIN
+            DBA_MVIEW_refresh_times V
+          ON
+            O.object_name = V.NAME
+          AND
+            O.owner = V.owner
+          WHERE
+            (LAST_REFRESH <= (SELECT sysdate - ? FROM dual) OR LAST_REFRESH is null)
+          AND
+            STATUS = 'INVALID'
+          AND
+            O.object_name NOT LIKE 'BIN$%'
+      }, ($params{lookback} || 2));
   # should be only N/A or VALID
-  $self->{invalidobjects}->{invalid_indexes} =
-      $self->{handle}->fetchrow_array(q{
-          SELECT COUNT(*) 
-          FROM dba_indexes 
+  @{$self->{invalidobjects}->{invalid_indexes_list}} =
+      $self->{handle}->fetchall_array(q{
+          SELECT 'dba_indexes', index_type||' index '||owner||'.'||index_name||' of '||table_owner||'.'||table_name||' is '||status
+          FROM dba_indexes
           WHERE status <> 'VALID' AND status <> 'N/A'
       });
   # should be only USABLE
-  $self->{invalidobjects}->{invalid_ind_partitions} =
-      $self->{handle}->fetchrow_array(q{
-          SELECT COUNT(*) 
-          FROM dba_ind_partitions 
+  @{$self->{invalidobjects}->{invalid_ind_partitions_list}} =
+      $self->{handle}->fetchall_array(q{
+          SELECT 'dba_ind_partitions', partition_name||' of '||index_owner||'.'||index_name||' is '||status
+          FROM dba_ind_partitions
           WHERE status <> 'USABLE' AND status <> 'N/A'
       });
+  if ($self->version_is_minimum("10.x")) {
+    # should be only USABLE
+    @{$self->{invalidobjects}->{invalid_ind_subpartitions_list}} =
+        $self->{handle}->fetchall_array(q{
+            SELECT 'dba_ind_subpartitions', subpartition_name||' of '||partition_name||' of '||index_owner||'.'||index_name||' is '||status
+            FROM dba_ind_subpartitions
+            WHERE status <> 'USABLE' AND status <> 'N/A'
+        });
+  } else {
+    $self->{invalidobjects}->{invalid_ind_subpartitions_list} = [];
+  }
   # should be only VALID
-  $self->{invalidobjects}->{invalid_registry_components} =
-      $self->{handle}->fetchrow_array(q{
-          SELECT COUNT(*) 
-          FROM dba_registry
-          WHERE status <> 'VALID'
-      });
+  if ($self->version_is_minimum("10.x")) {
+    @{$self->{invalidobjects}->{invalid_registry_components_list}} =
+        $self->{handle}->fetchall_array(q{
+            SELECT 'dba_registry', namespace||'.'||comp_name||'-'||version||' is '||status
+            FROM dba_registry
+            WHERE status <> 'VALID'
+        });
+  } else {
+    @{$self->{invalidobjects}->{invalid_registry_components_list}} =
+        $self->{handle}->fetchall_array(q{
+            SELECT 'dba_registry', 'SCHEMA.'||comp_name||'-'||version||' is '||status
+            FROM dba_registry
+            WHERE status <> 'VALID'
+        });
+  }
   if (! defined $self->{invalidobjects}->{invalid_objects} ||
       ! defined $self->{invalidobjects}->{invalid_indexes} ||
       ! defined $self->{invalidobjects}->{invalid_registry_components} ||
+      ! defined $self->{invalidobjects}->{invalid_ind_subpartitions} ||
       ! defined $self->{invalidobjects}->{invalid_ind_partitions}) {
-    $self->add_nagios_critical("unable to get invalid objects");
-    return undef;
+    #$self->add_nagios_critical("unable to get invalid objects");
+    #return undef;
   }
+  foreach my $cat (qw(invalid_objects_list invalid_indexes_list invalid_ind_partitions_list invalid_ind_subpartitions_list invalid_registry_components_list)) {
+    my @tmp_list = ();
+    foreach my $element (@{$self->{invalidobjects}->{$cat}}) {
+      next if $params{name2} && (lc $params{name2} ne lc $element->[0]);
+      my $name = $element->[1];
+      if ($params{regexp}) {
+        # can be used to pick system an application accounts
+        # --name 'of (SYS|SYSTEM|OUTLN|SCOTT|ADAMS|JONES|CLARK|BLAKE|WOOD|STEEL|CLOTH|PAPER|HR|OE|SH|OE|SH|DEMO|ANONYMOUS|%APEX%|AURORA\$ORB\$UNAUTHENTICATED|AWR_STAGE|CSMIG|CTXSYS|DBSNMP|DIP|DMSYS|DSSYS|EXFSYS|LBACSYS|MDSYS|ORACLE_OCM|ORDPLUGINS|ORDSYS|PERFSTAT|TRACESVR|TSMSYS|XDB|TSDSADM|APPQOSSYS)\.'
+        if ($params{selectname} && substr($params{selectname}, 0, 1) eq '!') {
+          my $selectname = substr($params{selectname}, 1);
+          next if $name =~ /$selectname/;
+        } else {
+          next if $params{selectname} && $name !~ /$params{selectname}/i;
+        }
+      } else {
+        next if $params{selectname} && (lc $params{selectname} ne lc $name);
+      }
+      push(@tmp_list, $element);
+    }
+    @{$self->{invalidobjects}->{$cat}} = @tmp_list;
+  }
+  $self->{invalidobjects}->{invalid_objects} = scalar(@{$self->{invalidobjects}->{invalid_objects_list}});
+  $self->{invalidobjects}->{invalid_indexes} = scalar(@{$self->{invalidobjects}->{invalid_indexes_list}});
+  $self->{invalidobjects}->{invalid_ind_partitions} = scalar(@{$self->{invalidobjects}->{invalid_ind_partitions_list}});
+  $self->{invalidobjects}->{invalid_ind_subpartitions} = scalar(@{$self->{invalidobjects}->{invalid_ind_subpartitions_list}});
+  $self->{invalidobjects}->{invalid_registry_components} = scalar(@{$self->{invalidobjects}->{invalid_registry_components_list}});
 }
 
 sub init_stale_objects {
@@ -3886,13 +4329,115 @@ sub init_stale_objects {
 sub init_corrupted_blocks {
   my $self = shift;
   my %params = @_;
-  $self->{corruptedblocks} = $self->{handle}->fetchrow_array(q{
+  $self->{numcorruptedblocks} = $self->{handle}->fetchrow_array(q{
       SELECT COUNT(*) FROM v$database_block_corruption
   });
-  if (! defined $self->{corruptedblocks}) {
+  if (! defined $self->{numcorruptedblocks}) {
     $self->add_nagios_critical("unable to get corrupted blocks");
     return undef;
   }
+  @{$self->{corruptedobjects}->{extents_list}} =
+      $self->{handle}->fetchall_array(q{
+      WITH mytable AS (
+      SELECT
+          dbe.owner db_owner,
+          dbe.segment_name obj_name,
+          dbe.partition_name part_name,
+          dbe.segment_type typ,
+          vdbc.corruption_type corruption_type,
+          vdbc.file# file_number,
+          vdbc.block# block_number,
+          GREATEST(dbe.block_id, vdbc.block#) corr_start_block,
+          LEAST(dbe.block_id+dbe.blocks-1, vdbc.block#+vdbc.blocks-1) corr_end_block,
+          LEAST(dbe.block_id+dbe.blocks-1, vdbc.block#+vdbc.blocks-1) - GREATEST(dbe.block_id, vdbc.block#) + 1 blocks_corrupted,
+          'dba_extents' description
+      FROM
+          dba_extents dbe,
+          v$database_block_corruption vdbc
+      WHERE 1=1
+      AND dbe.file_id = vdbc.file#
+      AND dbe.block_id <= vdbc.block# + vdbc.blocks - 1
+      AND dbe.block_id + dbe.blocks - 1 >= vdbc.block#
+      )
+      SELECT
+         description, db_owner||'.'||obj_name||' is '||corruption_type||' corrupted'
+      FROM mytable
+  });
+  @{$self->{corruptedobjects}->{segments_list}} =
+      $self->{handle}->fetchall_array(q{
+      WITH mytable AS (
+          SELECT
+              dbs.owner db_owner,
+              dbs.segment_name obj_name,
+              dbs.partition_name part_name,
+              dbs.segment_type typ,
+              vdbc.corruption_type corruption_type,
+              vdbc.file# file_number,
+              vdbc.block# block_number,
+              dbs.header_block corr_start_block,
+              dbs.header_block corr_end_block,
+              1 blocks_corrupted,
+              'dba_segments' description
+          FROM
+              dba_segments dbs,
+              v$database_block_corruption vdbc
+          WHERE 1=1
+          AND dbs.header_file = vdbc.file#
+          AND dbs.header_block BETWEEN vdbc.block# AND vdbc.block#+vdbc.blocks-1
+      )
+      SELECT
+         description, db_owner||'.'||obj_name||' is '||corruption_type||' corrupted'
+      FROM mytable
+  });
+  @{$self->{corruptedobjects}->{free_list}} =
+      $self->{handle}->fetchall_array(q{
+      WITH mytable AS (
+          SELECT
+              'SYS' db_owner,
+              'file'||vdbc.file#||'block'||vdbc.block# obj_name,
+              'noname' part_name,
+              'free' typ,
+              vdbc.corruption_type corruption_type,
+              vdbc.file# file_number,
+              vdbc.block# block_number,
+              GREATEST(dbf.block_id, vdbc.block#) corr_start_block,
+              LEAST(dbf.block_id+dbf.blocks-1, vdbc.block#+vdbc.blocks-1) corr_end_block,
+              LEAST(dbf.block_id+dbf.blocks-1, vdbc.block#+vdbc.blocks-1) - GREATEST(dbf.block_id, vdbc.block#) + 1 blocks_corrupted,
+              'dba_free_space' description
+          FROM
+              dba_free_space dbf,
+              v$database_block_corruption vdbc
+          WHERE 1=1
+          AND dbf.file_id = vdbc.file#
+          AND dbf.block_id <= vdbc.block# + vdbc.blocks -1
+          AND dbf.block_id + dbf.blocks - 1 >= vdbc.block#
+      )
+      SELECT
+         description, db_owner||'.'||obj_name||' is '||corruption_type||' corrupted'
+      FROM mytable
+  });
+  foreach my $cat (qw(extents_list segments_list free_list)) {
+    my @tmp_list = ();
+    foreach my $element (@{$self->{corruptedobjects}->{$cat}}) {
+      next if $params{name2} && (lc $params{name2} ne lc $element->[0]);
+      my $name = $element->[1];
+      if ($params{regexp}) {
+        if ($params{selectname} && substr($params{selectname}, 0, 1) eq '!') {
+          my $selectname = substr($params{selectname}, 1);
+          next if $name =~ /$selectname/;
+        } else {
+          next if $params{selectname} && $name !~ /$params{selectname}/i;
+        }
+      } else {
+        next if $params{selectname} && (lc $params{selectname} ne lc $name);
+      }
+      push(@tmp_list, $element);
+    }
+    @{$self->{corruptedobjects}->{$cat}} = @tmp_list;
+  }
+  $self->{corruptedobjects}->{extents} = scalar(@{$self->{corruptedobjects}->{extents_list}});
+  $self->{corruptedobjects}->{segments} = scalar(@{$self->{corruptedobjects}->{segments_list}});
+  $self->{corruptedobjects}->{free} = scalar(@{$self->{corruptedobjects}->{free_list}});
 }
 
 sub nagios {
@@ -3921,8 +4466,16 @@ sub nagios {
         $_->nagios(%params);
         $self->merge_nagios($_);
       }
+    } elsif ($params{mode} =~ /server::database::dataguard/) {
+      $self->{dataguard}->nagios(%params);
+      $self->merge_nagios($self->{dataguard});
+    } elsif ($params{mode} =~ /server::database::asm/) {
+      $self->{asm}->nagios(%params);
+      $self->merge_nagios($self->{asm});
     } elsif ($params{mode} =~ /server::database::invalidobjects/) {
       my @message = ();
+      my $message = undef;
+      my $level = undef;
       push(@message, sprintf "%d invalid objects",
           $self->{invalidobjects}->{invalid_objects}) if
           $self->{invalidobjects}->{invalid_objects};
@@ -3932,21 +4485,103 @@ sub nagios {
       push(@message, sprintf "%d invalid index partitions",
           $self->{invalidobjects}->{invalid_ind_partitions}) if
           $self->{invalidobjects}->{invalid_ind_partitions};
+      push(@message, sprintf "%d invalid index subpartitions",
+          $self->{invalidobjects}->{invalid_ind_subpartitions}) if
+          $self->{invalidobjects}->{invalid_ind_subpartitions};
       push(@message, sprintf "%d invalid registry components",
           $self->{invalidobjects}->{invalid_registry_components}) if
           $self->{invalidobjects}->{invalid_registry_components};
       if (scalar(@message)) {
-        $self->add_nagios($self->check_thresholds(
+        my $level = $self->check_thresholds(
             $self->{invalidobjects}->{invalid_objects} +
             $self->{invalidobjects}->{invalid_indexes} +
             $self->{invalidobjects}->{invalid_registry_components} +
-            $self->{invalidobjects}->{invalid_ind_partitions}, 0.1, 0.1),
-            join(", ", @message));
+            $self->{invalidobjects}->{invalid_ind_subpartitions} +
+            $self->{invalidobjects}->{invalid_ind_partitions}, 0, 0);
+        $self->add_nagios($level, join(", ", @message));
+        $message = $ERRORCODES{$level}.' - '.join(", ", @message);
+        $self->supress_nagios($level) if $self->{nagios_level} && $params{report} eq "html";
       } else {
         $self->add_nagios_ok("no invalid objects found");
+        $message = "OK - no invalid objects found";
+        $self->supress_nagios(0) if $self->{nagios_level} && $params{report} eq "html";
       }
-      foreach (sort keys %{$self->{invalidobjects}}) {
-        $self->add_perfdata(sprintf "%s=%d", $_, $self->{invalidobjects}->{$_});
+      # invalid_objects_list invalid_indexes_list invalid_registry_components_list invalid_ind_partitions_list
+      # dba_objects dba_indexes dba_ind_partitions dba_registry
+      if ($params{name2}) {
+        my $category = {
+            'dba_objects' => 'invalid_objects_list',
+            'dba_indexes' => 'invalid_indexes_list',
+            'dba_ind_partitions' => 'invalid_ind_partitions_list',
+            'dba_ind_subpartitions' => 'invalid_ind_subpartitions_list',
+            'dba_registry' => 'invalid_registry_components_list',
+        }->{$params{name2}};
+        $self->add_perfdata(sprintf "%s=%d", $category, $self->{invalidobjects}->{$category});
+      } else {
+        foreach (grep !/_list$/, sort keys %{$self->{invalidobjects}}) {
+          $self->add_perfdata(sprintf "%s=%d", $_, $self->{invalidobjects}->{$_});
+        }
+      }
+      if ($self->{nagios_level} && $params{report} eq "html") {
+        require List::Util;
+        my $maxlines = 10;
+        my $invalid_lines = 0;
+        my $linespercategory = {};
+
+        foreach my $list (qw(invalid_objects_list invalid_indexes_list invalid_registry_components_list invalid_ind_partitions_list invalid_ind_subpartitions_list)) {
+          $invalid_lines += scalar(@{$self->{invalidobjects}->{$list}});
+          $linespercategory->{$list} = 0;
+        }
+        my $output_lines = List::Util::sum(values %{$linespercategory});
+        my $full = 0;
+        do {
+          foreach my $list (qw(invalid_objects_list invalid_indexes_list invalid_registry_components_list invalid_ind_partitions_list invalid_ind_subpartitions_list)) {
+            $linespercategory->{$list}++ if scalar(@{$self->{invalidobjects}->{$list}}) > $linespercategory->{$list};
+            $output_lines = List::Util::sum(values %{$linespercategory});
+            $full = 1 if ($output_lines >= $maxlines || $output_lines >= $invalid_lines);
+            last if $full;
+          }
+        } while (! $full);
+        printf "%s\n", $message;
+        printf "<table style=\"border-collapse:collapse; border: 1px solid black;\">";
+        foreach my $list (qw(invalid_objects_list invalid_indexes_list invalid_registry_components_list invalid_ind_partitions_list invalid_ind_subpartitions_list)) {
+          if ($linespercategory->{$list}) {
+        printf "<tr>";
+        foreach (qw(Table Object)) {
+          printf "<th style=\"text-align: left; padding-left: 4px; padding-right: 6px;\">%s</th>", $_;
+        }
+        printf "</tr>";
+            foreach my $object (@{$self->{invalidobjects}->{$list}}[0..$linespercategory->{$list} - 1]) {
+
+              printf "<tr>";
+              printf "<tr style=\"border: 1px solid black;\">";
+              printf "<td class=\"serviceCRITICAL\" style=\"text-align: left; padding-left: 4px; padding-right: 6px;\">%s</td>", $object->[0];
+              printf "<td class=\"serviceCRITICAL\" style=\"text-align: left; padding-left: 4px; padding-right: 6px; white-space: nowrap\">%s</td>", $object->[1];
+              printf "</tr>";
+            }
+            if ($linespercategory->{$list} < scalar(@{$self->{invalidobjects}->{$list}})) {
+              printf "<tr style=\"border: 1px solid black;\">";
+              printf "<td colspan=\"2\" class=\"serviceCRITICAL\" style=\"text-align: left; padding-left: 4px; padding-right: 6px;\">... (%d more)</td>", scalar(@{$self->{invalidobjects}->{$list}}) - $linespercategory->{$list};
+              printf "</tr>";
+            }
+          }
+        }
+        printf "</table>\n";
+        printf "<!--\nASCII_NOTIFICATION_START\n";
+        foreach (qw(Table Object)) {
+          printf "%-20s", $_;
+        }
+        printf "\n";
+        foreach my $object (
+            @{$self->{invalidobjects}->{invalid_objects_list}},
+            @{$self->{invalidobjects}->{invalid_indexes_list}},
+            @{$self->{invalidobjects}->{invalid_registry_components_list}},
+            @{$self->{invalidobjects}->{invalid_ind_partitions_list}},
+            @{$self->{invalidobjects}->{invalid_ind_subpartitions_list}}) {
+          printf "%-20s%s", $object->[0], $object->[1];
+          printf "\n";
+        }
+        printf "ASCII_NOTIFICATION_END\n-->\n";
       }
     } elsif ($params{mode} =~ /server::database::stalestats/) {
       $self->add_nagios(
@@ -3956,12 +4591,96 @@ sub nagios {
           $self->{staleobjects},
           $self->{warningrange}, $self->{criticalrange});
     } elsif ($params{mode} =~ /server::database::blockcorruption/) {
-      $self->add_nagios(
-          $self->check_thresholds($self->{corruptedblocks}, "1", "10"),
-          sprintf "%d database blocks are corrupted", $self->{corruptedblocks});
-      $self->add_perfdata(sprintf "corrupted_blocks=%d;%s;%s",
-          $self->{corruptedblocks},
-          $self->{warningrange}, $self->{criticalrange});
+      #$self->add_nagios(
+      #    $self->check_thresholds($self->{corruptedblocks}, "1", "10"),
+      #    sprintf "%d database blocks are corrupted", $self->{corruptedblocks});
+      #$self->add_perfdata(sprintf "corrupted_blocks=%d;%s;%s",
+      #    $self->{corruptedblocks},
+      #    $self->{warningrange}, $self->{criticalrange});
+      my @message = ();
+      my $message = undef;
+      my $level = undef;
+      push(@message, sprintf "%d corrupt extents",
+          $self->{corruptedobjects}->{extents}) if
+          $self->{corruptedobjects}->{extents};
+      push(@message, sprintf "%d corrupt segment headers",
+          $self->{corruptedobjects}->{segments}) if
+          $self->{corruptedobjects}->{segments};
+      push(@message, sprintf "%d corrupt free blocks",
+          $self->{corruptedobjects}->{free}) if
+          $self->{corruptedobjects}->{free};
+      if (scalar(@message)) {
+        my $level = $self->check_thresholds(
+            $self->{corruptedobjects}->{extents} +
+            $self->{corruptedobjects}->{segments} +
+            $self->{corruptedobjects}->{free}, 0.1, 0.1);
+        $self->add_nagios($level, join(", ", @message));
+        $message = $ERRORCODES{$level}.' - '.join(", ", @message);
+        $self->supress_nagios($level) if $self->{nagios_level} && $params{report} eq "html";
+      } else {
+        $self->add_nagios_ok("no corrupt blocks found");
+        $message = "OK - no corrupt blocks found";
+        $self->supress_nagios(0) if $self->{nagios_level} && $params{report} eq "html";
+      }
+      foreach (grep !/_list$/, sort keys %{$self->{corruptedobjects}}) {
+        $self->add_perfdata(sprintf "%s=%d", $_, $self->{corruptedobjects}->{$_});
+      }
+      if ($self->{nagios_level} && $params{report} eq "html") {
+        require List::Util;
+        my $maxlines = 10;
+        my $invalid_lines = 0;
+        my $linespercategory = {};
+
+        foreach my $list (qw(extents_list segments_list free_list)) {
+          $invalid_lines += scalar(@{$self->{corruptedobjects}->{$list}});
+          $linespercategory->{$list} = 0;
+        }
+        my $output_lines = List::Util::sum(values %{$linespercategory});
+        my $full = 0;
+        do {
+          foreach my $list (qw(extents_list segments_list free_list)) {
+            $linespercategory->{$list}++ if scalar(@{$self->{corruptedobjects}->{$list}}) > $linespercategory->{$list};
+            $output_lines = List::Util::sum(values %{$linespercategory});
+            $full = 1 if ($output_lines >= $maxlines || $output_lines >= $invalid_lines);
+            last if $full;
+          }
+        } while (! $full);
+        printf "%s\n", $message;
+        printf "<table style=\"border-collapse:collapse; border: 1px solid black;\">";
+        foreach my $list (qw(extents_list segments_list free_list)) {
+          if ($linespercategory->{$list}) {
+        printf "<tr>";
+        foreach (qw(Table Object)) {
+          printf "<th style=\"text-align: left; padding-left: 4px; padding-right: 6px;\">%s</th>", $_;
+        }
+        printf "</tr>";
+            foreach my $object (@{$self->{corruptedobjects}->{$list}}[0..$linespercategory->{$list} - 1]) {
+
+              printf "<tr>";
+              printf "<tr style=\"border: 1px solid black;\">";
+              printf "<td class=\"serviceCRITICAL\" style=\"text-align: left; padding-left: 4px; padding-right: 6px;\">%s</td>", $object->[0];
+              printf "<td class=\"serviceCRITICAL\" style=\"text-align: left; padding-left: 4px; padding-right: 6px; white-space: nowrap\">%s</td>", $object->[1];
+              printf "</tr>";
+            }
+            if ($linespercategory->{$list} < scalar(@{$self->{corruptedobjects}->{$list}})) {
+              printf "<tr style=\"border: 1px solid black;\">";
+              printf "<td colspan=\"2\" class=\"serviceCRITICAL\" style=\"text-align: left; padding-left: 4px; padding-right: 6px;\">... (%d more)</td>", scalar(@{$self->{corruptedobjects}->{$list}}) - $linespercategory->{$list};
+              printf "</tr>";
+            }
+          }
+        }
+        printf "</table>\n";
+        printf "<!--\nASCII_NOTIFICATION_START\n";
+        foreach (qw(Table Object)) {
+          printf "%-20s", $_;
+        }
+        printf "\n";
+        foreach my $object (@{$self->{corruptedobjects}->{extents_list}}, @{$self->{corruptedobjects}->{segments_list}}, @{$self->{corruptedobjects}->{free_list}}) {
+          printf "%-20s%s", $object->[0], $object->[1];
+          printf "\n";
+        }
+        printf "ASCII_NOTIFICATION_END\n-->\n";
+      }
     } elsif ($params{mode} =~ /server::database::datafilesexisting/) {
         my $datafile_usage = $self->{num_datafiles} / 
             $self->{num_datafiles_max} * 100;
@@ -4025,6 +4744,7 @@ sub new {
   my $class = shift;
   my %params = @_;
   my $self = {
+    mode => $params{mode},
     access => $params{method} || "dbi",
     connect => $params{connect},
     username => $params{username},
@@ -4036,6 +4756,8 @@ sub new {
     ident => $params{ident},
     report => $params{report},
     commit => $params{commit},
+    negate => $params{negate},
+    labelformat => $params{labelformat},
     version => 'unknown',
     instance => undef,
     database => undef,
@@ -4056,27 +4778,45 @@ sub new {
       # much more cheaper.
       $self->{version} = $self->{handle}->fetchrow_array(
           q{ SELECT version FROM product_component_version 
-               WHERE product LIKE '%Server%' });
+               WHERE product LIKE '%Server%' OR
+                     product LIKE 'Oracle Database%Enterprise Edition%' });
       $self->{os} = 'Unix';
       $self->{dbuser} = $self->{username};
       $self->{thread} = 1;
       $self->{parallel} = 'no';
     } else {
-      ($self->{os}, $self->{dbuser}, $self->{thread}, $self->{parallel}, $self->{instance_name}, $self->{database_name}) = $self->{handle}->fetchrow_array(
-          q{ select dbms_utility.port_string,sys_context('userenv', 'session_user'),i.thread#,i.parallel, i.instance_name, d.name FROM dual, v$instance i, v$database d });
-      #$self->{os} = $self->{handle}->fetchrow_array(
-      #    q{ SELECT dbms_utility.port_string FROM dual });
-      #$self->{dbuser} = $self->{handle}->fetchrow_array(
-      #    q{ SELECT sys_context('userenv', 'session_user') FROM dual });
-      #$self->{thread} = $self->{handle}->fetchrow_array(
-      #    q{ SELECT thread# FROM v$instance });
-      #$self->{parallel} = $self->{handle}->fetchrow_array(
-      #    q{ SELECT parallel FROM v$instance });
+      if ($self->version_is_minimum('10')) {
+        ($self->{os}, $self->{dbuser}, $self->{thread}, $self->{parallel},
+            $self->{instance_name}, $self->{database_name}) = $self->{handle}->fetchrow_array(q{
+            SELECT
+                d.platform_name,
+                sys_context('userenv', 'session_user'),
+                i.thread#,
+                i.parallel,
+                i.instance_name,
+                d.name
+            FROM
+                dual,
+                v$instance i,
+                v$database d
+        });
+      } else {
+        ($self->{os}, $self->{dbuser}, $self->{thread}, $self->{parallel},
+            $self->{instance_name}, $self->{database_name}) = $self->{handle}->fetchrow_array(q{
+            SELECT
+                dbms_utility.port_string,
+                sys_context('userenv', 'session_user'),
+                i.thread#,
+                i.parallel,
+                i.instance_name,
+                d.name
+            FROM
+                dual,
+                v$instance i,
+                v$database d
+        });
+      }
       if ($self->{ident}) {
-        #$self->{instance_name} = $self->{handle}->fetchrow_array(
-        #    q{ SELECT instance_name FROM v$instance });
-        #$self->{database_name} = $self->{handle}->fetchrow_array(
-        #    q{ SELECT name FROM v$database });
         $self->{identstring} = sprintf "(host: %s inst: %s, db: %s) ",
             hostname(), $self->{instance_name}, $self->{database_name};
       }
@@ -4242,15 +4982,24 @@ sub nagios {
           }
         }
       } else {
+        my $label = $params{name2};
+        my $showvalue = 1;
+        if (substr($label, 0, 1) eq ":") {
+          # --name "select status from backup" --name2 ":backup status"
+          # sometimes the numerical returncode is not relevant
+          $label = substr($label, 1);
+          $showvalue = 0;
+        }
         $self->add_nagios(
             # the first item in the list will trigger the threshold values
             $self->check_thresholds($self->{genericsql}[0], 1, 5),
-                sprintf "%s: %s%s",
-                $params{name2} ? lc $params{name2} : lc $params{selectname},
+                sprintf "%s%s %s%s",
+                $label ? lc $label : lc $params{selectname},
+                $showvalue ? ":" : "",
                 # float as float, integers as integers
-                join(" ", map {
+                $showvalue ? join(" ", map {
                     (sprintf("%d", $_) eq $_) ? $_ : sprintf("%f", $_)
-                } @{$self->{genericsql}}),
+                } @{$self->{genericsql}}) : "",
                 $params{units} ? $params{units} : "");
         my $i = 0;
         # workaround... getting the column names from the database would be nicer
@@ -4288,6 +5037,7 @@ sub init_nagios {
         2 => [],
         3 => [],
       },
+      nomessages => {},
       perfdata => [],
     };
     $$nagioslevelvar = $ERRORS{OK},
@@ -4299,6 +5049,7 @@ sub init_nagios {
         2 => [],
         3 => [],
       },
+      nomessages => {},
       perfdata => [],
     };
     $self->{nagios_level} = $ERRORS{OK},
@@ -4315,46 +5066,47 @@ sub check_thresholds {
       $self->{warningrange} : $defaultwarningrange;
   $self->{criticalrange} = defined $self->{criticalrange} ?
       $self->{criticalrange} : $defaultcriticalrange;
-  if ($self->{warningrange} =~ /^(\d+)$/) {
+
+  if ($self->{warningrange} =~ /^([-+]?[0-9]*\.?[0-9]+)$/) {
     # warning = 10, warn if > 10 or < 0
-    $level = $ERRORS{WARNING} 
+    $level = $ERRORS{WARNING}
         if ($value > $1 || $value < 0);
-  } elsif ($self->{warningrange} =~ /^(\d+):$/) {
+  } elsif ($self->{warningrange} =~ /^([-+]?[0-9]*\.?[0-9]+):$/) {
     # warning = 10:, warn if < 10
-    $level = $ERRORS{WARNING} 
+    $level = $ERRORS{WARNING}
         if ($value < $1);
-  } elsif ($self->{warningrange} =~ /^~:(\d+)$/) {
+  } elsif ($self->{warningrange} =~ /^~:([-+]?[0-9]*\.?[0-9]+)$/) {
     # warning = ~:10, warn if > 10
-    $level = $ERRORS{WARNING} 
+    $level = $ERRORS{WARNING}
         if ($value > $1);
-  } elsif ($self->{warningrange} =~ /^(\d+):(\d+)$/) {
+  } elsif ($self->{warningrange} =~ /^([-+]?[0-9]*\.?[0-9]+):([-+]?[0-9]*\.?[0-9]+)$/) {
     # warning = 10:20, warn if < 10 or > 20
-    $level = $ERRORS{WARNING} 
+    $level = $ERRORS{WARNING}
         if ($value < $1 || $value > $2);
-  } elsif ($self->{warningrange} =~ /^@(\d+):(\d+)$/) {
+  } elsif ($self->{warningrange} =~ /^@([-+]?[0-9]*\.?[0-9]+):([-+]?[0-9]*\.?[0-9]+)$/) {
     # warning = @10:20, warn if >= 10 and <= 20
-    $level = $ERRORS{WARNING} 
+    $level = $ERRORS{WARNING}
         if ($value >= $1 && $value <= $2);
   }
-  if ($self->{criticalrange} =~ /^(\d+)$/) {
+  if ($self->{criticalrange} =~ /^([-+]?[0-9]*\.?[0-9]+)$/) {
     # critical = 10, crit if > 10 or < 0
-    $level = $ERRORS{CRITICAL} 
+    $level = $ERRORS{CRITICAL}
         if ($value > $1 || $value < 0);
-  } elsif ($self->{criticalrange} =~ /^(\d+):$/) {
+  } elsif ($self->{criticalrange} =~ /^([-+]?[0-9]*\.?[0-9]+):$/) {
     # critical = 10:, crit if < 10
-    $level = $ERRORS{CRITICAL} 
+    $level = $ERRORS{CRITICAL}
         if ($value < $1);
-  } elsif ($self->{criticalrange} =~ /^~:(\d+)$/) {
+  } elsif ($self->{criticalrange} =~ /^~:([-+]?[0-9]*\.?[0-9]+)$/) {
     # critical = ~:10, crit if > 10
-    $level = $ERRORS{CRITICAL} 
+    $level = $ERRORS{CRITICAL}
         if ($value > $1);
-  } elsif ($self->{criticalrange} =~ /^(\d+):(\d+)$/) {
+  } elsif ($self->{criticalrange} =~ /^([-+]?[0-9]*\.?[0-9]+):([-+]?[0-9]*\.?[0-9]+)$/) {
     # critical = 10:20, crit if < 10 or > 20
-    $level = $ERRORS{CRITICAL} 
+    $level = $ERRORS{CRITICAL}
         if ($value < $1 || $value > $2);
-  } elsif ($self->{criticalrange} =~ /^@(\d+):(\d+)$/) {
+  } elsif ($self->{criticalrange} =~ /^@([-+]?[0-9]*\.?[0-9]+):([-+]?[0-9]*\.?[0-9]+)$/) {
     # critical = @10:20, crit if >= 10 and <= 20
-    $level = $ERRORS{CRITICAL} 
+    $level = $ERRORS{CRITICAL}
         if ($value >= $1 && $value <= $2);
   }
   return $level;
@@ -4374,6 +5126,12 @@ sub add_nagios {
       $self->{nagios_level} = $ERRORS{$llevel};
     }
   }
+}
+
+sub supress_nagios {
+  my $self = shift;
+  my $level = shift;
+  $self->{nagios}->{nomessages}->{$level} = 1;
 }
 
 sub add_nagios_ok {
@@ -4412,6 +5170,9 @@ sub merge_nagios {
   foreach my $level (0..3) {
     foreach (@{$child->{nagios}->{messages}->{$level}}) {
       $self->add_nagios($level, $_);
+      if (exists $child->{nagios}->{nomessages}->{$level}) {
+        $self->{nagios}->{nomessages}->{$level} = 1;
+      }
     }
     #push(@{$self->{nagios}->{messages}->{$level}},
     #    @{$child->{nagios}->{messages}->{$level}});
@@ -4422,6 +5183,7 @@ sub merge_nagios {
 
 sub calculate_result {
   my $self = shift;
+  my $labels = shift || {};
   my $multiline = 0;
   map {
     $self->{nagios_level} = $ERRORS{$_} if 
@@ -4441,7 +5203,18 @@ sub calculate_result {
   } grep {
       scalar(@{$self->{nagios}->{messages}->{$ERRORS{$_}}})
   } ("CRITICAL", "WARNING", "UNKNOWN"));
+  my $good_messages = join(($multiline ? "\n" : ", "), map {
+      join(($multiline ? "\n" : ", "), @{$self->{nagios}->{messages}->{$ERRORS{$_}}})
+  } grep {
+      scalar(@{$self->{nagios}->{messages}->{$ERRORS{$_}}})
+  } ("OK"));
   my $all_messages_short = $bad_messages ? $bad_messages : 'no problems';
+  # if mode = my-....
+  # and there are some ok-messages
+  # output them instead of "no problems"
+  if ($self->{mode} =~ /^my\:\:/ && $good_messages) {
+    $all_messages_short = $bad_messages ? $bad_messages : $good_messages;
+  }
   my $all_messages_html = "<table style=\"border-collapse: collapse;\">".
       join("", map {
           my $level = $_;
@@ -4463,7 +5236,33 @@ sub calculate_result {
   } elsif ($self->{report} eq "html") {
     $self->{nagios_message} .= $all_messages_short."\n".$all_messages_html;
   }
-  $self->{perfdata} = join(" ", @{$self->{nagios}->{perfdata}});
+  foreach my $from (keys %{$self->{negate}}) {
+    if ((uc $from) =~ /^(OK|WARNING|CRITICAL|UNKNOWN)$/ &&
+        (uc $self->{negate}->{$from}) =~ /^(OK|WARNING|CRITICAL|UNKNOWN)$/) {
+      if ($self->{nagios_level} == $ERRORS{uc $from}) {
+        $self->{nagios_level} = $ERRORS{uc $self->{negate}->{$from}};
+      }
+    }
+  }
+  if ($self->{labelformat} eq "pnp4nagios") {
+    $self->{perfdata} = join(" ", @{$self->{nagios}->{perfdata}});
+  } else {
+    $self->{perfdata} = join(" ", map {
+        my $perfdata = $_;
+        if ($perfdata =~ /^(.*?)=(.*)/) {
+          my $label = $1;
+          my $data = $2;
+          if (exists $labels->{$label} &&
+              exists $labels->{$label}->{$self->{labelformat}}) {
+            $labels->{$label}->{$self->{labelformat}}."=".$data;
+          } else {
+            $perfdata;
+          }
+        } else {
+          $perfdata;
+        }
+    } @{$self->{nagios}->{perfdata}});
+  }
 }
 
 sub set_global_db_thresholds {
@@ -4592,6 +5391,16 @@ sub dbconnect {
     $retval = $self->{handle};
   }
   $self->{tac} = Time::HiRes::time();
+  # the Connection-object had it's own signal handler. Restore the old one
+  # and set a new timeout
+  if ($^O =~ /MSWin/) {
+    # has been localized, no restore necessary
+  } else {
+    use POSIX ':signal_h';
+    my $mask = POSIX::SigSet->new(SIGALRM);
+    POSIX::sigaction(SIGALRM, $self->{handle}->{old_action});
+  }
+  alarm($self->{timeout} - ($self->{tac} - $self->{tic}));
   return $retval;
 }
 
@@ -4632,6 +5441,43 @@ sub DESTROY {
   #$self->trace(sprintf "DESTROY %s exit with handle %s %s", ref($self), $handle1, $handle2);
   if (ref($self) eq "DBD::Oracle::Server") {
     #printf "humpftata\n";
+  }
+}
+
+# $self->protect_value(\%params, 'cpu_busy', 'cpu_busy', 'percent');
+sub protect_value {
+  my $self = shift;
+  my $pparams = shift;
+  my %params = %{$pparams};
+  my $ident = shift;
+  my $key = shift;
+  my $validfunc = shift;
+  if (ref($validfunc) ne "CODE" && $validfunc eq "percent") {
+    $validfunc = sub {
+      my $value = shift;
+      return ($value < 0 || $value > 100) ? 0 : 1;
+    }
+  }
+  if (&$validfunc($self->{$key})) {
+    $self->save_state(%params, (name => 'protect_'.$ident.'_'.$key, save => {
+        $key => $self->{$key},
+        exception => 0,
+    }));
+  } else {
+    # if the device gives us an clearly wrong value, simply use the last value.
+    my $laststate = $self->load_state(%params, (name => 'protect_'.$ident.'_'.$key));
+    $self->debug(sprintf "self->{%s} is %s and invalid for the %dth time",
+        $key, $self->{$key}, $laststate->{exception} + 1);
+    if ($laststate->{exception} < 4) {
+      # but only 5 times.
+      # if the error persists, somebody has to check the device.
+      $self->{$key} = $laststate->{$key};
+    }
+    $laststate->{exception}++;
+    $self->save_state(%params, (name => 'protect_'.$ident.'_'.$key, save => {
+        $key => $self->{$key},
+        exception => $laststate->{exception},
+    }));
   }
 }
 
@@ -4932,6 +5778,11 @@ sub init {
         }
         $self->{username} = '/';
         $self->{password} = "";
+      } elsif ($self->{username} && $self->{username} =~ /^\/@([\w\-\._]+)/) {
+        $self->{username} = "";
+        $self->{password} = "";
+        $self->{sid} = $1;
+        $self->{connect} = $1;
       } else {
         $self->{errstr} = "Please specify database, username and password";
         return undef;
@@ -4947,27 +5798,42 @@ sub init {
       use POSIX ':signal_h';
       if ($^O =~ /MSWin/) {
         local $SIG{'ALRM'} = sub {
-          die "alarm\n";
+          die "timeout alarm\n";
         };
       } else {
-        my $mask = POSIX::SigSet->new( SIGALRM );
-        my $action = POSIX::SigAction->new(
-            sub { die "alarm\n" ; }, $mask);
-        my $oldaction = POSIX::SigAction->new();
-        sigaction(SIGALRM ,$action ,$oldaction );
+        POSIX::setpgid(0, 0);
+        my $alrm_mask = POSIX::SigSet->new(SIGALRM);
+        my $term_mask = POSIX::SigSet->new(SIGTERM);
+        my $alrm_action = POSIX::SigAction->new(
+            sub {
+                die "timeout alarm\n";
+            }, $alrm_mask);
+        my $term_action = POSIX::SigAction->new(
+            sub {
+                if (1) {
+                  printf "CRITICAL - received TERM signal\n";
+                  kill 9, 0;
+                } else {
+                  die "sigterm\n" ;      
+                }
+            }, $term_mask);
+        $self->{old_action} = POSIX::SigAction->new();
+        POSIX::sigaction(SIGALRM, $alrm_action, $self->{old_action});
+        POSIX::sigaction(SIGTERM, $term_action);
       }
       alarm($self->{timeout} - 1); # 1 second before the global unknown timeout
       my $dsn = sprintf "DBI:Oracle:%s", $self->{connect};
       my $connecthash = { RaiseError => 0, AutoCommit => $self->{commit}, PrintError => 0 };
-      if ($self->{username} eq "sys" || $self->{username} eq "sysdba") {
+      my $username = $self->{username};
+      if ($self->{username} eq "sys" || $self->{username} eq "sysdba" || $self->{username} eq "asmsnmp") {
         $connecthash = { RaiseError => 0, AutoCommit => $self->{commit}, PrintError => 0,
-              #ora_session_mode => DBD::Oracle::ORA_SYSDBA   
-              ora_session_mode => 0x0002  };
+              ora_session_mode => 2 }; # DBD::Oracle::ORA_SYSDBA
         $dsn = sprintf "DBI:Oracle:";
+        $username = '';
       }
       if ($self->{handle} = DBI->connect(
           $dsn,
-          $self->{username},
+          $username,
           $self->{password},
           $connecthash)) {
         $self->{handle}->do(q{
@@ -5158,19 +6024,38 @@ sub init {
   my $retval = undef;
   $self->{loginstring} = "traditional";
   my $template = $self->{mode}.'XXXXX';
+  if ($^O =~ /MSWin/) {
+    $template =~ s/:/_/g; # mode contains ":", which is not good in windows path names
+  }
   my $now = time;
   if (1) {
     # Maybe we have crap files for whatever reason.
+    no warnings "all";
     foreach (glob $self->system_tmpdir().'/'.$self->{mode}.'?????.*') {
       if (/\.(sql|out|err|temp)$/) {
-        if (($now - (stat $_)[9]) > 300) {
-          eval {
+        eval {
+          if (($now - (stat $_)[9]) > 300) {
             unlink $_;
-          };
-        }
+          }
+        };
       }
     }
   }
+  use POSIX ':signal_h';
+  if ($^O =~ /MSWin/) {
+    local $SIG{'ALRM'} = sub {
+      die "timeout alarm\n";
+    };
+  } else {
+    my $mask = POSIX::SigSet->new(SIGALRM);
+    my $action = POSIX::SigAction->new(
+        sub { die "timeout alarm\n" ; }, $mask);
+    my $old_action = POSIX::SigAction->new();
+    $self->{old_action} = $old_action;
+    sigaction(SIGALRM, $action, $old_action);
+  }
+  alarm($self->{timeout} - 1); # 1 second before the global unknown timeout
+  
   eval {
     my ($tempfile_handle, $tempfile) =
         tempfile($template, SUFFIX => ".temp", UNLINK => 1,
@@ -5194,7 +6079,7 @@ sub init {
     }
   } else {
     if ($self->{connect} && ! $self->{username} && ! $self->{password} &&
-        $self->{connect} =~ /(\w+)\/(\w+)@([\w\-\._]+)/) {
+        $self->{connect} =~ /(\w+)\/(\w+)@([\w\-\._]+)(:(\d+))*(\/([\w\-\._]+))*/) {
       # --connect nagios/oradbmon@bba
       $self->{connect} = $3;
       $self->{username} = $1;
@@ -5204,7 +6089,14 @@ sub init {
         delete $ENV{TWO_TASK};
         $self->{loginstring} = "sys";
       } else {
-        $self->{loginstring} = "traditional";
+        if ($7) {
+          $self->{dbhost} = $3;
+          $self->{dbport} = $5 || 1521;
+          $self->{dbservice} = $7;
+          $self->{loginstring} = "easyconnect";
+        } else {
+          $self->{loginstring} = "traditional";
+        }
       }
     } elsif ($self->{connect} && ! $self->{username} && ! $self->{password} &&
         $self->{connect} =~ /sysdba@([\w\-\._]+)/) {
@@ -5230,7 +6122,7 @@ sub init {
         $self->{username} =~ /^\/@([\w\-\._]+)/) {
       # --user /@ubba1
       $self->{username} = $1;
-      $self->{sid} = $self->{connect};
+      $self->{sid} = $self->{username};
       $self->{loginstring} = "passwordstore";
     } elsif ($self->{connect} && $self->{username} && ! $self->{password} &&
         $self->{username} eq "sysdba") {
@@ -5367,6 +6259,11 @@ sub init {
               $sqlplus,
               $self->{username}, $self->{password}, $self->{sid},
               $self->{sql_commandfile}, $self->{sql_outfile};
+        } elsif ($self->{loginstring} eq "easyconnect") {
+          $self->{sqlplus} = sprintf "%s -S \"%s/%s@%s:%d/%s\" < %s > %s",
+              $sqlplus,
+              $self->{username}, $self->{password}, $self->{dbhost}, $self->{dbport}, $self->{dbservice},
+              $self->{sql_commandfile}, $self->{sql_outfile};
         } elsif ($self->{loginstring} eq "extauth") {
           $self->{sqlplus} = sprintf "%s -S / < %s > %s",
               $sqlplus,
@@ -5387,20 +6284,6 @@ sub init {
               $self->{sql_commandfile}, $self->{sql_outfile};
         }
       }
-  
-      use POSIX ':signal_h';
-      if ($^O =~ /MSWin/) {
-        local $SIG{'ALRM'} = sub {
-          die "alarm\n";
-        };
-      } else {
-        my $mask = POSIX::SigSet->new( SIGALRM );
-        my $action = POSIX::SigAction->new(
-            sub { die "alarm\n" ; }, $mask);
-        my $oldaction = POSIX::SigAction->new();
-        sigaction(SIGALRM ,$action ,$oldaction );
-      }
-      alarm($self->{timeout} - 1); # 1 second before the global unknown timeout
   
       if ($self->{mode} =~ /^server::tnsping/) {
         if ($tnsping) {
@@ -5463,6 +6346,7 @@ sub fetchrow_array {
       $sql =~ s/\?/'$_'/;
     }
   }
+  $sql =~ s/^\s*//g;
   $self->create_commandfile($sql);
   my $exit_output = `$self->{sqlplus}`;
   if ($?) {
@@ -5474,26 +6358,43 @@ sub fetchrow_array {
   } else {
     # This so-called "best practice" leaves an open filehandle under windows
     # my $output = do { local (@ARGV, $/) = $self->{sql_resultfile}; <> };
-    my $output = do { local (@ARGV, $/) = $self->{sql_resultfile}; my $x = <>; close ARGV; $x };
+    #my $output = do { local (@ARGV, $/) = $self->{sql_resultfile}; my $x = <>; close ARGV; $x };
+    # ORA-28001 Password expired. sqlplus exits with 0, but no resultfile is written. Errors can be found in outfile.
+    my $output = do { 
+      local (@ARGV, $/) = -f $self->{sql_resultfile} ?
+          $self->{sql_resultfile} : $self->{sql_outfile};
+      my $x = <>; 
+      close ARGV;
+      $x 
+    };
     #
     # SELECT count(*) FROM blah
     #                 *
     # ERROR at line 1:
     # ORA-00942: table or view does not exist
     # --> if there is a single * AND ERROR AND ORA then we surely have en error
-    if ($output =~ /^\s+\*[ \*]*$/m && 
+    if (($output =~ /^[ \*]+$/m && 
         $output =~ /^ERROR/m &&
-        $output =~/^ORA\-/m) {
+        $output =~/^ORA\-/m) || ($output =~ /^ORA-28001/m)) {
       my @oerrs = map {
         /(ORA\-\d+:.*)/ ? $1 : ();
       } split(/\n/, $output);
       $self->{errstr} = join(" ", @oerrs);
     } else {
       if ($output) {
+        my $stderrvar;
+        *SAVEERR = *STDERR;
+        open OUT ,'>',\$stderrvar;
+        *STDERR = *OUT;
         @row = map { convert($_) }
             map { s/^\s+([\.\d]+)$/$1/g; $_ }         # strip leading space from numbers
             map { s/\s+$//g; $_ }                     # strip trailing space
             split(/\|/, (split(/\n/, $output))[0]);
+        *STDERR = *SAVEERR;
+        if ($stderrvar) {
+          $self->trace(sprintf "something bad happened: %s", $stderrvar);
+          $self->{errstr} = $stderrvar;
+        }
       }
     }
   }
@@ -5527,7 +6428,7 @@ sub fetchall_array {
       $sql =~ s/\?/'$_'/;
     }
   }
-
+  $sql =~ s/^\s*//g;
   $self->create_commandfile($sql);
   my $exit_output = `$self->{sqlplus}`;
   if ($?) {
@@ -5539,16 +6440,27 @@ sub fetchall_array {
     $self->{errstr} = join(" ", @oerrs).' '.$exit_output;
   } else {
     my $output = do { local (@ARGV, $/) = $self->{sql_resultfile}; my $x = <>; close ARGV; $x };
-    my @rows = map { [ 
-        map { convert($_) } 
-        map { s/^\s+([\.\d]+)$/$1/g; $_ }
-        map { s/\s+$//g; $_ }
-        split /\|/
-    ] } grep { ! /^\d+ rows selected/ } 
-        grep { ! /^\d+ [Zz]eilen ausgew / }
-        grep { ! /^Elapsed: / }
-        grep { ! /^\s*$/ } split(/\n/, $output);
-    $rows = \@rows;
+    if ($output =~ /^\s+\*[ \*]*$/m && 
+        $output =~ /^ERROR/m &&
+        $output =~/^ORA\-/m) {
+      my @oerrs = map {
+        /(ORA\-\d+:.*)/ ? $1 : ();
+      } split(/\n/, $output);
+      $self->{errstr} = join(" ", @oerrs);
+      $rows = [];
+      printf STDERR "%s\n", $self->{errstr};
+    } else {
+      my @rows = map { [ 
+          map { convert($_) } 
+          map { s/^\s+([\.\d]+)$/$1/g; $_ }
+          map { s/\s+$//g; $_ }
+          split /\|/
+      ] } grep { ! /^\d+ rows selected/ } 
+          grep { ! /^\d+ [Zz]eilen ausgew / }
+          grep { ! /^Elapsed: / }
+          grep { ! /^\s*$/ } split(/\n/, $output);
+      $rows = \@rows;
+    }
   }
   if ($@) {
     $self->debug(sprintf "bumm %s", $@);
@@ -5594,24 +6506,39 @@ sub convert {
 sub execute {
   my $self = shift;
   my $sql = shift;
-  eval {
-    my $sth = $self->{handle}->prepare($sql);
-    $sth->execute();
-  };
-  if ($@) {
-    printf STDERR "bumm %s\n", $@;
-  }
+  my @arguments = @_;
+  return $self->fetchrow_array($sql, @arguments);
 }
 
 sub DESTROY {
   my $self = shift;
+  my $plugin_exit = $?;
   $self->trace("try to clean up command and result files");
+  if ($^O =~ /linux/) {
+    my $pgrp = getpgrp();
+    open(KILL, "/bin/ps -o pid,pgid,cmd --no-headers|");
+    while (<KILL>) {
+      if (/^(\d+)\s+(\d+).*sqlplus.*/) {
+        if ($2 == $$ && $1 != $$) {
+          kill 15, $1;
+        }
+        #printf "kill 9, %d\n", $1 if $2 == $$ && $1 != $$;
+        #kill 9, $1 if $2 == $$ && $1 != $$;
+      }
+    }
+    close KILL;
+  }
   unlink $self->{sql_commandfile}
       if $self->{sql_commandfile} && -f $self->{sql_commandfile};
   unlink $self->{sql_resultfile}
       if $self->{sql_resultfile} && -f $self->{sql_resultfile};
   unlink $self->{sql_outfile} if
       $self->{sql_outfile} && -f $self->{sql_outfile};
+  unlink $ENV{HOME}."/sqlnet.log" if -f $ENV{HOME}."/sqlnet.log";
+  # der war fies. destruktor laeuft nach dem abschliessenden exit(nagios_exit)
+  # und das kill/ps-zeugs vermurkst den exitcode bzw setzt ihn immer auf 0
+  # kam zum vorschein bei my-modulen
+  $? = $plugin_exit;
 }
 
 sub create_commandfile {
@@ -5699,14 +6626,15 @@ sub init {
       use POSIX ':signal_h';
       if ($^O =~ /MSWin/) {
         local $SIG{'ALRM'} = sub {
-          die "alarm\n";
+          die "timeout alarm\n";
         };
       } else {
-        my $mask = POSIX::SigSet->new( SIGALRM );
+        my $mask = POSIX::SigSet->new(SIGALRM);
         my $action = POSIX::SigAction->new(
-            sub { die "alarm\n" ; }, $mask);
-        my $oldaction = POSIX::SigAction->new();
-        sigaction(SIGALRM ,$action ,$oldaction );
+            sub { die "timeout alarm\n" ; }, $mask);
+        my $old_action = POSIX::SigAction->new();
+        $self->{old_action} = $old_action;
+        sigaction(SIGALRM, $action, $old_action);
       }
       alarm($self->{timeout} - 1); # 1 second before the global unknown timeout
       if ($self->{handle} = DBI->connect(
@@ -5944,7 +6872,7 @@ use lib dirname($0);
 use vars qw ($PROGNAME $REVISION $CONTACT $TIMEOUT $STATEFILESDIR $needs_restart %commandline);
 
 $PROGNAME = "check_oracle_health";
-$REVISION = '$Revision: 1.7.8.1 $';
+$REVISION = '$Revision: 1.9.4 $';
 $CONTACT = 'gerhard.lausser@consol.de';
 $TIMEOUT = 60;
 $STATEFILESDIR = '/var/tmp/check_oracle_health';
@@ -6032,6 +6960,12 @@ my @modes = (
   ['server::database::datafilesexisting',
       'datafiles-existing', undef,
       'Percentage of the maximum possible number of datafiles' ],
+  ['server::database::asm::diskgroup::usage',
+      'asm-diskgroup-usage', undef,
+      'Used space in diskgroups'],
+  ['server::database::asm::diskgroup::free',
+      'asm-diskgroup-free', undef,
+      'Free space in diskgroups'],
   ['server::instance::sga::sharedpool::softparse',
       'soft-parse-ratio', undef,
       'Percentage of soft parses' ],
@@ -6095,6 +7029,12 @@ my @modes = (
   ['server::instance::sysstat::rate',
       'sysstat', undef,
       'change of sysstat values over time' ],
+  ['server::database::dataguard::lag',
+      'dataguard-lag', undef,
+      'Dataguard standby lag' ],
+  ['server::database::dataguard::mrp_status',
+      'dataguard-mrp-status', undef,
+      'Dataguard standby MRP status' ],
   ['server::database::flash_recovery_area::usage',
       'flash-recovery-area-usage', undef,
       'Used space in flash recovery area' ],
@@ -6113,6 +7053,9 @@ my @modes = (
   ['server::database::tablespace::datafile::listdatafiles',
       'list-datafiles', undef,
       'convenience function which lists all datafiles' ],
+  ['server::database::asm::diskgroup::listdiskgroups',
+      'list-asm-diskgroups', undef,
+      'convenience function which lists all asm diskgroups' ],
   ['server::instance::enqueue::listenqueues',
       'list-enqueues', undef,
       'convenience function which lists all enqueues' ],
@@ -6179,6 +7122,8 @@ EOUS
        outputs instance and database names
     --commit
        turns on autocommit for the dbd::oracle module
+    --noperfdata
+       do not output performance data
 
   Tablespace-related modes check all tablespaces in one run by default.
   If only a single tablespace should be checked, use the --name parameter.
@@ -6197,8 +7142,8 @@ EOUS
   --name="select count(*) from v\$session where status = 'ACTIVE'"
   you can say 
   --name=select%20count%28%2A%29%20from%20v%24session%20where%20status%20%3D%20%27ACTIVE%27
-  For your convenience you can call check_oracle_health with the --encode
-  option and it will encode the standard input.
+  For your convenience you can call check_oracle_health with --mode encode
+  and it will encode the standard input.
 
 EOUS
 #
@@ -6270,6 +7215,7 @@ my @params = (
     "name2=s",
     "regexp",
     "perfdata",
+    "noperfdata",
     "warning=s",
     "critical=s",
     "dbthresholds:s",
@@ -6277,6 +7223,7 @@ my @params = (
     "basis",
     "lookback|l=i",
     "environment|e=s%",
+    "negate=s%",
     "calcmeth=s",
     "method=s",
     "runas|r=s",
@@ -6291,6 +7238,7 @@ my @params = (
     "with-mymodules-dyn-dir=s",
     "report=s",
     "commit",
+    "labelformat=s",
     "extra-opts:s");
 
 if (! GetOptions(\%commandline, @params)) {
@@ -6392,6 +7340,12 @@ if (exists $commandline{calcmeth}) {
   }
 } else {
   $commandline{calcmeth} = "classic";
+}
+
+if (exists $commandline{labelformat}) {
+  # groundwork
+} else {
+  $commandline{labelformat} = "pnp4nagios";
 }
 
 if (exists $commandline{'with-mymodules-dyn-dir'}) {
@@ -6512,10 +7466,34 @@ if (exists $commandline{name}) {
   } 
 }
 
-$SIG{'ALRM'} = sub {
-  printf "UNKNOWN - %s timed out after %d seconds\n", $PROGNAME, $TIMEOUT;
-  exit $ERRORS{UNKNOWN};
-};
+my $now = time;
+#$SIG{'ALRM'} = sub {
+#  printf "UNKNOWN - %s timed out after %d seconds\n", $PROGNAME, $TIMEOUT;
+#  exit $ERRORS{UNKNOWN};
+#};
+use POSIX ':signal_h';
+if ($^O =~ /MSWin/) {
+  local $SIG{'ALRM'} = sub {
+    printf "UNKNOWN - %s timed out after %d seconds\n", $PROGNAME, $TIMEOUT;
+    exit $ERRORS{UNKNOWN};
+  };
+} else {
+  my $mask = POSIX::SigSet->new(SIGALRM);
+  my $action = POSIX::SigAction->new(
+    sub { 
+      printf "UNKNOWN - %s timed out after %d seconds\n", $PROGNAME, $TIMEOUT;
+      #if ($^O =~ /linux/) {
+      #  open(KILL, "/bin/ps -o pid --no-headers --ppid $$|");
+      #  while (<KILL>) {
+      #    printf "kill %s\n", $_;
+      #  }
+      #  close KILL;
+      #}
+      exit $ERRORS{UNKNOWN};
+    }, $mask);
+  my $old_action = POSIX::SigAction->new();
+  sigaction(SIGALRM, $action, $old_action);
+}
 alarm($TIMEOUT);
 
 my $nagios_level = $ERRORS{UNKNOWN};
@@ -6585,6 +7563,8 @@ my %params = (
     report => $commandline{report},
     commit => $commandline{commit},
     calcmeth => $commandline{calcmeth},
+    labelformat => $commandline{labelformat},
+    negate => $commandline{negate},
 );
 
 my $server = undef;
@@ -6596,7 +7576,7 @@ $nagios_message = $server->{nagios_message};
 $nagios_level = $server->{nagios_level};
 $perfdata = $server->{perfdata};
 
-printf "%s - %s", $ERRORCODES{$nagios_level}, $nagios_message;
-printf " | %s", $perfdata if $perfdata;
+printf "%s - %s", $ERRORCODES{$nagios_level}, $nagios_message if ! exists $server->{nagios}->{nomessages}->{$nagios_level};
+printf " | %s", $perfdata if $perfdata && ! $commandline{noperfdata};
 printf "\n";
 exit $nagios_level;
