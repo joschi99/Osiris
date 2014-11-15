@@ -35,6 +35,7 @@ Osiris 2.1
 		- No more NTOP
 		- No more Nessus
 	Others
+		- Upgrade SL 6.6
 		- Upgrade Mediawiki 1.23.6
 		- all HTTP traffic is redirected to HTTPS
 		- No more MySQL
