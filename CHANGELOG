@@ -18,9 +18,9 @@ Osiris 2.1
 		- New Fusion Inventory Server for GLPI 0.84+3.5
 		- New Fusion Inventory Agent 2.3.13
 	Syslog & Logmanagement
-		- Upgrade Rsyslog 8.4.2-2
+		- Upgrade Rsyslog 8.6.0
 		- New logstash 1.3.3
-		- New elasticsearch 1.3.5
+		- New elasticsearch 1.4.1
 		- New kibana 3.1.2
 		- New elasticHQ
 		- New elasticsearch-head
