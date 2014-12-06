@@ -166,8 +166,8 @@ node.name: "Osiris Node 1"
 # Path to where plugins are installed:
 #
 # path.plugins: /path/to/plugins
-
 path.data: /elasticsearch/data
+
 
 #################################### Plugin ###################################
 
@@ -377,3 +377,15 @@ path.data: /elasticsearch/data
 #monitor.jvm.gc.old.warn: 10s
 #monitor.jvm.gc.old.info: 5s
 #monitor.jvm.gc.old.debug: 2s
+
+################################## Security ################################
+
+# Uncomment if you want to enable JSONP as a valid return transport on the
+# http server. With this enabled, it may pose a security risk, so disabling
+# it unless you need it is recommended (it is disabled by default).
+#
+#http.jsonp.enable: true
+
+################################## Kibana 3 ################################
+http.cors.enabled: true
+http.cors.allow-origin: "/.*/"
