@@ -25,7 +25,7 @@ Osiris 2.1
 		- New elasticHQ
 		- New elasticsearch-head
 		- New curator 2.0.2
-		- New redis 1.8.17 (https://gist.github.com/SkyRocknRoll/7927304)
+		- New redis 1.8.19 (https://gist.github.com/SkyRocknRoll/7927304)
 		- Upgrade Centreon Syslog Server 1.5.2
 		- Upgrade Centreon Syslog Viewer 1.2.5
 		- No more Loganalyzer
@@ -36,7 +36,7 @@ Osiris 2.1
 		- No more Nessus
 	Others
 		- Upgrade SL 6.6
-		- Upgrade Mediawiki 1.23.6
+		- Upgrade Mediawiki 1.24.1
 		- all HTTP traffic is redirected to HTTPS
 		- No more MySQL
 		- New MariaDB
