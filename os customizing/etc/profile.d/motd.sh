@@ -3,11 +3,12 @@
 echo -e "
 ##################################
 #
-# Osiris 2.0.1 NMS
+# Osiris 2.1.0 NMS
 #
 # All rights reserved
 # (c)2014, BI-S des Jochen Platzgummer
 # info@bi-s.it, support@bi-s.it
+# www.bi-s.it
 # 
 # Welcome to `hostname`
 #

@@ -1,0 +1,54 @@
+#!/bin/sh
+#
+# chkconfig: 235 99 03
+# description: Kibana4
+#
+# processname: kibana
+# pidfile: /var/run/kibana.pid
+#
+# /etc/init.d/kibana
+#
+
+# source function library
+. /etc/rc.d/init.d/functions
+
+
+start()
+{
+        sleep 10
+        echo -n $"Starting kibana: "
+        /var/www/kibana4/bin/kibana 1>/var/log/kibana.log 2>&1 &
+                echo $! > /var/run/kibana.pid
+        echo "Kibana started with pid $!"
+}
+
+stop()
+{
+        echo -n $"Shutting down kibana: "
+        killproc kibana
+        killall speedy_backend &> /dev/null
+
+        rm -rf /var/run/kibana.pid
+        echo
+}
+
+[ -f /var/www/kibana4/bin/kibana ] || exit 0
+
+# See how we were called.
+case "$1" in
+  start)
+        start
+        ;;
+  stop)
+        stop
+        ;;
+  restart)
+        stop
+        start
+        ;;
+  *)
+        echo $"Usage: $0 {start|stop|restart}"
+        exit 1
+esac
+
+exit 0

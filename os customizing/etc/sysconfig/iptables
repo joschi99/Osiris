@@ -19,11 +19,15 @@
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 10000 -j ACCEPT
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 162 -j ACCEPT
 -A INPUT -m state --state NEW -m udp -p udp --dport 162 -j ACCEPT
--A INPUT -m state --state NEW -m tcp -p tcp --dport 2556 -j ACCEPT
--A INPUT -m state --state NEW -m tcp -p tcp --dport 3000 -j ACCEPT
--A INPUT -m state --state NEW -m tcp -p tcp --dport 6379 -j ACCEPT
+#-A INPUT -m state --state NEW -m tcp -p tcp --dport 4444 -j ACCEPT
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 514 -j ACCEPT
 -A INPUT -m state --state NEW -m udp -p udp --dport 514 -j ACCEPT
+-A INPUT -m state --state NEW -m tcp -p tcp --dport 6379 -j ACCEPT
+#-A INPUT -m state --state NEW -m tcp -p tcp --dport 5544 -j ACCEPT
+-A INPUT -m state --state NEW -m tcp -p tcp --dport 9200 -j ACCEPT
+-A INPUT -m state --state NEW -m tcp -p tcp --dport 9300 -j ACCEPT
+-A INPUT -m state --state NEW -m tcp -p tcp --dport 5601 -j ACCEPT
+-A INPUT -m state --state NEW -m tcp -p tcp --dport 62354 -j ACCEPT
 -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
 -A FORWARD -p icmp -j ACCEPT
 -A FORWARD -i lo -j ACCEPT

@@ -1,0 +1,75 @@
+#!/bin/sh
+# FusionInventory-Agent - this script starts and stops the FusionInventory Agent
+# Created by Jochen Platzgummer (c)2014
+#
+# chkconfig:   - 85 15
+# description:  FusionInventory Agent
+# processname: fusioninventory-agent
+# config:      /usr/local/fusioninventory-agent/etc/fusioninventory/agent.cfg
+# pidfile:     /var/run/fusioninventory-agent.pid
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+OPTIONS="--conf-file /usr/local/fusioninventory-agent/etc/fusioninventory/agent.cfg -d"
+RETVAL=0
+prog="FusionInventory-Agent"
+DAEMON=/usr/local/fusioninventory-agent/bin/fusioninventory-agent
+
+lockfile=/var/lock/subsys/fusioninventory-agent
+
+start() {
+        echo -n $"Starting $prog: "
+        daemon ${DAEMON} $OPTIONS
+        RETVAL=$?
+        echo
+        touch /var/lock/subsys/fusioninventory-agent
+        return $RETVAL
+}
+
+
+stop() {
+        echo -n $"Stopping $prog: "
+        killproc ${DAEMON} 2>/dev/null
+        RETVAL=$?
+        echo
+        rm -f /var/lock/subsys/fusioninventory-agent
+        if test -f /var/run/fusioninventory-agent.pid ; then
+          [ $RETVAL -eq 0 ] && rm -f /var/run/fusioninventory-agent.pid
+        fi
+        return $RETVAL
+}
+
+restart() {
+    stop
+    start
+}
+
+rh_status() {
+    status $prog
+}
+
+rh_status_q() {
+    rh_status >/dev/null 2>&1
+}
+
+case "$1" in
+  start)
+        start
+        ;;
+  stop)
+        stop
+        ;;
+  restart)
+        restart
+        ;;
+  status)
+        status fusioninventory-agent
+        RETVAL=$?
+        ;;
+  *)
+        echo $"Usage: $0 {start|stop|status|restart}"
+        RETVAL=1
+esac
+
+exit $RETVAL

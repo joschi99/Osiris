@@ -1,0 +1,2 @@
+chown root:root check_icmp check_dhcp
+chmod u+s check_icmp check_dhcp

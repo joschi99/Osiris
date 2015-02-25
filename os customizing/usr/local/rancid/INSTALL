@@ -1,0 +1,22 @@
+Rancid 3.1 Installation
+
+1) configure
+2) make install
+3) mkdir /usr/local/rancid/var
+4) chown rancid.users -R /usr/local/rancid/var
+5) rancid.conf (Gruppen anlegen)
+
+CVS initialisieren
+1) als rancid user: /usr/local/rancid/bin/rancid-cvs
+
+Geräte konfigurieren
+1) als rancid user: /home/rancid/.clogin Zugangsdaten eingeben
+2) Pro Gruppe router.db konfigurieren (";")
+
+Cron anlegen
+1) /etc/cron.d/rancid
+
+Mail Konfiguration (für jede rancid-gruppe)
+1) /etc/aliases
+  rancid-<group>: info@bi-s.it
+  rancid-admin-<group>: info@bi-s.it

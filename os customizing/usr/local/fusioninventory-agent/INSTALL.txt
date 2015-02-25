@@ -1,0 +1,15 @@
+1) Installation
+perl Makefile.PL PREFIX=/usr/local/fusioninventory-agent
+make
+make install
+
+2) Configuration
+edit /usr/local/fusioninventory-agent/etc/fusioninventory/agent.cfg
+
+3) Init Script
+copy Init-Script to /etc/init.d
+chkconfig --add fusioninventory-agent
+chkconfig fusioninventory-agent on
+
+4) Start Agent
+/etc/init.d/fusioninventory-agent

@@ -8,7 +8,7 @@
 #
 # Contributors:
 #
-# Patrick MÃ¼ller, Jeremy Martin, Eric Jonsson, stumpr,
+# Patrick Müller, Jeremy Martin, Eric Jonsson, stumpr,
 # John Cavanaugh, Libor Klepac, maikmayers, Steffen Poulsen,
 # Mark Elliott, simeg, sebastien.prudhomme, Raphael Schitz,
 # Mattias Bergsten
@@ -32,8 +32,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-$ENV{PERL_LWP_SSL_VERIFY_HOSTNAME} = 0;
-
 package CheckVMwareAPI;
 use strict;
 use warnings;
@@ -49,7 +47,7 @@ In this example we use VMware-vSphere-Perl-SDK-5.1.0-780721.x86_64.tar.gz,
 but the instructions should apply to other versions as well.
 
 You may need to install additional packages and Perl modules on your server,
-see http://www.op5.com/how-to/how-to-install-vmware-vsphere-sdk-perl-5-1/ for
+see https://kb.op5.com/x/pYEK for
 more information and package names for op5 APS / CentOS 6 / RHEL 6.
 
 Upload the .tar.gz file to your op5 Monitor server's /root dir and execute:
@@ -148,8 +146,8 @@ sub main {
 		. "            ^ all net info(except usage and no thresholds)\n"
 		. "        * io - shows disk I/O info\n"
 		. "            + usage - overall disk usage in MB/s\n"
-		. "            + read - read latency in ms (totalReadLatency.average)\n"
-		. "            + write - write latency in ms (totalWriteLatency.average)\n"
+		. "            + read - read disk usage in MB/s\n"
+		. "            + write - write disk usage in MB/s\n"
 		. "            ^ all disk io info(no thresholds)\n"
 		. "        * runtime - shows runtime info\n"
 		. "            + con - connection state\n"
@@ -159,7 +157,7 @@ sub main {
 		. "            + status - overall object status (gray/green/red/yellow)\n"
 		. "            + consoleconnections - console connections to VM\n"
 		. "            + guest - guest OS status, needs VMware Tools\n"
-		. "            + tools - VMWare Tools status\n"
+		. "            + tools - VMware Tools status\n"
 		. "            + issues - all issues for the host\n"
 		. "            ^ all runtime info(except con and no thresholds)\n"
 		. "    Host specific :\n"
@@ -200,14 +198,14 @@ sub main {
 		. "        * vmfs - shows Datastore info\n"
 		. "            + (name) - free space info for datastore with name (name)\n"
 		. "                o used - output used space instead of free\n"
-		. "                o breif - list only alerting volumes\n"
+		. "                o brief - list only alerting volumes\n"
 		. "                o regexp - whether to treat name as regexp\n"
 		. "                o blacklistregexp - whether to treat blacklist as regexp\n"
 		. "                b - blacklist VMFS's\n"
 		. "                T (value) - timeshift to detemine if we need to refresh\n"
 		. "            ^ all datastore info\n"
 		. "                o used - output used space instead of free\n"
-		. "                o breif - list only alerting volumes\n"
+		. "                o brief - list only alerting volumes\n"
 		. "                o blacklistregexp - whether to treat blacklist as regexp\n"
 		. "                b - blacklist VMFS's\n"
 		. "                T (value) - timeshift to detemine if we need to refresh\n"
@@ -225,7 +223,7 @@ sub main {
 		. "                b - blacklist status objects\n"
 		. "            + sensor - threshold specified sensor\n"
 		. "            + maintenance - shows whether host is in maintenance mode\n"
-		. "            + list(vm) - list of VMWare machines and their statuses\n"
+		. "            + list(vm) - list of VMware machines and their statuses\n"
 		. "            + status - overall object status (gray/green/red/yellow)\n"
 		. "            + issues - all issues for the host\n"
 		. "                b - blacklist issues\n"
@@ -281,22 +279,22 @@ sub main {
 		. "        * vmfs - shows Datastore info\n"
 		. "            + (name) - free space info for datastore with name (name)\n"
 		. "                o used - output used space instead of free\n"
-		. "                o breif - list only alerting volumes\n"
+		. "                o brief - list only alerting volumes\n"
 		. "                o regexp - whether to treat name as regexp\n"
 		. "                o blacklistregexp - whether to treat blacklist as regexp\n"
 		. "                b - blacklist VMFS's\n"
 		. "                T (value) - timeshift to detemine if we need to refresh\n"
 		. "            ^ all datastore info\n"
 		. "                o used - output used space instead of free\n"
-		. "                o breif - list only alerting volumes\n"
+		. "                o brief - list only alerting volumes\n"
 		. "                o blacklistregexp - whether to treat blacklist as regexp\n"
 		. "                b - blacklist VMFS's\n"
 		. "                T (value) - timeshift to detemine if we need to refresh\n"
 		. "        * runtime - shows runtime info\n"
-		. "            + list(vm) - list of VMWare machines and their statuses\n"
-		. "            + listhost - list of VMWare esx host servers and their statuses\n"
-		. "            + listcluster - list of VMWare clusters and their statuses\n"
-		. "            + tools - VMWare Tools status\n"
+		. "            + list(vm) - list of VMware machines and their statuses\n"
+		. "            + listhost - list of VMware esx host servers and their statuses\n"
+		. "            + listcluster - list of VMware clusters and their statuses\n"
+		. "            + tools - VMware Tools status\n"
 		. "                b - blacklist VM's\n"
 		. "            + status - overall object status (gray/green/red/yellow)\n"
 		. "            + issues - all issues for the host\n"
@@ -321,13 +319,13 @@ sub main {
 		. "        * cluster - shows cluster services info\n"
 		. "            + effectivecpu - total available cpu resources of all hosts within cluster\n"
 		. "            + effectivemem - total amount of machine memory of all hosts in the cluster\n"
-		. "            + failover - VMWare HA number of failures that can be tolerated\n"
-		. "            + cpufainess - fairness of distributed cpu resource allocation\n"
-		. "            + memfainess - fairness of distributed mem resource allocation\n"
+		. "            + failover - VMware HA number of failures that can be tolerated\n"
+		. "            + cpufairness - fairness of distributed cpu resource allocation\n"
+		. "            + memfairness - fairness of distributed mem resource allocation\n"
 		. "            ^ only effectivecpu and effectivemem values for cluster services\n"
 		. "        * runtime - shows runtime info\n"
-		. "            + list(vm) - list of VMWare machines in cluster and their statuses\n"
-		. "            + listhost - list of VMWare esx host servers in cluster and their statuses\n"
+		. "            + list(vm) - list of VMware machines in cluster and their statuses\n"
+		. "            + listhost - list of VMware esx host servers in cluster and their statuses\n"
 		. "            + status - overall cluster status (gray/green/red/yellow)\n"
 		. "            + issues - all issues for the cluster\n"
 		. "                b - blacklist issues\n"
@@ -335,14 +333,14 @@ sub main {
 		. "        * vmfs - shows Datastore info\n"
 		. "            + (name) - free space info for datastore with name (name)\n"
 		. "                o used - output used space instead of free\n"
-		. "                o breif - list only alerting volumes\n"
+		. "                o brief - list only alerting volumes\n"
 		. "                o regexp - whether to treat name as regexp\n"
 		. "                o blacklistregexp - whether to treat blacklist as regexp\n"
 		. "                b - blacklist VMFS's\n"
 		. "                T (value) - timeshift to detemine if we need to refresh\n"
 		. "            ^ all datastore info\n"
 		. "                o used - output used space instead of free\n"
-		. "                o breif - list only alerting volumes\n"
+		. "                o brief - list only alerting volumes\n"
 		. "                o blacklistregexp - whether to treat blacklist as regexp\n"
 		. "                b - blacklist VMFS's\n"
 		. "                T (value) - timeshift to detemine if we need to refresh\n"
@@ -611,7 +609,9 @@ sub main {
 		}
 
 		$host_address .= ":443" if (index($host_address, ":") == -1);
-		$host_address = "https://" . $host_address . "/sdk/webService";
+		if (not $host_address =~ '^.*://.*$') {
+			$host_address = "https://" . $host_address . "/sdk/webService";
+		}
 
 		if (defined($sessionfile) and -e $sessionfile)
 		{
@@ -849,8 +849,8 @@ sub generic_performance_values {
 		$perfargs->{perfCounter} = $perfMgr;
 	}
 	my $metrices = get_key_metrices($perfMgr, $group, @list);
-	my $maxsamples = defined($perfargs->{maxsamples}) ? $perfargs->{maxsamples} : 1; #default 1 sample
-	my $interval = defined($perfargs->{interval}) ? $perfargs->{interval} : 20; #retrive RefreshRate as default value
+	my $maxsamples = $perfargs->{maxsamples};
+	my $interval = defined($perfargs->{interval}) ? $perfargs->{interval} : 20;
 	my $timestamp = $perfargs->{timestamp};
 
 	my @perf_query_spec = ();
@@ -862,14 +862,14 @@ sub generic_performance_values {
 		($sec,$min,$hour,$mday,$mon,$year) = gmtime($timestamp);
 		my $endTime = sprintf("%04d-%02d-%02dT%02d:%02d:%02dZ", $year + 1900, $mon + 1, $mday, $hour, $min, $sec);
 
-		if ($interval eq "r") {
+		if ($interval and $interval eq "r") {
 			foreach (@$views) {
 				my $summary = $perfMgr->QueryPerfProviderSummary(entity => $_);
 				die "Realtime interval is not supported or not enabled\n" unless ($summary && $summary->currentSupported);
 				$interval = $summary->refreshRate;
 				push(@perf_query_spec, PerfQuerySpec->new(entity => $_, metricId => $metrices, format => 'csv', intervalId => $interval, maxSample => $maxsamples, startTime => $startTime, endTime => $endTime));
 			}
-		} elsif (substr($interval, 0, 1) eq "h") {
+		} elsif ($interval and substr($interval, 0, 1) eq "h") {
 			my $index = substr($interval, 1, -1);
 			foreach (@$views) {
 				my $summary = $perfMgr->QueryPerfProviderSummary(entity => $_);
@@ -885,14 +885,14 @@ sub generic_performance_values {
 			push(@perf_query_spec, PerfQuerySpec->new(entity => $_, metricId => $metrices, format => 'csv', intervalId => $interval, maxSample => $maxsamples, startTime => $startTime, endTime => $endTime)) foreach (@$views);
 		}
 	} else {
-		if ($interval eq "r") {
+		if ($interval and $interval eq "r") {
 			foreach (@$views) {
 				my $summary = $perfMgr->QueryPerfProviderSummary(entity => $_);
 				die "Realtime interval is not supported or not enabled\n" unless ($summary && $summary->currentSupported);
 				$interval = $summary->refreshRate;
 				push(@perf_query_spec, PerfQuerySpec->new(entity => $_, metricId => $metrices, format => 'csv', intervalId => $interval, maxSample => $maxsamples));
 			}
-		} elsif (substr($interval, 0, 1) eq "h") {
+		} elsif ($interval and substr($interval, 0, 1) eq "h") {
 			my $index = substr($interval, 1, -1);
 			foreach (@$views) {
 				my $summary = $perfMgr->QueryPerfProviderSummary(entity => $_);
@@ -2114,7 +2114,7 @@ sub host_runtime_info
 			else
 			{
 				$res = UNKNOWN;
-				$output = "Storage health status unavailable";
+				$output = "Storage health status unavailable - make sure you have the \"Storage Health\" tab in your vSphere client";
 			}
 			$np->add_perfdata(label => "Alerts", value => $AlertCount);
 		}
@@ -2146,7 +2146,7 @@ sub host_runtime_info
 						my $state = check_health_state($_->healthState->key);
 						$_->name =~ m/(.*?)\sTemp\s.+/;
 						my $itemref = {
-							name => $1,
+							name => $_->name,
 							power10 => $_->unitModifier,
 							state => $_->healthState->key,
 							value => $_->currentReading,

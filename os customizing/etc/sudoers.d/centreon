@@ -1,0 +1,36 @@
+## BEGIN: CENTREON SUDO
+#Add by CENTREON installation script
+User_Alias      CENTREON=apache,nagios,centreon,centreon-engine,centreon-broker
+Defaults:CENTREON !requiretty
+## CentStorage
+CENTREON   ALL = NOPASSWD: /etc/init.d/centstorage *
+# Centengine Restart
+CENTREON   ALL = NOPASSWD: /etc/init.d/centengine restart
+# Centengine stop
+CENTREON   ALL = NOPASSWD: /etc/init.d/centengine start
+# Centengine stop
+CENTREON   ALL = NOPASSWD: /etc/init.d/centengine stop
+# Centengine reload
+CENTREON   ALL = NOPASSWD: /etc/init.d/centengine reload
+# Centengine test config
+CENTREON   ALL = NOPASSWD: /usr/sbin/centengine -v *
+# Centengine test for optim config
+CENTREON   ALL = NOPASSWD: /usr/sbin/centengine -s *
+# Broker Central restart
+CENTREON   ALL = NOPASSWD: /etc/init.d/cbd restart
+# Broker Central reload
+CENTREON   ALL = NOPASSWD: /etc/init.d/cbd reload
+# Broker Central start
+CENTREON   ALL = NOPASSWD: /etc/init.d/cbd start
+# Broker Central stop
+CENTREON   ALL = NOPASSWD: /etc/init.d/cbd stop
+## END: CENTREON SUDO
+
+##07.11.2014: Jochen
+# Snmptrapd Restart
+CENTREON   ALL = NOPASSWD: /etc/init.d/snmptrapd restart
+# Centreontrapd restart
+CENTREON   ALL = NOPASSWD: /etc/init.d/centreontrapd restart
+# Centreontrapd reload
+CENTREON   ALL = NOPASSWD: /etc/init.d/centreontrapd reload
+##End Jochen

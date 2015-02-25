@@ -1,0 +1,41 @@
+WMI Zenoss install
+svn export http://dev.zenoss.org/svn/tags/wmi-1.3.14/
+cdwmi-1.3.14
+make
+
+cp wmi-1.3.14/Samba/source/bin/wmic /usr/bin
+
+Test
+wmic -U DOMAIN/USER%PASSWORD //HOST "Select * from Win32_ComputerSystem"
+
+
+WMI Zenoss install
+svn export http://dev.zenoss.org/svn/tags/wmi-1.3.16/
+cd wmi-1.3.16
+export ZENHOME=/usr
+vi GNUmakefile
+#USE_BREAKPAD=1
+make
+
+cp wmi-1.3.16/Samba/source/bin/wmic /bin
+
+Test
+wmic -U DOMAIN/USER%PASSWORD //HOST "Select * from Win32_ComputerSystem"
+./wmic -U lan_unx/administrator%'standard!05' //10.100.82.1 "select * from Win32_ComputerSystem"
+
+
+
+
+Check_wmi_plugin
+cpan
+ install Number::Format
+ install DateTime
+#Check dependencies
+./check_wmi_plus.pl -d -d |head -n 20
+
+cp -ax check_wmi_plus/ /usr/lib/nagios/plugins
+plugins
+cd check_wmi_plus/
+mv check_wmi_plus.conf.sample check_wmi_plus.conf
+vi check_wmi_plus.pl
+  my $conf_file='/usr/lib/nagios/plugins/check_wmi_plus/check_wmi_plus.conf';

@@ -4,14 +4,15 @@
 # backup.sh - Skript, das ein Backup aller wichtigen Komponenten des Servers
 #             macht.
 #
-# Copyright (c) 2011 Osiris 2.0 (Contact: info@bi-s.it)
+# Copyright (c) 2011 Osiris 2.1 (Contact: info@bi-s.it)
 #
 # Development:
 #  Jochen Platzgummer
 #
-# Version 2.0
+# Version 2.1
 #
 # Changelog
+#   09.04.2014: Osiris 2.1 Anpassungen
 #   23.01.2014: Backup DB LogAnalyser
 #   09.09.2011: Anpassung an Osiris 2.0
 #   22.09.2010: Backup um Jasper Server Repository erweitert
@@ -23,7 +24,7 @@
 #   31.01.2010: Datenbank syslog in das Backup aufgenommen
 #   27.01.2010: Grundversion: 
 #                - Backup der folgender Datenbanken:
-#                    cent2_db, glpi, wikidb, nedi, ocsweb, snmptt
+#                    centreon, glpi, wikidb, nedi, ocsweb, phpmyadmin, syslog
 #                - Backup der wichtigsten Files und Verzeichnisse
 #
 ###############################################################################
@@ -60,9 +61,9 @@ echo "Start backup db NEDI"
 mysqldump -u $DB_USER -p$DB_PWD nedi | gzip > $BACKUP_PATH/$DIR/nedi_$FILE
 echo "End backup db NEDI"
 
-echo "Start backup db SYSLOG"
-mysqldump -u $DB_USER -p$DB_PWD syslog | gzip > $BACKUP_PATH/$DIR/syslog_$FILE
-echo "End backup db SYSLOG"
+echo "Start backup db CENTREON_SYSLOG"
+mysqldump -u $DB_USER -p$DB_PWD centreon_syslog | gzip > $BACKUP_PATH/$DIR/centreon_syslog_$FILE
+echo "End backup db CENTREON_SYSLOG"
 
 echo "Start backup db MEDIAWIKI"
 mysqldump -u $DB_USER -p$DB_PWD mediawiki | gzip > $BACKUP_PATH/$DIR/wikidb_$FILE
@@ -72,13 +73,9 @@ echo "Start backup db GLPI"
 mysqldump -u $DB_USER -p$DB_PWD glpi | gzip > $BACKUP_PATH/$DIR/glpi_$FILE
 echo "End backup db GLPI"
 
-echo "Start backup db OCSWEB"
-mysqldump -u $DB_USER -p$DB_PWD ocsweb | gzip > $BACKUP_PATH/$DIR/ocsweb_$FILE
+echo "Start backup db PHPMYADMIN"
+mysqldump -u $DB_USER -p$DB_PWD phpmyadmin | gzip > $BACKUP_PATH/$DIR/phpmyadmin_$FILE
 echo "End backup db OCSWEB"
-
-echo "Start backup db LOGANALYZER"
-mysqldump -u $DB_USER -p$DB_PWD loganalyzer | gzip > $BACKUP_PATH/$DIR/loganalyzer_$FILE
-echo "End backup db LOGANALYZER"
 
 echo "$(date +%Y.%m.%d-%H:%M:%S) End MySQL database backup"
 # END BACKUP
@@ -91,7 +88,7 @@ then
 fi  
 mkdir $BACKUP_PATH/$DIR/files
 
-tar czfvP $BACKUP_PATH/$DIR/files/std_plugins.tar.gz /usr/local/nagios/libexec/
+tar czfvP $BACKUP_PATH/$DIR/files/std_plugins.tar.gz /usr/lib/nagios/plugins
 tar czfvP $BACKUP_PATH/$DIR/files/smokeping.tar.gz /usr/local/smokeping/etc/
 tar czfvP $BACKUP_PATH/$DIR/files/bis_scripts.tar.gz /opt/bi-s/software/scripts/
 tar czfvP $BACKUP_PATH/$DIR/files/rancid_cvs.tar.gz /usr/local/rancid/var/
@@ -105,4 +102,3 @@ echo "$(date +%Y.%m.%d-%H:%M:%S) Begin retention"
 find $BACKUP_PATH -mtime +$BACKUP_RETTIME -type f | xargs rm -f
 find $BACKUP_PATH -depth -type d -empty -exec rmdir {} \;
 echo "$(date +%Y.%m.%d-%H:%M:%S) Retention completed"
-
