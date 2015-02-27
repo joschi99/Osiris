@@ -43,3 +43,4 @@ Osiris 2.1
 		- New MariaDB
 		- Upgrade phpmyadmin 4.3.6
 		- New PhpSysInfo 3.2.0
+		- New glances 2.3.0
