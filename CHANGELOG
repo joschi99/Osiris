@@ -30,7 +30,7 @@ Osiris 2.1
 		- Upgrade Centreon Syslog Viewer 1.2.5
 		- No more Loganalyzer
 	Network
-		- Packetbeat 0.4.2
+		- Packetbeat 0.4.3
 		- Upgrade rancid 3.1
 		- No more NTOP
 		- No more Nessus
