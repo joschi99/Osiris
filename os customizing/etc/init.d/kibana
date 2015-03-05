@@ -15,7 +15,6 @@
 
 start()
 {
-        sleep 10
         echo -n $"Starting kibana: "
         /var/www/kibana4/bin/kibana 1>/var/log/kibana.log 2>&1 &
                 echo $! > /var/run/kibana.pid
