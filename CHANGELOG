@@ -4,7 +4,7 @@ Osiris 2.1
 		- New Centreon Engine 1.4.11
 		- New Centreon Broker 2.8.0
 		- New Centreon SNMPTrap handler
-		- Upgrade Selenium 2.44
+		- Upgrade Selenium 2.45
 		- Upgrade mklivestatus 1.2.6
 		- Upgrade Nagvis 1.8.x
 		- No more Nagios Engine
