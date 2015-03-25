@@ -1,11 +1,8 @@
 # 01:00 alle Daten > 30 Tage
-00 01 * * * elasticsearch curator delete --exclude-pattern .kibana --older-than 30 >> /var/log/curator.log 2>&1
+00 01 * * * elasticsearch curator delete indices --older-than 1 --time-unit months --timestring %Y.%m.%d --all-indices >> /var/log/curator.log 2>&1
 
-# 01:05 max 20GB Dateb
-05 01 * * * elasticsearch curator delete --exclude-pattern .kibana --disk-space 20 >> /var/log/curator.log 2>&1
+# 01:10 max 20GB Daten
+10 01 * * * elasticsearch curator delete --disk-space 20 indices --all-indices >> /var/log/curator.log 2>&1
 
-# 01:10 disable bloom filter cache
-10 01 * * * elasticsearch curator bloom --older-than 1 >> /var/log/curator.log 2>&1
-
-# 01:20 Optimize
-20 01 * * * elasticsearch curator optimize --older-than 2 >> /var/log/curator.log 2>&1
+# 01:20 Optimize indexes older than 2 days to 1 segment per shard and delay 120 seconds between indices
+20 01 * * * elasticsearch curator optimize --max_num_segments 1 --delay 120 indices --all-indices >> /var/log/curator.log 2>&1
