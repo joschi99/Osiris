@@ -31,7 +31,7 @@ Osiris 2.1
 		- No more Loganalyzer
 	Network
 		- Packetbeat 0.4.3
-		- Upgrade rancid 3.1
+		- Upgrade rancid 3.2
 		- No more NTOP
 		- No more Nessus
 		- Upgrade nedi 1.4.0p3
