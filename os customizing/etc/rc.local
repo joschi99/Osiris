@@ -5,3 +5,4 @@
 # want to do the full Sys V style init stuff.
 
 touch /var/lock/subsys/local
+echo never > /sys/kernel/mm/transparent_hugepage/enabled
