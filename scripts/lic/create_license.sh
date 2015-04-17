@@ -1,11 +1,17 @@
 #!/bin/bash
+
+FILE_LIC_TXT="osiris.lic.txt"
+FILE_LIC="osiris.lic"
+
 echo "Bitte den Company Namen eingeben:"
 read COMP_NAME
 echo "Bitte das Gültigkeitsdatum eingeben (YYYYMMDD oder never):"
 read EXPIRE_DATE
 
+#read system uuid
 GUID="$(dmidecode |grep UUID)"
 
+#calculate SN
 S1="$GUID $COMP_NAME $EXPIRE_DATE"
 SN="$(echo -n "$S1" | md5sum)"
 
@@ -14,9 +20,10 @@ echo "Company: $COMP_NAME"
 echo "Expire date: $EXPIRE_DATE"
 echo "Serial number: $SN"
 
-echo "Osiris License File" > osiris.lic.txt
-echo "Company: $COMP_NAME" >> osiris.lic.txt
-echo "Serial number: $SN" >> osiris.lic.txt
-echo "Expire date: $EXPIRE_DATE" >> osiris.lic.txt
+echo "Osiris License File" > $FILE_LIC_TXT
+echo "Company: $COMP_NAME" >> $FILE_LIC_TXT
+echo "Serial number: $SN" >> $FILE_LIC_TXT
+echo "Expire date: $EXPIRE_DATE" >> $FILE_LIC_TXT
 
-openssl enc -aes-256-cbc -pass file:/opt/bi-s/software/scripts/gpg/.gpg_passwd.txt -in osiris.lic.txt -out osiris.lic
+#encrypt license file
+openssl enc -aes-256-cbc -pass file:/opt/bi-s/software/scripts/gpg/.gpg_passwd.txt -in $FILE_LIC_TXT -out $FILE_LIC
