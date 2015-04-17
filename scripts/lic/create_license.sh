@@ -5,11 +5,12 @@ FILE_LIC="osiris.lic"
 
 echo "Bitte den Company Namen eingeben:"
 read COMP_NAME
+echo "Bitte die GUID eingeben:"
+read GUID
 echo "Bitte das Gültigkeitsdatum eingeben (YYYYMMDD oder never):"
 read EXPIRE_DATE
-
-#read system uuid
-GUID="$(dmidecode |grep UUID)"
+echo "Bitte die E-Mail Adresse eingeben:"
+read EMAIL
 
 #calculate SN
 S1="$GUID $COMP_NAME $EXPIRE_DATE"
@@ -22,6 +23,7 @@ echo "Serial number: $SN"
 
 echo "Osiris License File" > $FILE_LIC_TXT
 echo "Company: $COMP_NAME" >> $FILE_LIC_TXT
+echo "EMail: $EMAIL" >> $FILE_LIC_TXT
 echo "Serial number: $SN" >> $FILE_LIC_TXT
 echo "Expire date: $EXPIRE_DATE" >> $FILE_LIC_TXT
 
