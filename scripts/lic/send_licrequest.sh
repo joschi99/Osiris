@@ -26,6 +26,6 @@ read EMAIL
 #read system uuid
 SYSGUID="$(dmidecode |grep UUID)"
 
-MAIL_SUBJECT="NEW lizenz request"
-MAIL_TEXT="Company Name: $COMP_NAME"
+MAIL_SUBJECT="NEW license request"
+MAIL_TEXT="Company Name: $COMP_NAME\nE-Mail: $EMAIL"
 send_mail

@@ -1,6 +1,7 @@
 #!/bin/bash
 
 FILE_LIC_TXT="osiris.lic.txt"
+FILE_LIC_CSV="osiris.lic.csv"
 FILE_LIC="osiris.lic"
 
 echo "Bitte den Company Namen eingeben:"
@@ -21,6 +22,7 @@ echo "Company: $COMP_NAME"
 echo "Expire date: $EXPIRE_DATE"
 echo "Serial number: $SN"
 
+#create osiris license txt file
 echo "Osiris License File" > $FILE_LIC_TXT
 echo "Company: $COMP_NAME" >> $FILE_LIC_TXT
 echo "EMail: $EMAIL" >> $FILE_LIC_TXT
@@ -29,3 +31,13 @@ echo "Expire date: $EXPIRE_DATE" >> $FILE_LIC_TXT
 
 #encrypt license file
 openssl enc -aes-256-cbc -pass file:/opt/bi-s/software/scripts/gpg/.gpg_passwd.txt -in $FILE_LIC_TXT -out $FILE_LIC
+
+#remove license txt file
+rm -rf $FILE_LIC_TXT
+
+#create osiris license csv file
+echo "Company,$COMP_NAME" >> $FILE_LIC_CSV
+echo "E-Mail,$EMAIL" >> $FILE_LIC_CSV
+echo "Serial Number,$SN" >> $FILE_LIC_CSV
+echo "Expire Date,$(date -d $EXPIRE_DATE +%d/%m/%Y)" >> $FILE_LIC_CSV
+echo "Created,$(date +%d/%m/%Y)" >> $FILE_LIC_CSV
