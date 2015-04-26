@@ -80,13 +80,18 @@ function main () {
 		exit $STATE_OK
 	elif [ "$LIC_STATUS" = "EXPIRE" ]; then
 		echo "WARNING - License will be expire in $DIFF_DAYS days"
-		exit $STATE_WARNING
+		exit $STATE_WARNING=1
 	elif [ "$LIC_STATUS" = "EXPIRED" ]; then
 		echo "ERROR - License is expired"
-		exit $STATE_ERROR
+		exit $STATE_CRITICAL
 	elif [ "$LIC_STATUS" = "KEY NOT VALID" ]; then
 		echo "ERROR - Key is not valid"
-		exit $STATE_ERROR
+		exit $STATE_CRITICAL
+	elif [ "$LIC_STATUS" = "NO LIC FILE" ]; then
+		echo "ERROR - No license file"
+		exit $STATE_CRITICAL
+	else
+		exit $STATE_UNKNOWN
 	fi
 }
 
