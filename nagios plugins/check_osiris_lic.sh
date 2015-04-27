@@ -80,7 +80,7 @@ function main () {
 		exit $STATE_OK
 	elif [ "$LIC_STATUS" = "EXPIRE" ]; then
 		echo "WARNING - License will be expire in $DIFF_DAYS days"
-		exit $STATE_WARNING=1
+		exit $STATE_WARNING
 	elif [ "$LIC_STATUS" = "EXPIRED" ]; then
 		echo "ERROR - License is expired"
 		exit $STATE_CRITICAL
