@@ -5,7 +5,7 @@ Osiris 2.1
 		- New Centreon Broker 2.8.2
 		- New Centreon SNMPTrap handler
 		- Upgrade Selenium 2.45
-		- Upgrade mklivestatus 1.2.6
+		- Upgrade mklivestatus 1.2.6p4
 		- Upgrade Nagvis 1.8.x
 		- No more Nagios Engine
 		- No more Nagios web
@@ -43,4 +43,5 @@ Osiris 2.1
 		- New MariaDB
 		- Upgrade phpmyadmin 4.3.6
 		- New PhpSysInfo 3.2.0
-		- New glances 2.3.0
+		- New glances 2.4.1
+		- Upgrade viewvc 1.1.23
