@@ -864,7 +864,13 @@ our @ISA = qw(DBD::MSSQL::Server);
         } else {
           @databaseresult = $params{handle}->fetchall_array(q{
             SELECT
-              a.name, a.recovery_model,
+              a.name,
+              CASE databasepropertyex(a.name, 'Recovery')
+                WHEN 'FULL' THEN 1
+                WHEN 'BULK_LOGGED' THEN 2
+                WHEN 'SIMPLE' THEN 3
+                ELSE 0
+              END AS recovery_model,
               DATEDIFF(HH, MAX(b.backup_finish_date), GETDATE()),
               DATEDIFF(MI, MAX(b.backup_start_date), MAX(b.backup_finish_date))
             FROM master.dbo.sysdatabases a LEFT OUTER JOIN msdb.dbo.backupset b
@@ -1800,6 +1806,7 @@ sub new {
     report => $params{report},
     commit => $params{commit},
     negate => $params{negate},
+    selectedperfdata => $params{selectedperfdata},
     labelformat => $params{labelformat},
     version => 'unknown',
     os => 'unknown',
@@ -2268,8 +2275,14 @@ sub nagios {
       $self->add_perfdata(sprintf "sql_runtime=%.4f;%d;%d",
           $self->{runtime},
           $self->{warningrange}, $self->{criticalrange});
+      $self->add_nagios_unknown($self->{handle}->{errstr}) if 
+          $self->{handle}->{errstr} && 
+              ! (defined $params{mitigation} && $params{mitigation} == 0);
     } elsif ($params{mode} =~ /^server::sql/) {
-      if ($params{regexp}) {
+      if ($self->{handle}->{errstr} && 
+          ! (defined $params{mitigation} && $params{mitigation} == 0)) {
+        $self->add_nagios_unknown($self->{handle}->{errstr}) 
+      } elsif ($params{regexp}) {
         if (substr($params{name2}, 0, 1) eq '!') {
           $params{name2} =~ s/^!//;
           if ($self->{genericsql} !~ /$params{name2}/) {
@@ -2535,7 +2548,19 @@ sub calculate_result {
     }
   }
   if ($self->{labelformat} eq "pnp4nagios") {
-    $self->{perfdata} = join(" ", @{$self->{nagios}->{perfdata}});
+    $self->{perfdata} = join(" ", grep {
+        if ($self->{selectedperfdata}) {
+          /^(.*?)=/;
+          my $label = $1;
+          if ($label =~ /$self->{selectedperfdata}/) {
+            1;
+          } else {
+            0;
+          }
+        } else {
+          1;
+        }
+    } @{$self->{nagios}->{perfdata}});
   } else {
     $self->{perfdata} = join(" ", map {
         my $perfdata = $_;
@@ -2989,6 +3014,16 @@ sub system_tmpdir {
   }
 }
 
+sub decode_password {
+  my $self = shift;
+  my $password = shift;
+  if ($password && $password =~ /^rfc3986:\/\/(.*)/) {
+    $password = $1;
+    $password =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
+  }
+  return $password;
+}
+
 
 package DBD::MSSQL::Server::Connection;
 
@@ -3192,7 +3227,7 @@ sub init {
       if ($self->{handle} = DBI->connect(
           $self->{dsn},
           $self->{username},
-          $self->{password},
+          $self->decode_password($self->{password}),
           $self->{dbi_options})) {
         $retval = $self;
       } else {
@@ -3245,7 +3280,11 @@ sub fetchrow_array {
     } else {
       $sth->execute() || die DBI::errstr();
     }
-    if (lc $sql =~ /^\s*(exec |sp_)/ || $sql =~ /^\s*exec sp/im) {
+    if (lc $sql =~ /^\s*declare.*(exec |sp_)/ ||
+        $sql =~ /^\s*declare.*exec sp/im) {
+      @row = $sth->syb_output_params();
+    } elsif (lc $sql =~ /^\s*(exec |sp_)/ ||
+        $sql =~ /^\s*exec sp/im) {
       # flatten the result sets
       do {
         while (my $aref = $sth->fetchrow_arrayref()) {
@@ -3362,12 +3401,21 @@ sub exec_sp_1hash {
 sub execute {
   my $self = shift;
   my $sql = shift;
+  my $stderrvar;
+  *SAVEERR = *STDERR;
+  open ERR ,'>',\$stderrvar;
+  *STDERR = *ERR;
   eval {
     my $sth = $self->{handle}->prepare($sql);
     $sth->execute();
   };
+  *STDERR = *SAVEERR;
+  $self->{errstr} = join("\n", (split(/\n/, $self->{errstr}), $stderrvar)) if $stderrvar;
   if ($@) {
-    printf STDERR "bumm %s\n", $@;
+    $self->trace(sprintf "bumm %s", $@);
+  }
+  if ($stderrvar) {
+    $self->trace(sprintf "stderr %s", $self->{errstr}) ;
   }
 }
 
@@ -3427,6 +3475,7 @@ sub init {
     }
   }
   if (! exists $self->{errstr}) {
+    #$self->{password} = $self->decode_password($self->{password});
     eval {
       if (! exists $ENV{SQL_HOME}) {
         foreach my $path (split(';', $ENV{PATH})) {
@@ -3641,6 +3690,20 @@ sub create_commandfile {
   close CMDCMD;
 }
 
+sub decode_password {
+  my $self = shift;
+  my $password = shift;
+  $password = $self->SUPER::decode_password($password);
+  # we call '...%s/%s@...' inside backticks where the second %s is the password
+  # abc'xcv -> ''abc'\''xcv''
+  # abc'`xcv -> ''abc'\''\`xcv''
+  if ($password =~ /'/) {
+    $password = "'".join("\\'", map { "'".$_."'"; } split("'", $password))."'";
+  }
+  return $password;
+}
+
+
 package DBD::MSSQL::Server::Connection::Sqsh;
 
 use strict;
@@ -3690,6 +3753,7 @@ sub init {
     }
   }
   if (! exists $self->{errstr}) {
+    $self->{password} = $self->decode_password($self->{password});
     eval {
       if (! exists $ENV{SQL_HOME}) {
         if ($^O =~ /MSWin/) {
@@ -3923,6 +3987,20 @@ sub create_commandfile {
   close CMDCMD;
 }
 
+sub decode_password {
+  my $self = shift;
+  my $password = shift;
+  $password = $self->SUPER::decode_password($password);
+  # we call '...%s/%s@...' inside backticks where the second %s is the password
+  # abc'xcv -> ''abc'\''xcv''
+  # abc'`xcv -> ''abc'\''\`xcv''
+  if ($password =~ /'/) {
+    $password = "'".join("\\'", map { "'".$_."'"; } split("'", $password))."'";
+  }
+  return $password;
+}
+
+
 package DBD::MSSQL::Server::Connection::Sqlrelay;
 
 use strict;
@@ -3965,10 +4043,11 @@ sub init {
       if ($self->{handle} = DBI->connect(
           #sprintf("DBI:SQLRelay:host=%s;port=%d;socket=%s", 
           sprintf("DBI:SQLRelay:host=%s;port=%d;",
-              $self->{hostname}, $self->{port}),
-        $self->{username},
-        $self->{password},
-        { RaiseError => 1, AutoCommit => $self->{commit}, PrintError => 1 })) {
+          $self->{hostname}, $self->{port}),
+          $self->{username},
+          $self->decode_password($self->{password}),
+          { RaiseError => 1, AutoCommit => $self->{commit}, PrintError => 1 })) {
+        $retval = $self;
       } else {
         $self->{errstr} = DBI::errstr();
       }
@@ -4218,7 +4297,7 @@ use lib dirname($0);
 use vars qw ($PROGNAME $REVISION $CONTACT $TIMEOUT $STATEFILESDIR $needs_restart %commandline);
 
 $PROGNAME = "check_mssql_health";
-$REVISION = '$Revision: 1.5.20.6 $';
+$REVISION = '$Revision: 1.6 $';
 $CONTACT = 'gerhard.lausser@consol.de';
 $TIMEOUT = 60;
 $STATEFILESDIR = '/var/tmp/check_mssql_health';
@@ -4525,6 +4604,7 @@ my @params = (
     "report=s",
     "commit",
     "labelformat=s",
+    "selectedperfdata=s",
     "extra-opts:s");
 
 if (! GetOptions(\%commandline, @params)) {
@@ -4804,6 +4884,7 @@ my %params = (
     report => $commandline{report},
     commit => $commandline{commit},
     labelformat => $commandline{labelformat},
+    selectedperfdata => $commandline{selectedperfdata},
     negate => $commandline{negate},
 );
 
