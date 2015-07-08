@@ -31,6 +31,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
+$ENV{PERL_LWP_SSL_VERIFY_HOSTNAME} = 0;
 
 package CheckVMwareAPI;
 use strict;
@@ -88,15 +89,15 @@ Follow the on screen instructions, described below:
   This installer has successfully installed both vSphere CLI and the vSphere SDK
   for Perl.
 
-  The following Perl modules were found on the system but may be too old to work 
+  The following Perl modules were found on the system but may be too old to work
   with vSphere CLI:
 
-  Compress::Zlib 2.037 or newer 
-  Compress::Raw::Zlib 2.037 or newer 
-  version 0.78 or newer 
-  IO::Compress::Base 2.037 or newer 
-  IO::Compress::Zlib::Constants 2.037 or newer 
-  LWP::Protocol::https 5.805 or newer 
+  Compress::Zlib 2.037 or newer
+  Compress::Raw::Zlib 2.037 or newer
+  version 0.78 or newer
+  IO::Compress::Base 2.037 or newer
+  IO::Compress::Zlib::Constants 2.037 or newer
+  LWP::Protocol::https 5.805 or newer
 
   Enjoy,
 
@@ -223,6 +224,8 @@ sub main {
 		. "                b - blacklist status objects\n"
 		. "            + sensor - threshold specified sensor\n"
 		. "            + maintenance - shows whether host is in maintenance mode\n"
+		. "                o maintwarn - sets warning state when host is in maintenance mode\n"
+		. "                o maintcrit - sets critical state when host is in maintenance mode\n"
 		. "            + list(vm) - list of VMware machines and their statuses\n"
 		. "            + status - overall object status (gray/green/red/yellow)\n"
 		. "            + issues - all issues for the host\n"
@@ -793,6 +796,18 @@ sub main {
 		{
 			$output = $@->{msg};
 			$result = $@->{code};
+		}
+		elsif ($@ =~ /^Error connecting to server at/) {
+			$output = $@ . "";
+			$result = UNKNOWN;
+		}
+		elsif ($@ =~ /^Error: Cannot complete login/) {
+			$output = $@ . "";
+			$result = UNKNOWN;
+		}
+		elsif ($@ =~ /^Error: Permission to perform/) {
+			$output = $@ . "";
+			$result = UNKNOWN;
 		}
 		else
 		{
@@ -1881,7 +1896,7 @@ sub host_runtime_info
 	die "Host \"" . $$host{"name"} . "\" does not exist\n" if (!defined($host_view));
 	$host_view->update_view_data(['name', 'runtime', 'overallStatus', 'configIssue']);
 	$runtime = $host_view->runtime;
-	die {msg => ("NOTICE: \"" . $host_view->name . "\" is in maintenance mode, check skipped\n"), code => OK} if ($runtime->inMaintenanceMode);
+	die {msg => ("NOTICE: \"" . $host_view->name . "\" is in maintenance mode, check skipped\n"), code => OK} if (($subcommand ne "MAINTENANCE") && ($runtime->inMaintenanceMode));
 
 	my %base_units = (
 		'Degrees C' => 'C',
@@ -2260,6 +2275,12 @@ sub host_runtime_info
 			my %host_maintenance_state = (0 => "no", 1 => "yes");
 			$output = "maintenance=" . $host_maintenance_state{$runtime->inMaintenanceMode};
 			$res = OK;
+			if ($addopts eq "maintwarn") {
+				$res = WARNING;
+			}
+			elsif ($addopts eq "maintcrit") {
+				$res = CRITICAL;
+			}
 		}
 		elsif (($subcommand eq "LIST") || ($subcommand eq "LISTVM"))
 		{
