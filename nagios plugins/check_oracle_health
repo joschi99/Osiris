@@ -1,5 +1,5 @@
 #! /usr/bin/perl -w
-# nagios: +epn
+# nagios: -epn
 
 my %ERRORS=( OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 );
 my %ERRORCODES=( 0 => 'OK', 1 => 'WARNING', 2 => 'CRITICAL', 3 => 'UNKNOWN' );
@@ -2676,8 +2676,9 @@ sub nagios {
           $self->check_thresholds($self->{io_total_per_sec}, "1000", "5000"),
           sprintf ("%s: %.2f IO Operations per Second", 
               $self->{name}, $self->{io_total_per_sec}));
+      (my $path = $self->{path}) =~ s/:|\/|\\/_/g;
       $self->add_perfdata(sprintf "'dbf_%s_io_total_per_sec'=%.2f;%d;%d",
-          $self->{name}, $self->{io_total_per_sec},
+          $params{uniquelabels} ? $path : $self->{name}, $self->{io_total_per_sec},
           $self->{warningrange}, $self->{criticalrange});
     }
   }
@@ -3659,8 +3660,14 @@ sub nagios {
         $self->merge_nagios($_);
       }
     } elsif ($params{mode} =~ /server::database::tablespace::datafile::listdatafiles/) {
-      foreach (sort { $a->{name} cmp $b->{name}; }  @{$self->{datafiles}}) {
-        printf "%s\n", $_->{name};
+      if ($params{report} eq "short") {
+        foreach (@{$self->{datafiles}}) {
+          printf "%s %s\n", $_->{path}, $_->{name};
+        }
+      } else {
+        foreach (sort { $a->{name} cmp $b->{name}; }  @{$self->{datafiles}}) {
+          printf "%s\n", $_->{name};
+        }
       }
       $self->add_nagios_ok("have fun");
     } elsif ($params{mode} =~ /server::database::tablespace::datafile/) {
@@ -3914,9 +3921,11 @@ sub init {
   if ($params{mode} =~ /server::database::asm::diskgroup::(usage|free)/) {
     $self->{percent_used} =
 	($self->{total_mb} - $self->{usable_file_mb}) / $self->{total_mb} * 100;
+    $self->{used_file_mb} = $self->{total_mb} - $self->{usable_file_mb};
     $self->{percent_free} = 100 - $self->{percent_used};
     $self->{bytes_free} = $self->{usable_file_mb} * 1024 * 1024;
     $self->{bytes_max} = $self->{total_mb} * 1024 * 1024;
+    $self->{bytes_used} = $self->{used_file_mb} * 1024 * 1024;
 
     my $tlen = 20;
     my $len = int((($params{mode} =~ /asm::diskgroup::usage/) ?
@@ -3965,10 +3974,13 @@ sub nagios {
               $self->{warningrange}, $self->{criticalrange});
           $self->add_perfdata(sprintf "\'dg_%s_usage\'=%dMB;%d;%d;%d;%d",
               lc $self->{name},
-              $self->{usable_file_mb},
+              $self->{used_file_mb},
               $self->{warningrange} * $self->{total_mb} / 100,
               $self->{criticalrange} * $self->{total_mb} / 100,
               0, $self->{total_mb});
+          $self->add_perfdata(sprintf "\'dg_%s_size\'=%dMB",
+              lc $self->{name},
+              $self->{total_mb});
         } elsif ($params{mode} =~ /server::database::asm::diskgroup::free/) {
           if (! $params{units}) {
             $params{units} = "%";
@@ -3991,6 +4003,9 @@ sub nagios {
                 $self->{warningrange} * $self->{bytes_max} / 100 / 1048576,
                 $self->{criticalrange} * $self->{bytes_max} / 100 / 1048576,
                 $self->{bytes_max} / 1048576);
+            $self->add_perfdata(sprintf "\'dg_%s_size\'=%dMB",
+                lc $self->{name},
+                $self->{total_mb});
           } else {
             my $factor = 1024 * 1024; # default MB
             if ($params{units} eq "GB") {
@@ -4034,6 +4049,10 @@ sub nagios {
                 $self->{warningrange},
                 $self->{criticalrange},
                 $self->{bytes_max} / $factor);
+            $self->add_perfdata(sprintf "\'dg_%s_size\'=%.2f%s",
+                lc $self->{name},
+                $self->{bytes_max} / $factor,
+                $params{units});
           }
         }
       } else {
@@ -4713,11 +4732,14 @@ use strict;
 use Time::HiRes;
 use IO::File;
 use File::Copy 'cp';
+use File::Basename;
 use Sys::Hostname;
 use Data::Dumper;
 
 
 {
+  our $pluginpath = $ENV{'NAGIOS_PLUGIN'} || $0;
+  our $pluginname = basename($pluginpath);
   our $verbose = 0;
   our $scream = 0; # scream if something is not implemented
   our $access = "dbi"; # how do we access the database. 
@@ -4758,6 +4780,7 @@ sub new {
     commit => $params{commit},
     negate => $params{negate},
     labelformat => $params{labelformat},
+    uniquelabels => $params{uniquelabels},
     version => 'unknown',
     instance => undef,
     database => undef,
@@ -4766,6 +4789,7 @@ sub new {
   bless $self, $class;
   $self->init_nagios();
   if ($self->dbconnect(%params)) {
+    DBD::Oracle::Server::add_server($self);
     $self->{version} = $self->{handle}->fetchrow_array(
         q{ SELECT version FROM v$instance });
     if (! $self->{version}) {
@@ -4787,41 +4811,50 @@ sub new {
     } else {
       if ($self->version_is_minimum('10')) {
         ($self->{os}, $self->{dbuser}, $self->{thread}, $self->{parallel},
-            $self->{instance_name}, $self->{database_name}) = $self->{handle}->fetchrow_array(q{
+            $self->{instance_name}, $self->{database_name},
+            $self->{global_name}, $self->{host_name}) = $self->{handle}->fetchrow_array(q{
             SELECT
                 d.platform_name,
                 sys_context('userenv', 'session_user'),
                 i.thread#,
                 i.parallel,
                 i.instance_name,
-                d.name
+                d.name,
+                g.global_name,
+                i.host_name
             FROM
                 dual,
                 v$instance i,
-                v$database d
+                v$database d,
+                global_name g
         });
       } else {
         ($self->{os}, $self->{dbuser}, $self->{thread}, $self->{parallel},
-            $self->{instance_name}, $self->{database_name}) = $self->{handle}->fetchrow_array(q{
+            $self->{instance_name}, $self->{database_name},
+            $self->{global_name}, $self->{host_name}) = $self->{handle}->fetchrow_array(q{
             SELECT
                 dbms_utility.port_string,
                 sys_context('userenv', 'session_user'),
                 i.thread#,
                 i.parallel,
                 i.instance_name,
-                d.name
+                d.name,
+                g.global_name,
+                i.host_name
             FROM
                 dual,
                 v$instance i,
-                v$database d
+                v$database d,
+                global_name g
         });
       }
       if ($self->{ident}) {
         $self->{identstring} = sprintf "(host: %s inst: %s, db: %s) ",
-            hostname(), $self->{instance_name}, $self->{database_name};
+            $self->{host_name}, $self->{instance_name}, 
+            ($self->{global_name} && $self->{global_name} =~ /\./) ?
+                $self->{global_name} : $self->{database_name};
       }
     }
-    DBD::Oracle::Server::add_server($self);
     $self->init(%params);
   }
   return $self;
@@ -5700,6 +5733,16 @@ sub system_tmpdir {
   }
 }
 
+sub decode_password {
+  my $self = shift;
+  my $password = shift;
+  if ($password && $password =~ /^rfc3986:\/\/(.*)/) {
+    $password = $1;
+    $password =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
+  }
+  return $password;
+}
+
 
 package DBD::Oracle::Server::Connection;
 
@@ -5759,7 +5802,7 @@ sub init {
     }
   } else {
     if (! $self->{connect} || ! $self->{username} || ! $self->{password}) {
-      if ($self->{connect} && $self->{connect} =~ /(\w+)\/(\w+)@([\w\-\.]+)/) {
+      if ($self->{connect} && $self->{connect} =~ /(\w+?)\/(.+)@([\w\-\.]+)/) {
         $self->{connect} = $3;
         $self->{username} = $1;
         $self->{password} = $2;
@@ -5834,7 +5877,7 @@ sub init {
       if ($self->{handle} = DBI->connect(
           $dsn,
           $username,
-          $self->{password},
+          $self->decode_password($self->{password}),
           $connecthash)) {
         $self->{handle}->do(q{
             ALTER SESSION SET NLS_NUMERIC_CHARACTERS=".," });
@@ -6079,7 +6122,7 @@ sub init {
     }
   } else {
     if ($self->{connect} && ! $self->{username} && ! $self->{password} &&
-        $self->{connect} =~ /(\w+)\/(\w+)@([\w\-\._]+)(:(\d+))*(\/([\w\-\._]+))*/) {
+        $self->{connect} =~ /(\w+?)\/(.+)@([\w\-\._]+)(:(\d+))*(\/([\w\-\._]+))*/) {
       # --connect nagios/oradbmon@bba
       $self->{connect} = $3;
       $self->{username} = $1;
@@ -6146,6 +6189,7 @@ sub init {
     }
   }
   if (! exists $self->{errstr}) {
+    $self->{password} = $self->decode_password($self->{password});
     eval {
       $ENV{ORACLE_SID} = $self->{sid};
       if (! exists $ENV{ORACLE_HOME}) {
@@ -6231,7 +6275,7 @@ sub init {
       }
       if ($self->{mode} =~ /^server::tnsping/) {
         if ($self->{loginstring} eq "traditional") {
-          $self->{sqlplus} = sprintf "%s -S \"%s/%s@%s\" < /dev/null",
+          $self->{sqlplus} = sprintf "%s -S '%s/%s@%s' < /dev/null",
               $sqlplus,
               $self->{username}, $self->{password}, $self->{sid};
         } elsif ($self->{loginstring} eq "extauth") {
@@ -6245,7 +6289,7 @@ sub init {
           $self->{sqlplus} = sprintf "%s -S / as sysdba < /dev/null",
               $sqlplus;
         } elsif ($self->{loginstring} eq "sys") {
-          $self->{sqlplus} = sprintf "%s -S \"%s/%s@%s\" as sysdba < /dev/null",
+          $self->{sqlplus} = sprintf "%s -S '%s/%s@%s' as sysdba < /dev/null",
               $sqlplus,
               $self->{username}, $self->{password}, $self->{sid};
         }
@@ -6255,12 +6299,12 @@ sub init {
         }
       } else {
         if ($self->{loginstring} eq "traditional") {
-          $self->{sqlplus} = sprintf "%s -S \"%s/%s@%s\" < %s > %s",
+          $self->{sqlplus} = sprintf "%s -S '%s/%s@%s' < %s > %s",
               $sqlplus,
               $self->{username}, $self->{password}, $self->{sid},
               $self->{sql_commandfile}, $self->{sql_outfile};
         } elsif ($self->{loginstring} eq "easyconnect") {
-          $self->{sqlplus} = sprintf "%s -S \"%s/%s@%s:%d/%s\" < %s > %s",
+          $self->{sqlplus} = sprintf "%s -S '%s/%s@%s:%d/%s' < %s > %s",
               $sqlplus,
               $self->{username}, $self->{password}, $self->{dbhost}, $self->{dbport}, $self->{dbservice},
               $self->{sql_commandfile}, $self->{sql_outfile};
@@ -6278,7 +6322,7 @@ sub init {
               $sqlplus,
               $self->{sql_commandfile}, $self->{sql_outfile};
         } elsif ($self->{loginstring} eq "sys") {
-          $self->{sqlplus} = sprintf "%s -S \"%s/%s@%s\" as sysdba < %s > %s",
+          $self->{sqlplus} = sprintf "%s -S '%s/%s@%s' as sysdba < %s > %s",
               $sqlplus,
               $self->{username}, $self->{password}, $self->{sid},
               $self->{sql_commandfile}, $self->{sql_outfile};
@@ -6305,7 +6349,7 @@ sub init {
             printf STDERR "ping exit bumm \n";
           }
           $exit_output =~ s/\n//g;
-          $exit_output =~ s/at $0//g;
+          $exit_output =~ s/at $DBD::Oracle::Server::pluginpath//g;
           chomp $exit_output;
           die $exit_output;
         }
@@ -6561,6 +6605,20 @@ sub create_commandfile {
   close CMDCMD;
 }
 
+sub decode_password {
+  my $self = shift;
+  my $password = shift;
+  $password = $self->SUPER::decode_password($password);
+  # we call '...%s/%s@...' inside backticks where the second %s is the password
+  # abc'xcv -> ''abc'\''xcv''
+  # abc'`xcv -> ''abc'\''\`xcv''
+  if ($password =~ /'/) {
+    $password = "'".join("\\'", map { "'".$_."'"; } split("'", $password))."'";
+  }
+  return $password;
+}
+
+
 package DBD::Oracle::Server::Connection::Sqlrelay;
 
 use strict;
@@ -6589,13 +6647,13 @@ sub init {
     }
   } else {
     if (! $self->{connect} || ! $self->{username} || ! $self->{password}) {
-      if ($self->{connect} && $self->{connect} =~ /(\w+)\/(\w+)@([\.\w]+):(\d+)/) {
+      if ($self->{connect} && $self->{connect} =~ /(\w+?)\/(.+)@([\.\w]+):(\d+)/) {
         $self->{username} = $1;
         $self->{password} = $2;
         $self->{host} = $3; 
         $self->{port} = $4;
         $self->{socket} = "";
-      } elsif ($self->{connect} && $self->{connect} =~ /(\w+)\/(\w+)@([\.\w]+):([\w\/]+)/) {
+      } elsif ($self->{connect} && $self->{connect} =~ /(\w+?)\/(.+)@([\.\w]+):([\w\/]+)/) {
         $self->{username} = $1;
         $self->{password} = $2;
         $self->{host} = $3; 
@@ -6640,7 +6698,7 @@ sub init {
       if ($self->{handle} = DBI->connect(
           sprintf("DBI:SQLRelay:host=%s;port=%d;socket=%s", $self->{host}, $self->{port}, $self->{socket}),
           $self->{username},
-          $self->{password},
+          $self->decode_password($self->{password}),
           { RaiseError => 1, AutoCommit => $self->{commit}, PrintError => 1 })) {
         $self->{handle}->do(q{
             ALTER SESSION SET NLS_NUMERIC_CHARACTERS=".," });
@@ -6762,6 +6820,11 @@ use strict;
 use File::Basename;
 use Data::Dumper;
 
+{
+  our $pluginpath = $ENV{'NAGIOS_PLUGIN'} || $0;
+  our $pluginname = basename($pluginpath);
+}
+
 sub new {
   my $class = shift;
   my %params = @_;
@@ -6781,7 +6844,7 @@ sub prepare_file_and_section {
   my $self = shift;
   if (! defined $self->{file} || ! $self->{file}) {
     # ./check_stuff --extra-opts
-    $self->{section} = basename($0);
+    $self->{section} = $Extraopts::pluginname;
     $self->{file} = $self->get_default_file();
   } elsif ($self->{file} =~ /^[^@]+$/) {
     # ./check_stuff --extra-opts=special_opts
@@ -6789,7 +6852,7 @@ sub prepare_file_and_section {
     $self->{file} = $self->get_default_file();
   } elsif ($self->{file} =~ /^@(.*)/) {
     # ./check_stuff --extra-opts=@/etc/myconfig.ini
-    $self->{section} = basename($0);
+    $self->{section} = $Extraopts::pluginname;
     $self->{file} = $1;
   } elsif ($self->{file} =~ /^(.*?)@(.*)/) {
     # ./check_stuff --extra-opts=special_opts@/etc/myconfig.ini
@@ -6872,7 +6935,7 @@ use lib dirname($0);
 use vars qw ($PROGNAME $REVISION $CONTACT $TIMEOUT $STATEFILESDIR $needs_restart %commandline);
 
 $PROGNAME = "check_oracle_health";
-$REVISION = '$Revision: 1.9.4 $';
+$REVISION = '$Revision: 2.0 $';
 $CONTACT = 'gerhard.lausser@consol.de';
 $TIMEOUT = 60;
 $STATEFILESDIR = '/var/tmp/check_oracle_health';
@@ -7239,6 +7302,7 @@ my @params = (
     "report=s",
     "commit",
     "labelformat=s",
+    "uniquelabels",
     "extra-opts:s");
 
 if (! GetOptions(\%commandline, @params)) {
@@ -7422,11 +7486,11 @@ if ($needs_restart) {
   }
   if ($runas && ($> == 0)) {
     # this was not my idea. some people connect as root to their nagios clients.
-    exec "su", "-c", sprintf("%s %s", $0, join(" ", @newargv)), "-", $runas;
+    exec "su", "-c", sprintf("%s %s", $DBD::Oracle::Server::pluginpath, join(" ", @newargv)), "-", $runas;
   } elsif ($runas) {
-    exec "sudo", "-S", "-u", $runas, $0, @newargv;
+    exec "sudo", "-S", "-u", $runas, $DBD::Oracle::Server::pluginpath, @newargv;
   } else {
-    exec $0, @newargv;  
+    exec $DBD::Oracle::Server::pluginpath, @newargv;  
     # this makes sure that even a SHLIB or LD_LIBRARY_PATH are set correctly
     # when the perl interpreter starts. Setting them during runtime does not
     # help loading e.g. libclntsh.so
@@ -7564,6 +7628,7 @@ my %params = (
     commit => $commandline{commit},
     calcmeth => $commandline{calcmeth},
     labelformat => $commandline{labelformat},
+    uniquelabels => $commandline{uniquelabels},
     negate => $commandline{negate},
 );
 
