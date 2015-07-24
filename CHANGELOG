@@ -2,7 +2,7 @@ Osiris 2.1
 	Monitoring
 		- Upgrade Centreon Core 2.6.1
 		- New Centreon Engine 1.4.14
-		- New Centreon Broker 2.8.2
+		- New Centreon Broker 2.9.0
 		- New Centreon SNMPTrap handler
 		- Upgrade Selenium 2.46
 		- Upgrade mklivestatus 1.2.6p4
@@ -30,7 +30,7 @@ Osiris 2.1
 		- Upgrade Centreon Syslog Viewer 1.2.5
 		- No more Loganalyzer
 	Network
-		- Packetbeat 0.5.0
+		- Packetbeat 1.0.0b
 		- Upgrade rancid 3.2
 		- No more NTOP
 		- No more Nessus
@@ -41,7 +41,7 @@ Osiris 2.1
 		- all HTTP traffic is redirected to HTTPS
 		- No more MySQL
 		- New MariaDB
-		- Upgrade phpmyadmin 4.3.6
+		- Upgrade phpmyadmin 4.4.11
 		- New PhpSysInfo 3.2.0
 		- New glances 2.3.0
 		- Upgrade viewvc 1.1.23
