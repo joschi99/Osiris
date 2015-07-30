@@ -39,6 +39,7 @@ cluster.name: osiris
 #
 #node.name: "Franz Kafka"
 node.name: "Osiris Node 1"
+
 # Every node can be configured to allow or deny being eligible as the master,
 # and to allow or deny to store the data.
 #
