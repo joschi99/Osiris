@@ -25,7 +25,7 @@ Osiris 2.1
 		- New elasticHQ
 		- New elasticsearch-head
 		- New curator 3.2.3
-		- New redis 3.0.1 (https://gist.github.com/SkyRocknRoll/7927304)
+		- New redis 3.0.3 (https://gist.github.com/SkyRocknRoll/7927304)
 		- Upgrade Centreon Syslog Server 1.5.2
 		- Upgrade Centreon Syslog Viewer 1.2.5
 		- No more Loganalyzer
