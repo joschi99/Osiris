@@ -9,14 +9,21 @@
 # Development:
 #  Jochen Platzgummer
 #
-# Version 2.0
+# Version 2.1
 #
 # Changelog
+#   03.09.2015: Abbruch, falls Programm bereits läuft (Issue #7)
 #   12.09.2011: Script an Osiris 2.0 angepasst
 #   20.02.2010: check Signatur aller Files sowie check ob die Signatur
 #               vorhanden ist (ausser bei den Files des aktuellen Tages)
 #
 ###############################################################################
+
+#Prüfen, ob bereits eine Instanz läuft
+if [ "$(pgrep -x $(basename $0))" != "$$" ]; then
+ echo "Fehler: das Programm $(basename $0) läuft bereits -> Abbruch"
+ exit 1
+fi
 
 #RSYSLOG_PATH muss mit Path in /etc/rsyslog.conf zusammenstimmen
 RSYSLOG_PATH=/opt/bi-s/cifs/rsyslog
