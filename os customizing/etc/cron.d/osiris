@@ -1,3 +1,3 @@
 #License check jede Stunde
-0 */1 * * * root /opt/bi-s/software/scripts/lic/check_license.sh 2>&1
+0 */1 * * * root /opt/bi-s/software/scripts/lic/check_license 2>&1
 30 03 * * * root /opt/bi-s/software/scripts/lic/shutdown 2>&1
