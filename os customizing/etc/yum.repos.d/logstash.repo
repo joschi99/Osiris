@@ -3,7 +3,7 @@ name=logstash repository for 1.3.x packages
 baseurl=http://packages.elasticsearch.org/logstash/1.3/centos
 gpgcheck=1
 gpgkey=http://packages.elasticsearch.org/GPG-KEY-elasticsearch
-enabled=1
+enabled=0
 
 [logstash-1.4]
 name=logstash repository for 1.4.x packages
@@ -11,6 +11,13 @@ baseurl=http://packages.elasticsearch.org/logstash/1.4/centos
 gpgcheck=1
 gpgkey=http://packages.elasticsearch.org/GPG-KEY-elasticsearch
 enabled=0
+
+[logstash-1.5]
+name=logstash repository for 1.5.x packages
+baseurl=http://packages.elasticsearch.org/logstash/1.5/centos
+gpgcheck=1
+gpgkey=http://packages.elasticsearch.org/GPG-KEY-elasticsearch
+enabled=1
 
 [elasticsearch-1.4]
 name=Elasticsearch repository for 1.4.x packages
@@ -24,11 +31,18 @@ name=Elasticsearch repository for 1.5.x packages
 baseurl=http://packages.elasticsearch.org/elasticsearch/1.5/centos
 gpgcheck=1
 gpgkey=http://packages.elasticsearch.org/GPG-KEY-elasticsearch
-enabled=1
+enabled=0
 
 [elasticsearch-1.6]
 name=Elasticsearch repository for 1.6.x packages
 baseurl=http://packages.elasticsearch.org/elasticsearch/1.6/centos
+gpgcheck=1
+gpgkey=http://packages.elasticsearch.org/GPG-KEY-elasticsearch
+enabled=0
+
+[elasticsearch-1.7]
+name=Elasticsearch repository for 1.7.x packages
+baseurl=http://packages.elasticsearch.org/elasticsearch/1.7/centos
 gpgcheck=1
 gpgkey=http://packages.elasticsearch.org/GPG-KEY-elasticsearch
 enabled=1
