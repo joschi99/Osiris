@@ -1,3 +1,6 @@
+Osiris 2.2
+	Syslog & Logmanagement
+		- Upgrade Logstash 1.5.4
 Osiris 2.1
 	Monitoring
 		- Upgrade Centreon Core 2.6.1
