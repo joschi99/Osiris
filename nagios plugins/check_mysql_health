@@ -77,10 +77,15 @@ sub init {
   my $dummy;
   $self->debug("enter init");
   $self->init_nagios();
-  ($dummy, $self->{have_innodb}) 
-      = $self->{handle}->fetchrow_array(q{
-      SHOW VARIABLES LIKE 'have_innodb'
-  });
+  if (DBD::MySQL::Server::return_first_server()->version_is_minimum("5.1")) {
+    ($dummy, $self->{have_innodb}) = $self->{handle}->fetchrow_array(q{
+        SELECT ENGINE, SUPPORT FROM INFORMATION_SCHEMA.ENGINES WHERE ENGINE='InnoDB'
+    });
+  } else { 
+    ($dummy, $self->{have_innodb}) = $self->{handle}->fetchrow_array(q{
+        SHOW VARIABLES LIKE 'have_innodb'
+    });
+  }
   if ($self->{have_innodb} eq "NO") {
     $self->add_nagios_critical("the innodb engine has a problem (have_innodb=no)");
   } elsif ($self->{have_innodb} eq "DISABLED") {
@@ -458,6 +463,7 @@ sub new {
   my $self = {
     handle => $params{handle},
     uptime => $params{uptime},
+    replication_user => $params{replication_user},
     warningrange => $params{warningrange},
     criticalrange => $params{criticalrange},
     threads_connected => undef,
@@ -526,17 +532,23 @@ sub init {
     });
     $self->valdiff(\%params, qw(threads_created connections));
     if ($self->{delta_connections} > 0) {
-      $self->{threadcache_hitrate_now} = 
+      $self->{threadcache_hitrate_now} =
           100 - ($self->{delta_threads_created} * 100.0 /
           $self->{delta_connections});
     } else {
       $self->{threadcache_hitrate_now} = 100;
     }
-    $self->{threadcache_hitrate} = 100 - 
+    $self->{threadcache_hitrate} = 100 -
         ($self->{threads_created} * 100.0 / $self->{connections});
     $self->{connections_per_sec} = $self->{delta_connections} /
         $self->{delta_timestamp};
   } elsif ($params{mode} =~ /server::instance::querycachehitrate/) {
+    ($dummy, $self->{qcache_inserts}) = $self->{handle}->fetchrow_array(q{
+        SHOW /*!50000 global */ STATUS LIKE 'Qcache_inserts'
+    });
+    ($dummy, $self->{qcache_not_cached}) = $self->{handle}->fetchrow_array(q{
+        SHOW /*!50000 global */ STATUS LIKE 'Qcache_not_cached'
+    });
     ($dummy, $self->{com_select}) = $self->{handle}->fetchrow_array(q{
         SHOW /*!50000 global */ STATUS LIKE 'Com_select'
     });
@@ -552,15 +564,15 @@ sub init {
         SHOW VARIABLES LIKE 'query_cache_size'
     });
     $self->valdiff(\%params, qw(com_select qcache_hits));
-    $self->{querycache_hitrate_now} = 
+    $self->{querycache_hitrate_now} =
         ($self->{delta_com_select} + $self->{delta_qcache_hits}) > 0 ?
         100 * $self->{delta_qcache_hits} /
             ($self->{delta_com_select} + $self->{delta_qcache_hits}) :
         0;
-    $self->{querycache_hitrate} = 
-        ($self->{com_select} + $self->{qcache_hits}) > 0 ?
+    $self->{querycache_hitrate} =
+        ($self->{qcache_not_cached} + $self->{qcache_inserts} + $self->{qcache_hits}) > 0 ?
         100 * $self->{qcache_hits} /
-            ($self->{com_select} + $self->{qcache_hits}) :
+            ($self->{qcache_not_cached} + $self->{qcache_inserts} + $self->{qcache_hits}) :
         0;
     $self->{selects_per_sec} =
         $self->{delta_com_select} / $self->{delta_timestamp};
@@ -569,34 +581,34 @@ sub init {
         SHOW /*!50000 global */ STATUS LIKE 'Qcache_lowmem_prunes'
     });
     $self->valdiff(\%params, qw(lowmem_prunes));
-    $self->{lowmem_prunes_per_sec} = $self->{delta_lowmem_prunes} / 
+    $self->{lowmem_prunes_per_sec} = $self->{delta_lowmem_prunes} /
         $self->{delta_timestamp};
   } elsif ($params{mode} =~ /server::instance::slowqueries/) {
     ($dummy, $self->{slow_queries}) = $self->{handle}->fetchrow_array(q{
         SHOW /*!50000 global */ STATUS LIKE 'Slow_queries'
     });
     $self->valdiff(\%params, qw(slow_queries));
-    $self->{slow_queries_per_sec} = $self->{delta_slow_queries} / 
+    $self->{slow_queries_per_sec} = $self->{delta_slow_queries} /
         $self->{delta_timestamp};
   } elsif ($params{mode} =~ /server::instance::longprocs/) {
     if (DBD::MySQL::Server::return_first_server()->version_is_minimum("5.1")) {
-      ($self->{longrunners}) = $self->{handle}->fetchrow_array(q{
+      ($self->{longrunners}) = $self->{handle}->fetchrow_array(qq(
           SELECT
               COUNT(*)
           FROM
               information_schema.processlist
-          WHERE user <> 'replication' 
+          WHERE user <> ?
           AND id <> CONNECTION_ID() 
           AND time > 60 
           AND command <> 'Sleep'
-      });
+      ), $self->{replication_user});
     } else {
       $self->{longrunners} = 0 if ! defined $self->{longrunners};
       foreach ($self->{handle}->fetchall_array(q{
           SHOW PROCESSLIST
       })) {
         my($id, $user, $host, $db, $command, $tme, $state, $info) = @{$_};
-        if (($user ne 'replication') &&
+        if (($user ne $self->{replication_user}) &&
             ($tme > 60) &&
             ($command ne 'Sleep')) {
           $self->{longrunners}++;
@@ -623,16 +635,16 @@ sub init {
     }
     $self->{table_cache} ||= 0;
     #$self->valdiff(\%params, qw(open_tables opened_tables table_cache));
-    # _now ist hier sinnlos, da opened_tables waechst, aber open_tables wieder 
+    # _now ist hier sinnlos, da opened_tables waechst, aber open_tables wieder
     # schrumpfen kann weil tabellen geschlossen werden.
     if ($self->{opened_tables} != 0 && $self->{table_cache} != 0) {
-      $self->{tablecache_hitrate} = 
+      $self->{tablecache_hitrate} =
           100 * $self->{open_tables} / $self->{opened_tables};
-      $self->{tablecache_fillrate} = 
+      $self->{tablecache_fillrate} =
           100 * $self->{open_tables} / $self->{table_cache};
     } elsif ($self->{opened_tables} == 0 && $self->{table_cache} != 0) {
       $self->{tablecache_hitrate} = 100;
-      $self->{tablecache_fillrate} = 
+      $self->{tablecache_fillrate} =
           100 * $self->{open_tables} / $self->{table_cache};
     } else {
       $self->{tablecache_hitrate} = 0;
@@ -647,14 +659,14 @@ sub init {
         SHOW /*!50000 global */ STATUS LIKE 'Table_locks_immediate'
     });
     $self->valdiff(\%params, qw(table_locks_waited table_locks_immediate));
-    $self->{table_lock_contention} = 
+    $self->{table_lock_contention} =
         ($self->{table_locks_waited} + $self->{table_locks_immediate}) > 0 ?
-        100 * $self->{table_locks_waited} / 
+        100 * $self->{table_locks_waited} /
         ($self->{table_locks_waited} + $self->{table_locks_immediate}) :
         100;
-    $self->{table_lock_contention_now} = 
+    $self->{table_lock_contention_now} =
         ($self->{delta_table_locks_waited} + $self->{delta_table_locks_immediate}) > 0 ?
-        100 * $self->{delta_table_locks_waited} / 
+        100 * $self->{delta_table_locks_waited} /
         ($self->{delta_table_locks_waited} + $self->{delta_table_locks_immediate}) :
         100;
   } elsif ($params{mode} =~ /server::instance::tableindexusage/) {
@@ -984,6 +996,7 @@ sub new {
   my $class = shift;
   my %params = @_;
   my $self = {
+    mode => $params{mode},
     access => $params{method} || 'dbi',
     hostname => $params{hostname},
     database => $params{database} || 'information_schema',
@@ -991,6 +1004,7 @@ sub new {
     socket => $params{socket},
     username => $params{username},
     password => $params{password},
+    replication_user => $params{replication_user},
     mycnf => $params{mycnf},
     mycnfgroup => $params{mycnfgroup},
     timeout => $params{timeout},
@@ -998,6 +1012,7 @@ sub new {
     criticalrange => $params{criticalrange},
     verbose => $params{verbose},
     report => $params{report},
+    negate => $params{negate},
     labelformat => $params{labelformat},
     version => 'unknown',
     instance => undef,
@@ -1237,17 +1252,48 @@ sub check_thresholds {
       $self->{warningrange} : $defaultwarningrange;
   $self->{criticalrange} = defined $self->{criticalrange} ?
       $self->{criticalrange} : $defaultcriticalrange;
-  if ($self->{warningrange} !~ /:/ && $self->{criticalrange} !~ /:/) {
-    # warning = 10, critical = 20, warn if > 10, crit if > 20
-    $level = $ERRORS{WARNING} if $value > $self->{warningrange};
-    $level = $ERRORS{CRITICAL} if $value > $self->{criticalrange};
-  } elsif ($self->{warningrange} =~ /([\d\.]+):/ && 
-      $self->{criticalrange} =~ /([\d\.]+):/) {
-    # warning = 98:, critical = 95:, warn if < 98, crit if < 95
-    $self->{warningrange} =~ /([\d\.]+):/;
-    $level = $ERRORS{WARNING} if $value < $1;
-    $self->{criticalrange} =~ /([\d\.]+):/;
-    $level = $ERRORS{CRITICAL} if $value < $1;
+
+  if ($self->{warningrange} =~ /^([-+]?[0-9]*\.?[0-9]+)$/) {
+    # warning = 10, warn if > 10 or < 0
+    $level = $ERRORS{WARNING}
+        if ($value > $1 || $value < 0);
+  } elsif ($self->{warningrange} =~ /^([-+]?[0-9]*\.?[0-9]+):$/) {
+    # warning = 10:, warn if < 10
+    $level = $ERRORS{WARNING}
+        if ($value < $1);
+  } elsif ($self->{warningrange} =~ /^~:([-+]?[0-9]*\.?[0-9]+)$/) {
+    # warning = ~:10, warn if > 10
+    $level = $ERRORS{WARNING}
+        if ($value > $1);
+  } elsif ($self->{warningrange} =~ /^([-+]?[0-9]*\.?[0-9]+):([-+]?[0-9]*\.?[0-9]+)$/) {
+    # warning = 10:20, warn if < 10 or > 20
+    $level = $ERRORS{WARNING}
+        if ($value < $1 || $value > $2);
+  } elsif ($self->{warningrange} =~ /^@([-+]?[0-9]*\.?[0-9]+):([-+]?[0-9]*\.?[0-9]+)$/) {
+    # warning = @10:20, warn if >= 10 and <= 20
+    $level = $ERRORS{WARNING}
+        if ($value >= $1 && $value <= $2);
+  }
+  if ($self->{criticalrange} =~ /^([-+]?[0-9]*\.?[0-9]+)$/) {
+    # critical = 10, crit if > 10 or < 0
+    $level = $ERRORS{CRITICAL}
+        if ($value > $1 || $value < 0);
+  } elsif ($self->{criticalrange} =~ /^([-+]?[0-9]*\.?[0-9]+):$/) {
+    # critical = 10:, crit if < 10
+    $level = $ERRORS{CRITICAL}
+        if ($value < $1);
+  } elsif ($self->{criticalrange} =~ /^~:([-+]?[0-9]*\.?[0-9]+)$/) {
+    # critical = ~:10, crit if > 10
+    $level = $ERRORS{CRITICAL}
+        if ($value > $1);
+  } elsif ($self->{criticalrange} =~ /^([-+]?[0-9]*\.?[0-9]+):([-+]?[0-9]*\.?[0-9]+)$/) {
+    # critical = 10:20, crit if < 10 or > 20
+    $level = $ERRORS{CRITICAL}
+        if ($value < $1 || $value > $2);
+  } elsif ($self->{criticalrange} =~ /^@([-+]?[0-9]*\.?[0-9]+):([-+]?[0-9]*\.?[0-9]+)$/) {
+    # critical = @10:20, crit if >= 10 and <= 20
+    $level = $ERRORS{CRITICAL}
+        if ($value >= $1 && $value <= $2);
   }
   return $level;
   #
@@ -1333,7 +1379,18 @@ sub calculate_result {
   } grep {
       scalar(@{$self->{nagios}->{messages}->{$ERRORS{$_}}})
   } ("CRITICAL", "WARNING", "UNKNOWN"));
+  my $good_messages = join(($multiline ? "\n" : ", "), map {
+      join(($multiline ? "\n" : ", "), @{$self->{nagios}->{messages}->{$ERRORS{$_}}})
+  } grep {
+      scalar(@{$self->{nagios}->{messages}->{$ERRORS{$_}}})
+  } ("OK"));
   my $all_messages_short = $bad_messages ? $bad_messages : 'no problems';
+  # if mode = my-....
+  # and there are some ok-messages
+  # output them instead of "no problems"
+  if ($self->{mode} =~ /^my\:\:/ && $good_messages) {
+    $all_messages_short = $bad_messages ? $bad_messages : $good_messages;
+  }
   my $all_messages_html = "<table style=\"border-collapse: collapse;\">".
       join("", map {
           my $level = $_;
@@ -1354,6 +1411,14 @@ sub calculate_result {
     $self->{nagios_message} .= $all_messages_short;
   } elsif ($self->{report} eq "html") {
     $self->{nagios_message} .= $all_messages_short."\n".$all_messages_html;
+  }
+  foreach my $from (keys %{$self->{negate}}) {
+    if ((uc $from) =~ /^(OK|WARNING|CRITICAL|UNKNOWN)$/ &&
+        (uc $self->{negate}->{$from}) =~ /^(OK|WARNING|CRITICAL|UNKNOWN)$/) {
+      if ($self->{nagios_level} == $ERRORS{uc $from}) {
+        $self->{nagios_level} = $ERRORS{uc $self->{negate}->{$from}};
+      }
+    }
   }
   if ($self->{labelformat} eq "pnp4nagios") {
     $self->{perfdata} = join(" ", @{$self->{nagios}->{perfdata}});
@@ -1388,8 +1453,7 @@ sub set_global_db_thresholds {
   # 
   eval {
     if ($self->{handle}->fetchrow_array(q{
-        SELECT table_name
-        FROM information_schema.tables
+        SELECT table_name FROM information_schema.tables
         WHERE table_schema = ?
         AND table_name = 'CHECK_MYSQL_HEALTH_THRESHOLDS';
       }, $self->{database})) { # either --database... or information_schema
@@ -1782,6 +1846,16 @@ sub system_tmpdir {
   }
 }
 
+sub decode_password {
+  my $self = shift;
+  my $password = shift;
+  if ($password && $password =~ /^rfc3986:\/\/(.*)/) {
+    $password = $1;
+    $password =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
+  }
+  return $password;
+}
+
 
 package DBD::MySQL::Server::Connection;
 
@@ -1881,7 +1955,7 @@ sub init {
       if ($self->{handle} = DBI->connect(
           $self->{dsn},
           $self->{username},
-          $self->{password},
+          $self->decode_password($self->{password}),
           { RaiseError => 0, AutoCommit => 0, PrintError => 0 })) {
 #        $self->{handle}->do(q{
 #            ALTER SESSION SET NLS_NUMERIC_CHARACTERS=".," });
@@ -2064,6 +2138,7 @@ sub init {
     }
   }
   if (! exists $self->{errstr}) {
+    $self->{password} = $self->decode_password($self->{password});
     eval {
       my $mysql = '/'.'usr'.'/'.'bin'.'/'.'mysql';
       if (! -x $mysql) {
@@ -2078,7 +2153,7 @@ sub init {
             unless $self->{socket} || $self->{hostname} eq "localhost";
         $self->{sqlplus} .= sprintf "--socket=%s ", $self->{socket}
             if $self->{socket};
-        $self->{sqlplus} .= sprintf "--user=%s --password=%s < %s > %s",
+        $self->{sqlplus} .= sprintf "--user=%s --password='%s' < %s > %s",
             $self->{username}, $self->{password},
             $self->{sql_commandfile}, $self->{sql_resultfile};
       }
@@ -2312,6 +2387,19 @@ sub create_commandfile {
   close CMDCMD;
 }
 
+sub decode_password {
+  my $self = shift;
+  my $password = shift;
+  $password = $self->SUPER::decode_password($password);
+  # we call '...%s/%s@...' inside backticks where the second %s is the password
+  # abc'xcv -> ''abc'\''xcv''
+  # abc'`xcv -> ''abc'\''\`xcv''
+  if ($password && $password =~ /'/) {
+    $password = "'".join("\\'", map { "'".$_."'"; } split("'", $password))."'";
+  }
+  return $password;
+}
+
 
 package DBD::MySQL::Server::Connection::Sqlrelay;
 
@@ -2341,13 +2429,13 @@ sub init {
     }
   } else {
     if (! $self->{hostname} || ! $self->{username} || ! $self->{password}) {
-      if ($self->{hostname} && $self->{hostname} =~ /(\w+)\/(\w+)@([\.\w]+):(\d+)/) {
+      if ($self->{hostname} && $self->{hostname} =~ /(\w+?)\/(.+)@([\.\w]+):(\d+)/) {
         $self->{username} = $1;
         $self->{password} = $2;
         $self->{hostname} = $3;
         $self->{port} = $4;
         $self->{socket} = "";
-      } elsif ($self->{hostname} && $self->{hostname} =~ /(\w+)\/(\w+)@([\.\w]+):([\w\/]+)/) {
+      } elsif ($self->{hostname} && $self->{hostname} =~ /(\w+?)\/(.+)@([\.\w]+):([\w\/]+)/) {
         $self->{username} = $1;
         $self->{password} = $2;
         $self->{hostname} = $3;
@@ -2392,7 +2480,7 @@ sub init {
           sprintf("DBI:SQLRelay:host=%s;port=%d;socket=%s", 
           $self->{hostname}, $self->{port}, $self->{socket}),
           $self->{username},
-          $self->{password},
+          $self->decode_password($self->{password}),
           { RaiseError => 1, AutoCommit => 0, PrintError => 1 })) {
         $retval = $self;
         if ($self->{mode} =~ /^server::tnsping/ && $self->{handle}->ping()) {
@@ -3225,7 +3313,7 @@ use lib dirname($0);
 use vars qw ($PROGNAME $REVISION $CONTACT $TIMEOUT $STATEFILESDIR $needs_restart %commandline);
 
 $PROGNAME = "check_mysql_health";
-$REVISION = '$Revision: 2.1.8.2 $';
+$REVISION = '$Revision: 2.2.1 $';
 $CONTACT = 'gerhard.lausser@consol.de';
 $TIMEOUT = 60;
 $STATEFILESDIR = '/var/tmp/check_mysql_health';
@@ -3402,6 +3490,8 @@ sub print_usage () {
        the mysql db user's password
     --database
        the database's name. (default: information_schema)
+    --replication-user
+       the database's replication user name (default: replication)
     --warning
        the warning range
     --critical
@@ -3445,7 +3535,7 @@ EOUS
   option and it will encode the standard input.
 
   You can find the full documentation at 
-  http://www.consol.de/opensource/nagios/check-mysql-health
+  https://labs.consol.de/nagios/check_mysql_health/
 
 EOUS
   
@@ -3505,6 +3595,7 @@ my @params = (
     "socket|S=s",
     "username|u=s",
     "password|p=s",
+    "replication-user=s",
     "mycnf=s",
     "mycnfgroup=s",
     "mode|m=s",
@@ -3517,6 +3608,7 @@ my @params = (
     "dbthresholds:s",
     "absolute|a",
     "environment|e=s%",
+    "negate=s%",
     "method=s",
     "runas|r=s",
     "scream",
@@ -3763,6 +3855,7 @@ my %params = (
     password => $commandline{password} || 
         $ENV{NAGIOS__SERVICEMYSQL_PASS} ||
         $ENV{NAGIOS__HOSTMYSQL_PASS},
+    replication_user => $commandline{'replication-user'} || 'replication',
     mycnf => $commandline{mycnf} || 
         $ENV{NAGIOS__SERVICEMYSQL_MYCNF} ||
         $ENV{NAGIOS__HOSTMYSQL_MYCNF},
@@ -3785,6 +3878,7 @@ my %params = (
     verbose => $commandline{verbose},
     report => $commandline{report},
     labelformat => $commandline{labelformat},
+    negate => $commandline{negate},
 );
 
 my $server = undef;
