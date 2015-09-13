@@ -1,2 +1,0 @@
-#Cronjob Backup um 23:00
-00 23 * * * backup /opt/bi-s/software/scripts/backup/backup.sh > /opt/bi-s/cifs/backup/backup_`date +\%Y\%m\%d_\%H\%M`.log 2>&1
