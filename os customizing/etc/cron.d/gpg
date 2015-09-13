@@ -1,5 +1,5 @@
-# GPG Verify alle 15 Minuten
-*/15 * * * * root /opt/bi-s/software/scripts/gpg/gpg_check.sh > /opt/bi-s/cifs/rsyslog/logs/verify.log 2>&1
+# GPG Verify jede Stunde
+0 */1 * * * root /opt/bi-s/software/scripts/gpg/gpg_check.sh > /opt/bi-s/cifs/rsyslog/logs/verify.log 2>&1
 
 # um 0:05 Uhr Signatur der Daten
 05 00 * * * root /opt/bi-s/software/scripts/gpg/gpg_sign >> /opt/bi-s/cifs/rsyslog/logs/sign.log 2>&1
