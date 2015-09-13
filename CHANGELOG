@@ -36,7 +36,7 @@ Osiris 2.1
 		- No more Nessus
 		- Upgrade nedi 1.4.0p5
 	Others
-		- Upgrade SL 6.6
+		- Upgrade SL 6.7
 		- Upgrade Mediawiki 1.25.1
 		- all HTTP traffic is redirected to HTTPS
 		- No more MySQL
