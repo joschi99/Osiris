@@ -2,13 +2,15 @@
 # nagios: -epn
 
 package Monitoring::GLPlugin;
+# ABSTRACT: helper functions to build a upnp-based monitoring plugin
+
 use strict;
 use IO::File;
 use File::Basename;
 use Digest::MD5 qw(md5_hex);
 use Errno;
-#use AutoLoader;
 our $AUTOLOAD;
+our $VERSION = "1.0";
 
 use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
 
@@ -71,8 +73,7 @@ sub add_default_args {
   $self->add_arg(
       spec => 'regexp',
       help => "--regexp
-   if this parameter is used, name will be interpreted as a
-   regular expression",
+   Parameter name/name2/name3 will be interpreted as (perl) regular expression",
       required => 0,);
   $self->add_arg(
       spec => 'warning=s',
@@ -114,6 +115,12 @@ sub add_default_args {
       spec => 'name2=s',
       help => "--name2
    The secondary name of a component",
+      required => 0,
+  );
+  $self->add_arg(
+      spec => 'name3=s',
+      help => "--name3
+   The tertiary name of a component",
       required => 0,
   );
   $self->add_arg(
@@ -656,7 +663,8 @@ sub decode_password {
   my $self = shift;
   my $password = shift;
   if ($password && $password =~ /^rfc3986:\/\/(.*)/) {
-    $password =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
+    $password = $1;
+    $password =~ s/%([A-Za-z0-9]{2})/chr(hex($1))/seg;
   }
   return $password;
 }
@@ -1013,10 +1021,17 @@ sub valdiff {
       }
     }
     if ($mode eq "normal" || $mode eq "lookback" || $mode eq "lookback_freeze_chill") {
-      if ($self->{$_} =~ /^\d+$/) {
-        if ($self->opts->lookback) {
-          $last_values->{$_} = 0 if ! exists $last_values->{$_};
-          if ($self->{$_} >= $last_values->{$_}) {
+      if ($self->{$_} =~ /^\d+\.*\d*$/) {
+        $last_values->{$_} = 0 if ! exists $last_values->{$_};
+        if ($self->{$_} >= $last_values->{$_}) {
+          $self->{'delta_'.$_} = $self->{$_} - $last_values->{$_};
+        } elsif ($self->{$_} eq $last_values->{$_}) {
+          # dawischt! in einem fall wurde 131071.999023438 >= 131071.999023438 da oben nicht erkannt
+          # subtrahieren ging auch daneben, weil ein winziger negativer wert rauskam.
+          $self->{'delta_'.$_} = 0;
+        } else {
+          if ($mode =~ /lookback_freeze/) {
+            # hier koennen delta-werte auch negativ sein, wenn z.b. peers verschwinden
             $self->{'delta_'.$_} = $self->{$_} - $last_values->{$_};
           } else {
             # vermutlich db restart und zaehler alle auf null
@@ -1159,7 +1174,7 @@ sub protect_value {
     }
     $self->save_state(name => 'protect_'.$ident.'_'.$key, save => {
         $key => $laststate->{$key},
-        exception => $laststate->{exception}++,
+        exception => ++$laststate->{exception},
     });
   }
 }
@@ -1295,7 +1310,7 @@ sub AUTOLOAD {
         if $self->opts->verbose >= 2;
   } elsif ($AUTOLOAD =~ /^.*::(status_code|check_messages|nagios_exit|html_string|perfdata_string|selected_perfdata|check_thresholds|get_thresholds|opts)$/) {
     return $Monitoring::GLPlugin::plugin->$1(@_);
-  } elsif ($AUTOLOAD =~ /^.*::(clear_messages|suppress_messages|add_html|add_perfdata|override_opt|create_opt|set_thresholds|force_thresholds)$/) {
+  } elsif ($AUTOLOAD =~ /^.*::(reduce_messages|reduce_messages_short|clear_messages|suppress_messages|add_html|add_perfdata|override_opt|create_opt|set_thresholds|force_thresholds)$/) {
     $Monitoring::GLPlugin::plugin->$1(@_);
   } elsif ($AUTOLOAD =~ /^.*::mod_arg_(.*)$/) {
     return $Monitoring::GLPlugin::plugin->mod_arg($1, @_);
@@ -1341,6 +1356,7 @@ sub new {
     $self->{$_} = $params{$_};
   }
   bless $self, $class;
+  $self->{plugin} ||= $Monitoring::GLPlugin::pluginname;
   $self->{name} = $self->{plugin};
   $Monitoring::GLPlugin::plugin = $self;
 }
@@ -1542,6 +1558,22 @@ sub clear_messages {
   $code = (qw(ok warning critical unknown))[$code] if $code =~ /^\d+$/;
   $code = lc $code;
   $self->{messages}->{$code} = [];
+}
+
+sub reduce_messages_short {
+  my $self = shift;
+  my $message = shift || "no problems";
+  if ($self->opts->report && $self->opts->report eq "short") {
+    $self->clear_messages(OK);
+    $self->add_message(OK, $message) if ! $self->check_messages();
+  }
+}
+
+sub reduce_messages {
+  my $self = shift;
+  my $message = shift || "no problems";
+  $self->clear_messages(OK);
+  $self->add_message(OK, $message) if ! $self->check_messages();
 }
 
 sub check_messages {
@@ -2088,6 +2120,7 @@ sub check {
 
 package Monitoring::GLPlugin::SNMP;
 our @ISA = qw(Monitoring::GLPlugin);
+# ABSTRACT: helper functions to build a snmp-based monitoring plugin
 
 use strict;
 use File::Basename;
@@ -2095,6 +2128,7 @@ use Digest::MD5 qw(md5_hex);
 use Data::Dumper;
 use AutoLoader;
 our $AUTOLOAD;
+our $VERSION = "1.0";
 
 use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
 
@@ -2139,6 +2173,28 @@ sub v2tov3 {
       ! $self->opts->protocol eq '3') {
     $self->override_opt('protocol', '3') ;
   }
+}
+
+sub add_snmp_modes {
+  my $self = shift;
+  $self->add_mode(
+      internal => 'device::uptime',
+      spec => 'uptime',
+      alias => undef,
+      help => 'Check the uptime of the device',
+  );
+  $self->add_mode(
+      internal => 'device::walk',
+      spec => 'walk',
+      alias => undef,
+      help => 'Show snmpwalk command with the oids necessary for a simulation',
+  );
+  $self->add_mode(
+      internal => 'device::supportedmibs',
+      spec => 'supportedmibs',
+      alias => undef,
+      help => 'Shows the names of the mibs which this devices has implemented (only lausser may run this command)',
+  );
 }
 
 sub add_snmp_args {
@@ -2233,6 +2289,13 @@ sub add_snmp_args {
    Use it instead of --hostname',
       required => 0,
       env => 'SNMPWALK',
+  );
+  $self->add_arg(
+      spec => 'servertype=s',
+      help => '--servertype
+     The type of the network device: cisco (default). Use it if auto-detection
+     is not possible',
+      required => 0,
   );
   $self->add_arg(
       spec => 'oids=s',
@@ -4304,12 +4367,14 @@ sub unhex_mac {
 
 package Monitoring::GLPlugin::UPNP;
 our @ISA = qw(Monitoring::GLPlugin);
+# ABSTRACT: helper functions to build a upnp-based monitoring plugin
 
 use strict;
 use File::Basename;
 use Digest::MD5 qw(md5_hex);
 use AutoLoader;
 our $AUTOLOAD;
+our $VERSION = "1.0";
 
 use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
 
@@ -5555,6 +5620,340 @@ sub list {
   printf "%s\n", $self->{ifDescr};
 }
 
+package Server::Solaris;
+our @ISA = qw(Classes::Device);
+use strict;
+
+
+sub init {
+  my $self = shift;
+  if ($self->mode =~ /device::interfaces/) {
+    $self->analyze_and_check_interface_subsystem('Server::Solaris::Component::InterfaceSubsystem');
+  }
+}
+
+
+package Server::Solaris::Component::InterfaceSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub packet_size {
+  my $stats = shift;
+  if (defined $stats->{opackets64} && $stats->{opackets64} != 0 && defined $stats->{obytes64}) {
+    return int($stats->{obytes64} / $stats->{opackets64});
+  } elsif (defined $stats->{ipackets64} && $stats->{ipackets64} != 0 && defined $stats->{rbytes64}) {
+    return int($stats->{rbytes64} / $stats->{ipackets64});
+  } elsif (defined $stats->{opackets} && $stats->{opackets} != 0 && defined $stats->{obytes}) {
+    return int($stats->{obytes} / $stats->{opackets});
+  } elsif (defined $stats->{ipackets} && $stats->{ipackets} != 0 && defined $stats->{rbytes}) {
+    return int($stats->{rbytes} / $stats->{ipackets});
+  } else {
+    return 0;
+  }
+}
+
+sub init {
+  my $self = shift;
+  $self->{kstat} = Sun::Solaris::Kstat->new();
+  $self->{interfaces} = [];
+  $self->{kstat_interfaces} = {};
+  foreach my $module (keys %{$self->{kstat}}) {
+    foreach my $instance (keys %{$self->{kstat}->{$module}}) {
+      foreach my $name (keys %{$self->{kstat}->{$module}->{$instance}}) {
+        next if $name !~ /^$module/;
+        if (defined $self->{kstat}->{$module}->{$instance}->{$name}->{ifspeed} ||
+            $module eq "lo") {
+          if (! defined $self->{packet_size}) {
+            my $packet_size = packet_size($self->{kstat}->{$module}->{$instance}->{$name});
+            $self->{packet_size} = $packet_size if $packet_size;
+          }
+          if ($self->filter_name($name)) {
+            $self->{kstat_interfaces}->{$name} =
+                exists $self->{kstat}->{$module}->{$instance}->{mac} ?
+                $self->{kstat}->{$module}->{$instance}->{mac} :
+                $self->{kstat}->{$module}->{$instance}->{$name};
+          }
+        }
+      }
+    }
+  }
+  if ($self->mode =~ /device::interfaces::list/) {
+    foreach my $name (keys %{$self->{kstat_interfaces}}) {
+      my $tmpif = {
+        ifDescr => $name,
+      };
+      push(@{$self->{interfaces}},
+        Server::Solaris::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
+    }
+  } else {
+    foreach my $name (keys %{$self->{kstat_interfaces}}) {
+      my $tmpif = {};
+      my $stats = $self->{kstat_interfaces}->{$name};
+      $tmpif->{ifDescr} = $name;
+      $tmpif->{ifSnapTime} = $stats->{snaptime};
+      $tmpif->{ifSnapTime} =~ s/\..*//g;
+      if (defined $stats->{ifspeed}) {
+        $tmpif->{ifSpeed} = $stats->{ifspeed};
+      } elsif ($name =~ /^lo/) {
+        $tmpif->{ifSpeed} = 10000000000; # assume 10GBit backplane
+      }
+      if (defined $stats->{rbytes64}) {
+        $tmpif->{ifInOctets} = $stats->{rbytes64};
+      } elsif (defined $stats->{rbytes}) {
+        $tmpif->{ifInOctets} = $stats->{rbytes};
+      } elsif (defined $stats->{ipackets} && $self->{packet_size}) {
+        $tmpif->{ifInOctets} = $stats->{ipackets} * $self->{packet_size};
+      } else {
+        $tmpif->{ifInOctets} = 0;
+      }
+      if (defined $stats->{obytes64}) {
+        $tmpif->{ifOutOctets} = $stats->{obytes64};
+      } elsif (defined $stats->{obytes}) {
+        $tmpif->{ifOutOctets} = $stats->{obytes};
+      } elsif (defined $stats->{opackets} && $self->{packet_size}) {
+        $tmpif->{ifOutOctets} = $stats->{opackets} * $self->{packet_size};
+      } else {
+        $tmpif->{ifOutOctets} = 0;
+      }
+      $tmpif->{ifInErrors} = defined $stats->{ierrors} ? $stats->{ierrors} : 0;
+      $tmpif->{ifOutErrors} = defined $stats->{oerrors} ? $stats->{oerrors} : 0;
+      $tmpif->{ifInDiscards} = 0;
+      $tmpif->{ifOutDiscards} = 0;
+      if (defined $self->opts->ifspeed) {
+        $tmpif->{ifSpeed} = $self->opts->ifspeed * 1024*1024;
+      }
+      if (! defined $tmpif->{ifSpeed}) {
+        $self->add_unknown(sprintf "There is no /sys/class/net/%s/speed. Use --ifspeed", $name);
+      } else {
+        push(@{$self->{interfaces}},
+          Server::Solaris::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
+      }
+    }
+  }
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info('checking interfaces');
+  if (scalar(@{$self->{interfaces}}) == 0) {
+    $self->add_unknown('no interfaces');
+    return;
+  }
+  if ($self->mode =~ /device::interfaces::list/) {
+    foreach (sort {$a->{ifDescr} cmp $b->{ifDescr}} @{$self->{interfaces}}) {
+      $_->list();
+    }
+  } else {
+    foreach (@{$self->{interfaces}}) {
+      $_->check();
+    }
+  }
+}
+
+package Server::Solaris::Component::InterfaceSubsystem::Interface;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my $self = shift;
+  foreach (qw(ifSpeed ifInOctets ifInDiscards ifInErrors ifOutOctets ifOutDiscards ifOutErrors ifSnapTime)) {
+    $self->{$_} = 0 if ! defined $self->{$_};
+  }
+  if ($self->mode =~ /device::interfaces::traffic/) {
+    $self->valdiff({name => $self->{ifDescr}}, qw(ifInOctets ifInDiscards ifInErrors ifOutOctets ifOutDiscards ifOutErrors i
+fSnapTime));
+  } elsif ($self->mode =~ /device::interfaces::usage/) {
+    $self->valdiff({name => $self->{ifDescr}}, qw(ifInOctets ifOutOctets ifSnapTime));
+    $self->{delta_timestamp} = $self->{delta_ifSnapTime};
+    if ($self->{ifSpeed} == 0) {
+      # vlan graffl
+      $self->{inputUtilization} = 0;
+      $self->{outputUtilization} = 0;
+      $self->{maxInputRate} = 0;
+      $self->{maxOutputRate} = 0;
+    } else {
+      $self->{inputUtilization} = $self->{delta_ifInOctets} * 8 * 100 /
+          ($self->{delta_timestamp} * $self->{ifSpeed});
+      $self->{outputUtilization} = $self->{delta_ifOutOctets} * 8 * 100 /
+          ($self->{delta_timestamp} * $self->{ifSpeed});
+      $self->{maxInputRate} = $self->{ifSpeed};
+      $self->{maxOutputRate} = $self->{ifSpeed};
+    }
+    if (defined $self->opts->ifspeedin) {
+      $self->{inputUtilization} = $self->{delta_ifInOctets} * 8 * 100 /
+          ($self->{delta_timestamp} * $self->opts->ifspeedin);
+      $self->{maxInputRate} = $self->opts->ifspeedin;
+    }
+    if (defined $self->opts->ifspeedout) {
+      $self->{outputUtilization} = $self->{delta_ifOutOctets} * 8 * 100 /
+          ($self->{delta_timestamp} * $self->opts->ifspeedout);
+      $self->{maxOutputRate} = $self->opts->ifspeedout;
+    }
+    if (defined $self->opts->ifspeed) {
+      $self->{inputUtilization} = $self->{delta_ifInOctets} * 8 * 100 /
+          ($self->{delta_timestamp} * $self->opts->ifspeed);
+      $self->{outputUtilization} = $self->{delta_ifOutOctets} * 8 * 100 /
+          ($self->{delta_timestamp} * $self->opts->ifspeed);
+      $self->{maxInputRate} = $self->opts->ifspeed;
+      $self->{maxOutputRate} = $self->opts->ifspeed;
+    }
+    $self->{inputRate} = $self->{delta_ifInOctets} / $self->{delta_timestamp};
+    $self->{outputRate} = $self->{delta_ifOutOctets} / $self->{delta_timestamp};
+    $self->{maxInputRate} /= 8; # auf octets umrechnen wie die in/out
+    $self->{maxOutputRate} /= 8;
+    my $factor = 1/8; # default Bits
+    if ($self->opts->units) {
+      if ($self->opts->units eq "GB") {
+        $factor = 1024 * 1024 * 1024;
+      } elsif ($self->opts->units eq "MB") {
+        $factor = 1024 * 1024;
+      } elsif ($self->opts->units eq "KB") {
+        $factor = 1024;
+      } elsif ($self->opts->units eq "GBi") {
+        $factor = 1024 * 1024 * 1024 / 8;
+      } elsif ($self->opts->units eq "MBi") {
+        $factor = 1024 * 1024 / 8;
+      } elsif ($self->opts->units eq "KBi") {
+        $factor = 1024 / 8;
+      } elsif ($self->opts->units eq "B") {
+        $factor = 1;
+      } elsif ($self->opts->units eq "Bit") {
+        $factor = 1/8;
+      }
+    }
+    $self->{inputRate} /= $factor;
+    $self->{outputRate} /= $factor;
+    $self->{maxInputRate} /= $factor;
+    $self->{maxOutputRate} /= $factor;
+  } elsif ($self->mode =~ /device::interfaces::errors/) {
+    $self->valdiff({name => $self->{ifDescr}}, qw(ifInErrors ifOutErrors ifSnapTime));
+    $self->{delta_timestamp} = $self->{delta_ifSnapTime};
+    $self->{inputErrorRate} = $self->{delta_ifInErrors}
+        / $self->{delta_timestamp};
+    $self->{outputErrorRate} = $self->{delta_ifOutErrors}
+        / $self->{delta_timestamp};
+  } elsif ($self->mode =~ /FORCENOTIMPLEMENTEDERROR::device::interfaces::discards/) {
+    $self->valdiff({name => $self->{ifDescr}}, qw(ifInDiscards ifOutDiscards));
+    $self->{inputDiscardRate} = $self->{delta_ifInDiscards}
+        / $self->{delta_timestamp};
+    $self->{outputDiscardRate} = $self->{delta_ifOutDiscards}
+        / $self->{delta_timestamp};
+  } elsif ($self->mode =~ /device::interfaces::operstatus/) {
+  }
+  return $self;
+}
+
+sub check {
+  my $self = shift;
+  if ($self->mode =~ /device::interfaces::traffic/) {
+  } elsif ($self->mode =~ /device::interfaces::usage/) {
+    $self->add_info(sprintf 'interface %s usage is in:%.2f%% (%s) out:%.2f%% (%s)',
+        $self->{ifDescr},
+        $self->{inputUtilization},
+        sprintf("%.2f%s/s", $self->{inputRate},
+            ($self->opts->units ? $self->opts->units : 'Bits')),
+        $self->{outputUtilization},
+        sprintf("%.2f%s/s", $self->{outputRate},
+            ($self->opts->units ? $self->opts->units : 'Bits')));
+    $self->set_thresholds(
+        metric => $self->{ifDescr}.'_usage_in',
+        warning => 80,
+        critical => 90
+    );
+    my $in = $self->check_thresholds(
+        metric => $self->{ifDescr}.'_usage_in',
+        value => $self->{inputUtilization}
+    );
+    $self->set_thresholds(
+        metric => $self->{ifDescr}.'_usage_out',
+        warning => 80,
+        critical => 90
+    );
+    my $out = $self->check_thresholds(
+        metric => $self->{ifDescr}.'_usage_out',
+        value => $self->{outputUtilization}
+    );
+    my $level = ($in > $out) ? $in : ($out > $in) ? $out : $in;
+    $self->add_message($level);
+    $self->add_perfdata(
+        label => $self->{ifDescr}.'_usage_in',
+        value => $self->{inputUtilization},
+        uom => '%',
+    );
+    $self->add_perfdata(
+        label => $self->{ifDescr}.'_usage_out',
+        value => $self->{outputUtilization},
+        uom => '%',
+    );
+
+    my ($inwarning, $incritical) = $self->get_thresholds(
+        metric => $self->{ifDescr}.'_usage_in',
+    );
+    $self->add_perfdata(
+        label => $self->{ifDescr}.'_traffic_in',
+        value => $self->{inputRate},
+        uom => $self->opts->units,
+        places => 2,
+        min => 0,
+        max => $self->{maxInputRate},
+        warning => $self->{maxInputRate} / 100 * $inwarning,
+        critical => $self->{maxInputRate} / 100 * $incritical,
+    );
+    my ($outwarning, $outcritical) = $self->get_thresholds(
+        metric => $self->{ifDescr}.'_usage_out',
+    );
+    $self->add_perfdata(
+        label => $self->{ifDescr}.'_traffic_out',
+        value => $self->{outputRate},
+        uom => $self->opts->units,
+        places => 2,
+        min => 0,
+        max => $self->{maxOutputRate},
+        warning => $self->{maxOutputRate} / 100 * $outwarning,
+        critical => $self->{maxOutputRate} / 100 * $outcritical,
+    );
+  } elsif ($self->mode =~ /device::interfaces::errors/) {
+    $self->add_info(sprintf 'interface %s errors in:%.2f/s out:%.2f/s ',
+        $self->{ifDescr},
+        $self->{inputErrorRate} , $self->{outputErrorRate});
+    $self->set_thresholds(warning => 1, critical => 10);
+    my $in = $self->check_thresholds($self->{inputErrorRate});
+    my $out = $self->check_thresholds($self->{outputErrorRate});
+    my $level = ($in > $out) ? $in : ($out > $in) ? $out : $in;
+    $self->add_message($level);
+    $self->add_perfdata(
+        label => $self->{ifDescr}.'_errors_in',
+        value => $self->{inputErrorRate},
+    );
+    $self->add_perfdata(
+        label => $self->{ifDescr}.'_errors_out',
+        value => $self->{outputErrorRate},
+    );
+  } elsif ($self->mode =~ /device::interfaces::discards/) {
+    $self->add_info(sprintf 'interface %s discards in:%.2f/s out:%.2f/s ',
+        $self->{ifDescr},
+        $self->{inputDiscardRate} , $self->{outputDiscardRate});
+    $self->set_thresholds(warning => 1, critical => 10);
+    my $in = $self->check_thresholds($self->{inputDiscardRate});
+    my $out = $self->check_thresholds($self->{outputDiscardRate});
+    my $level = ($in > $out) ? $in : ($out > $in) ? $out : $in;
+    $self->add_message($level);
+    $self->add_perfdata(
+        label => $self->{ifDescr}.'_discards_in',
+        value => $self->{inputDiscardRate},
+    );
+    $self->add_perfdata(
+        label => $self->{ifDescr}.'_discards_out',
+        value => $self->{outputDiscardRate},
+    );
+  }
+}
+
+sub list {
+  my $self = shift;
+  printf "%s\n", $self->{ifDescr};
+}
+
 package Classes::Cisco::CISCOIPSECFLOWMONITOR::Component::VpnSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
@@ -6328,6 +6727,7 @@ sub init {
 package Classes::Cisco::IOS::Component::ConfigSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
+use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
 
 sub init {
   my $self = shift;
@@ -6346,46 +6746,54 @@ sub init {
 sub check {
   my $self = shift;
   my $info;
+  my $runningChangedMarginAfterReload = 300;
   $self->add_info('checking config');
   if ($self->check_messages()) {
     return;
   }
+
+  # Set default thresholds: Warning 1 hour, Critical 24 hours
+  $self->set_thresholds(warning => 3600, critical => 3600*24);
+
+  # How much is ccmHistoryRunningLastChanged ahead of ccmHistoryStartupLastChanged
+  # Note: the saved config could still be identical to the running config.
+
   # ccmHistoryRunningLastChanged
   # ccmHistoryRunningLastSaved - saving is ANY write (local/remote storage, terminal)
   # ccmHistoryStartupLastChanged 
-  $self->set_thresholds(warning => 3600, critical => 3600*24);
+  my $runningUnchangedDuration = time - $self->{ccmHistoryRunningLastChanged};
+  my $startupUnchangedDuration = time - $self->{ccmHistoryStartupLastChanged};
 
-  # how much is ccmHistoryRunningLastChanged ahead of ccmHistoryRunningLastSaved
-  # the current running config is definitively lost in case of an outage
-  my $unsaved_since =
-      $self->{ccmHistoryRunningLastChanged} > $self->{ccmHistoryRunningLastSaved} ?
-      time - $self->{ccmHistoryRunningLastChanged} : 0;
+  # If running config has been changed after the startup config
+  if ($runningUnchangedDuration < $startupUnchangedDuration) {
+    # After a reload the running config is reported to be ahead of the startup config by a few seconds to possibly
+    # a few minutes, while neither has been changed. Therefor a reload-margin is used.
+    # If running config is reported to have changed within the (5 minute) margin since the last reload
+    if (($runningUnchangedDuration + $runningChangedMarginAfterReload) > $self->uptime()) {
+      $self->add_ok(sprintf("running config has not changed since reload (using a %d second margin)",
+          $runningChangedMarginAfterReload));
+    } else {
+      # Running config is unsaved since $runningUnchangedDuration
+      my $errorlevel = $self->check_thresholds($runningUnchangedDuration);
 
-  # how much is ccmHistoryRunningLastSaved ahead of ccmHistoryStartupLastChanged
-  # the running config could have been saved for backup purposes.
-  # the saved config can still be identical to the saved running config
-  # if there are regular backups of the running config and no one messes
-  # with the latter without flushing it to the startup config, then i recommend
-  # to use --mitigation ok. this can be in an environment, where there is
-  # a specific day of the week reserved for maintenance and admins are forced
-  # to save their modifications to the startup-config.
-  my $unsynced_since = 
-      $self->{ccmHistoryRunningLastSaved} > $self->{ccmHistoryStartupLastChanged} ? 
-      time - $self->{ccmHistoryRunningLastSaved} : 0;
-  if ($unsaved_since) {
-    $self->add_info(sprintf "running config is modified and unsaved since %d minutes. your changes my be lost in case of a reboot",
-        $unsaved_since / 60);
+      if ($errorlevel != OK && defined $self->opts->mitigation()) {
+        $errorlevel = $self->opts->mitigation();
+      }
+
+      $self->add_info(sprintf "running config is ahead of startup config since %d minutes. changes will be lost in case of a reboot",
+          $runningUnchangedDuration / 60);
+      $self->add_message($errorlevel);
+    }
   } else {
-    $self->add_info("saved config is up to date");
+    $self->add_ok("saved config is up to date");
   }
-  $self->add_message($self->check_thresholds($unsaved_since));
-  if ($unsynced_since) {
-    my $errorlevel = defined $self->opts->mitigation() ?
-        $self->opts->mitigation() :
-        $self->check_thresholds($unsynced_since);
-    $self->add_info(sprintf "saved running config is ahead of startup config since %d minutes. device will boot with a config different from the one which was last saved",
-        $unsynced_since / 60);
-    $self->add_message($self->check_thresholds($unsaved_since));
+}
+
+sub dump {
+  my $self = shift;
+  printf "[CONFIG]\n";
+  foreach (qw(ccmHistoryRunningLastChanged ccmHistoryRunningLastSaved ccmHistoryStartupLastChanged)) {
+    printf "%s: %s (%s)\n", $_, $self->{$_}, scalar localtime $self->{$_};
   }
 }
 
@@ -7548,8 +7956,11 @@ sub check {
     $self->set_thresholds(warning => '14:', critical => '7:');
     $self->add_message($self->check_thresholds($self->{keyDaysUntilExpire}));
   }
+  $self->{keyDescription} =~ s/Ironport//gi;
+  $self->{keyDescription} =~ s/^ //;
+  $self->{keyDescription} =~ s/ /_/g;
   $self->add_perfdata(
-      label => sprintf('lifetime_%s', $self->{keyDaysUntilExpire}),
+      label => sprintf('lifetime_%s', $self->{keyDescription}),
       value => $self->{keyDaysUntilExpire},
       thresholds => $self->{keyIsPerpetual} eq 'true' ? 0 : 1,
   );
@@ -7855,6 +8266,230 @@ sub init {
   }
 }
 
+package Classes::OneOS::Component::EnvironmentalSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('ONEACCESS-SYS-MIB', [
+    ['comps', 'oacExpIMSysHwComponentsTable', 'Classes::OneOS::Component::EnvironmentalSubsystem::Comp' ],
+  ]);
+}
+
+sub check {
+  my $self = shift;
+  $self->add_ok("environmental hardware working fine, at least i hope so. this device did not implement any kind of hardware health status. use -vv to see a list of components");
+}
+
+
+package Classes::OneOS::Component::EnvironmentalSubsystem::Comp;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  my $label = sprintf 'usage', $self->{flat_indices};
+  $self->add_info(sprintf '%s %s %s',
+      $self->{flat_indices}, $self->{oacExpIMSysHwcTypeDefinition},
+      $self->{oacExpIMSysHwcDescription});
+}
+package Classes::OneOS::Component::CpuSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_objects('ONEACCESS-SYS-MIB', (qw(
+      oacSysCpuUsed)));
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info('checking cpu');
+  $self->add_info(sprintf 'cpu usage is %.2f%%',
+      $self->{oacSysCpuUsed});
+  $self->set_thresholds(warning => 80, critical => 90);
+  $self->add_message($self->check_thresholds($self->{oacSysCpuUsed}));
+  $self->add_perfdata(
+      label => 'cpu_usage',
+      value => $self->{oacSysCpuUsed},
+      uom => '%',
+  );
+}
+
+package Classes::OneOS::Component::MemSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_objects('ONEACCESS-SYS-MIB', (qw(
+      oacSysMemoryUsed)));
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info('checking memory');
+  $self->add_info(sprintf 'memory usage is %.2f%%',
+      $self->{oacSysMemoryUsed});
+  $self->set_thresholds(warning => 80, critical => 90);
+  $self->add_message($self->check_thresholds($self->{oacSysMemoryUsed}));
+  $self->add_perfdata(
+      label => 'memory_usage',
+      value => $self->{oacSysMemoryUsed},
+      uom => '%',
+  );
+}
+package Classes::OneOS;
+our @ISA = qw(Classes::Device);
+use strict;
+
+sub init {
+  my $self = shift;
+  if ($self->mode =~ /device::hardware::health/) {
+    $self->analyze_and_check_environmental_subsystem("Classes::OneOS::Component::EnvironmentalSubsystem");
+  } elsif ($self->mode =~ /device::hardware::load/) {
+    $self->analyze_and_check_cpu_subsystem("Classes::OneOS::Component::CpuSubsystem");
+  } elsif ($self->mode =~ /device::hardware::memory/) {
+    $self->analyze_and_check_mem_subsystem("Classes::OneOS::Component::MemSubsystem");
+  } else {
+    $self->no_such_mode();
+  }
+}
+
+package Classes::Nortel::S5::Component::EnvironmentalSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('S5-CHASSIS-MIB', [
+    ['comps', 's5ChasComTable', 'Classes::Nortel::S5::Component::EnvironmentalSubsystem::Comp' ],
+  ]);
+}
+
+sub check {
+  my $self = shift;
+  foreach (@{$self->{comps}}) {
+    $_->check();
+  }
+  if (! $self->check_messages()) {
+    $self->clear_ok();
+    $self->add_ok("environmental hardware working fine");
+  }
+}
+
+
+package Classes::Nortel::S5::Component::EnvironmentalSubsystem::Comp;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my $self = shift;
+  $self->{s5ChasComShortDescr} = $self->{s5ChasComDescr};
+}
+
+sub check {
+  my $self = shift;
+  my $label = sprintf 'usage', $self->{flat_indices};
+  $self->add_info(sprintf 'component %s/%s status is %s (admin %s)',
+      $self->{flat_indices}, $self->{s5ChasComShortDescr},
+      $self->{s5ChasComOperState}, $self->{s5ChasComAdminState});
+  if ($self->{s5ChasComOperState} eq 'removed') {
+  } elsif ($self->{s5ChasComAdminState} eq 'disable') {
+  } elsif (grep { $self->{s5ChasComOperState} eq $_ }
+      (qw(normal resetInProg testing disabled))) {
+    $self->add_ok();
+  } elsif (grep { $self->{s5ChasComOperState} eq $_ }
+      (qw(warning nonFatalErr))) {
+    $self->add_ok();
+  } elsif (grep { $self->{s5ChasComOperState} eq $_ }
+      (qw(fatalErr))) {
+    $self->add_critical();
+  } else {
+    $self->add_unknown();
+  }
+
+  $self->add_message($self->check_thresholds(
+      metric => $label, value => $self->{s5ChasUtilMemoryUsage}));
+}
+package Classes::Nortel::S5::Component::CpuSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('S5-CHASSIS-MIB', [
+    ['utils', 's5ChasUtilTable', 'Classes::Nortel::S5::Component::CpuSubsystem::Cpu' ],
+  ]);
+}
+
+
+package Classes::Nortel::S5::Component::CpuSubsystem::Cpu;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  my $label = sprintf 'cpu_%s_usage', $self->{flat_indices};
+  $self->add_info(sprintf 'cpu %s usage was %.2f%%(1min) %.2f%%(10min)',
+      $self->{flat_indices},,
+      $self->{s5ChasUtilCPUUsageLast1Minute},
+      $self->{s5ChasUtilCPUUsageLast10Minutes});
+  $self->set_thresholds(metric => $label.'_10m', warning => 80, critical => 90);
+  $self->add_message($self->check_thresholds(
+      metric => $label.'_10m', value => $self->{s5ChasUtilCPUUsageLast10Minutes}));
+  $self->add_perfdata(
+      label => $label.'_1m',
+      value => $self->{s5ChasUtilCPUUsageLast1Minute},
+      uom => '%',
+  );
+  $self->add_perfdata(
+      label => $label.'_10m',
+      value => $self->{s5ChasUtilCPUUsageLast10Minutes},
+      uom => '%',
+  );
+}
+package Classes::Nortel::S5::Component::MemSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('S5-CHASSIS-MIB', [
+    ['utils', 's5ChasUtilTable', 'Classes::Nortel::S5::Component::MemSubsystem::Mem' ],
+  ]);
+}
+
+
+package Classes::Nortel::S5::Component::MemSubsystem::Mem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my $self = shift;
+  $self->{s5ChasUtilMemoryUsage} = 100 - 
+      ($self->{s5ChasUtilMemoryAvailableMB} /
+      $self->{s5ChasUtilMemoryTotalMB} * 100);
+}
+
+sub check {
+  my $self = shift;
+  my $label = sprintf 'memory_%s_usage', $self->{flat_indices};
+  $self->add_info(sprintf 'memory %s usage is %.2f%%',
+      $self->{flat_indices},,
+      $self->{s5ChasUtilMemoryUsage});
+  $self->set_thresholds(metric => $label, warning => 80, critical => 90);
+  $self->add_message($self->check_thresholds(
+      metric => $label, value => $self->{s5ChasUtilMemoryUsage}));
+  $self->add_perfdata(
+      label => $label,
+      value => $self->{s5ChasUtilMemoryUsage},
+      uom => '%',
+  );
+}
+# 3fach indexiert, als tabelle ausgeben und durchnumerieren
 package Classes::Nortel::S5;
 our @ISA = qw(Classes::Device);
 use strict;
@@ -10023,7 +10658,6 @@ sub check {
   $self->add_info('checking routes');
   if ($self->mode =~ /device::routes::list/) {
     foreach (@{$self->{routes}}) {
-printf "%s\n", Data::Dumper::Dumper($_);
       $_->list();
     }
     $self->add_ok("have fun");
@@ -11760,9 +12394,7 @@ sub check {
   $self->{temperature_subsystem}->check();
   $self->{powersupply_subsystem}->check();
   $self->{disk_subsystem}->check();
-  if (! $self->check_messages()) {
-    $self->add_ok("environmental hardware working fine");
-  }
+  $self->reduce_messages("environmental hardware working fine");
 }
 
 sub dump {
@@ -13032,6 +13664,433 @@ sub init {
   }
 }
 
+package Classes::Alcatel::OmniAccess::Component::HaSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
+
+sub init {
+  my $self = shift;
+  if ($self->mode =~ /device::ha::role/) {
+    $self->get_snmp_objects('WLSX-SYSTEMEXT-MIB', (qw(wlsxSysExtSwitchRole)));
+    if (! $self->opts->role()) {
+      $self->opts->override_opt('role', 'master');
+    }
+  }
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info('checking ha');
+  $self->add_info(sprintf 'ha role is %s', $self->{wlsxSysExtSwitchRole});
+  if ($self->{wlsxSysExtSwitchRole} ne $self->opts->role()) {
+    $self->add_warning();
+    $self->add_warning(sprintf "expected role %s", $self->opts->role());
+  } else {
+    $self->add_ok();
+  }
+}
+
+package Classes::Alcatel::OmniAccess::Component::MemSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('WLSX-SYSTEMEXT-MIB', [
+      ['memories', 'wlsxSysExtMemoryTable', 'Classes::Alcatel::OmniAccess::Component::MemSubsystem::Memory'],
+  ]);
+}
+
+
+package Classes::Alcatel::OmniAccess::Component::MemSubsystem::Memory;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my $self = shift;
+  $self->{usage} = 100 * $self->{sysExtMemoryUsed} / $self->{sysExtMemorySize};
+}
+
+sub check {
+  my $self = shift;
+  my $label = sprintf 'memory_%s_usage', $self->{flat_indices};
+  $self->add_info(sprintf 'memory %s usage is %.2f%%',
+      $self->{flat_indices}, $self->{usage});
+  $self->set_thresholds(metric => $label, warning => 80, critical => 90);
+  $self->add_message($self->check_thresholds(
+      metric => $label, value => $self->{usage}));
+  $self->add_perfdata(
+      label => $label,
+      value => $self->{usage},
+      uom => '%',
+  );
+}
+
+package Classes::Alcatel::OmniAccess::Component::CpuSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('WLSX-SYSTEMEXT-MIB', [
+      ['memories', 'wlsxSysExtProcessorTable', 'Classes::Alcatel::OmniAccess::Component::CpuSubsystem::Cpu'],
+  ]);
+}
+
+
+package Classes::Alcatel::OmniAccess::Component::CpuSubsystem::Cpu;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  my $label = sprintf '%s_usage', lc $self->{sysExtProcessorDescr};
+  $label =~ s/\s+/_/g;
+  $self->add_info(sprintf '%s usage is %.2f%%',
+      $self->{sysExtProcessorDescr}, $self->{sysExtProcessorLoad});
+  $self->set_thresholds(metric => $label, warning => 80, critical => 90);
+  $self->add_message($self->check_thresholds(
+      metric => $label, value => $self->{sysExtProcessorLoad}));
+  $self->add_perfdata(
+      label => $label,
+      value => $self->{sysExtProcessorLoad},
+      uom => '%',
+  );
+}
+
+package Classes::Alcatel::OmniAccess::Component::PowersupplySubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('WLSX-SYSTEMEXT-MIB', [
+      ['powersupplies', 'wlsxSysExtPowerSupplyTable', 'Classes::Alcatel::OmniAccess::Component::PowersupplySubsystem::Powersupply'],
+  ]);
+}
+
+package Classes::Alcatel::OmniAccess::Component::PowersupplySubsystem::Powersupply;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf 'power supply %d status is %s',
+      $self->{flat_indices},
+      $self->{sysExtPowerSupplyStatus});
+  if ($self->{sysExtPowerSupplyStatus} ne 'active') {
+    $self->add_warning();
+  }
+}
+
+package Classes::Alcatel::OmniAccess::Component::FanSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('WLSX-SYSTEMEXT-MIB', [
+      ['fans', 'wlsxSysExtFanTable', 'Classes::Alcatel::OmniAccess::Component::FanSubsystem::Fan'],
+  ]);
+}
+
+package Classes::Alcatel::OmniAccess::Component::FanSubsystem::Fan;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf 'fan %d status is %s',
+      $self->{flat_indices},
+      $self->{sysExtFanStatus});
+  if ($self->{sysExtFanStatus} ne 'active') {
+    $self->add_warning();
+  }
+}
+
+package Classes::Alcatel::OmniAccess::Component::StorageSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('WLSX-SYSTEMEXT-MIB', [
+      ['storage', 'wlsxSysExtStorageTable', 'Classes::Alcatel::OmniAccess::Component::StorageSubsystem::Storageory'],
+  ]);
+}
+
+
+package Classes::Alcatel::OmniAccess::Component::StorageSubsystem::Storageory;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my $self = shift;
+  $self->{usage} = 100 * $self->{sysExtStorageUsed} / $self->{sysExtStorageSize};
+}
+
+sub check {
+  my $self = shift;
+  my $label = sprintf 'storage_%s_usage', $self->{sysExtStorageName};
+  $label =~ s/\s+/_/g;
+  $self->add_info(sprintf 'storage %s usage is %.2f%%',
+      $self->{sysExtStorageName}, $self->{usage});
+  $self->set_thresholds(metric => $label, warning => 80, critical => 90);
+  $self->add_message($self->check_thresholds(
+      metric => $label, value => $self->{usage}));
+  $self->add_perfdata(
+      label => $label,
+      value => $self->{usage},
+      uom => '%',
+  );
+}
+
+package Classes::Alcatel::OmniAccess::Component::EnvironmentalSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->{fan_subsystem} =
+      Classes::Alcatel::OmniAccess::Component::FanSubsystem->new();
+  $self->get_snmp_objects('WLSX-SYSTEMEXT-MIB', qw(
+      wlsxSysExtInternalTemparature));
+  $self->{powersupply_subsystem} = 
+      Classes::Alcatel::OmniAccess::Component::PowersupplySubsystem->new();
+  $self->{storage_subsystem} = 
+      Classes::Alcatel::OmniAccess::Component::StorageSubsystem->new();
+}
+
+sub check {
+  my $self = shift;
+  $self->{fan_subsystem}->check();
+  $self->{powersupply_subsystem}->check();
+  $self->{storage_subsystem}->check();
+  $self->add_info(sprintf "temperature is %s", $self->{wlsxSysExtInternalTemparature});
+  if ($self->{wlsxSysExtInternalTemparature} =~ /\(.*\)/ &&
+      $self->{wlsxSysExtInternalTemparature} !~ /normal/i) {
+    # -1.00 degrees Celsius (NORMAL)
+    # wenn kein "(irgendwas)" enthalten ist, dann gibt's wahrsch. eh keinen
+    # status, also ignorieren. und warum -1 grad normal sein sollen, muss
+    # mir auch mal einer erklaeren.
+    $self->add_warning();
+  }
+  $self->reduce_messages("environmental hardware working fine");
+}
+
+sub dump {
+  my $self = shift;
+  printf "[%s]\n%s\n", uc "wlsxSysExtInternalTemparature", 
+      $self->{wlsxSysExtInternalTemparature};
+  $self->{fan_subsystem}->dump();
+  $self->{powersupply_subsystem}->dump();
+  $self->{storage_subsystem}->dump();
+}
+
+package Classes::Alcatel::OmniAccess::Component::WlanSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_objects('WLSX-WLAN-MIB', qw(wlsxWlanTotalNumAccessPoints));
+  $self->get_snmp_tables('WLSX-WLAN-MIB', [
+      ['aps', 'wlsxWlanAPTable', 'Classes::Alcatel::OmniAccess::Component::WlanSubsystem::AP', sub { return $self->filter_name(shift->{wlanAPName}) } ],
+  ]);
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info('checking access points');
+  $self->{numOfAPs} = scalar (@{$self->{aps}});
+  $self->{apNameList} = [map { $_->{wlanAPName} } @{$self->{aps}}];
+  if (scalar (@{$self->{aps}}) == 0) {
+    $self->add_unknown('no access points found');
+  } else {
+    foreach (@{$self->{aps}}) {
+      $_->check();
+    }
+    if ($self->mode =~ /device::wlan::aps::watch/) {
+      $self->opts->override_opt('lookback', 1800) if ! $self->opts->lookback;
+      $self->valdiff({name => $self->{name}, lastarray => 1},
+          qw(apNameList numOfAPs));
+      if (scalar(@{$self->{delta_found_apNameList}}) > 0) {
+      #if (scalar(@{$self->{delta_found_apNameList}}) > 0 &&
+      #    $self->{delta_timestamp} > $self->opts->lookback) {
+        $self->add_warning(sprintf '%d new access points (%s)',
+            scalar(@{$self->{delta_found_apNameList}}),
+            join(", ", @{$self->{delta_found_apNameList}}));
+      }
+      if (scalar(@{$self->{delta_lost_apNameList}}) > 0) {
+        $self->add_critical(sprintf '%d access points missing (%s)',
+            scalar(@{$self->{delta_lost_apNameList}}),
+            join(", ", @{$self->{delta_lost_apNameList}}));
+      }
+      $self->add_ok(sprintf 'found %d access points', scalar (@{$self->{aps}}));
+      $self->add_perfdata(
+          label => 'num_aps',
+          value => scalar (@{$self->{aps}}),
+      );
+    } elsif ($self->mode =~ /device::wlan::aps::count/) {
+      $self->set_thresholds(warning => '10:', critical => '5:');
+      $self->add_message($self->check_thresholds(
+          scalar (@{$self->{aps}})), 
+          sprintf 'found %d access points', scalar (@{$self->{aps}}));
+      $self->add_perfdata(
+          label => 'num_aps',
+          value => scalar (@{$self->{aps}}),
+      );
+    } elsif ($self->mode =~ /device::wlan::aps::status/) {
+      $self->reduce_messages('no problems');
+      $self->add_perfdata(
+          label => 'num_aps',
+          value => scalar (@{$self->{aps}}),
+      );
+      $self->add_perfdata(
+          label => 'num_up_aps',
+          value => scalar (grep { $_->{wlanAPStatus} ne "down" } @{$self->{aps}}),
+      );
+      $self->add_perfdata(
+          label => 'num_down_aps',
+          value => scalar (grep { $_->{wlanAPStatus} eq "down" } @{$self->{aps}}),
+      );
+    } elsif ($self->mode =~ /device::wlan::aps::list/) {
+      foreach (@{$self->{aps}}) {
+        printf "%s\n", $_->{wlanAPName};
+      }
+    }
+  }
+}
+
+package Classes::Alcatel::OmniAccess::Component::WlanSubsystem::AP;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my $self = shift;
+  if ($self->{wlanAPMacAddress} && $self->{wlanAPMacAddress} =~ /0x(\w{2})(\w{2})(\w{2})(\w{2})(\w{2})(\w{2})/) {
+    $self->{wlanAPMacAddress} = join(".", map { hex($_) } ($1, $2, $3, $4, $5, $6));
+  } elsif ($self->{wlanAPMacAddress} && unpack("H12", $self->{wlanAPMacAddress}) =~ /(\w{2})(\w{2})(\w{2})(\w{2})(\w{2})(\w{2})/) {
+    $self->{wlanAPMacAddress} = join(".", map { hex($_) } ($1, $2, $3, $4, $5, $6));
+  }
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf 'access point %s is %s',
+      $self->{wlanAPName}, $self->{wlanAPStatus});
+  if ($self->mode =~ /device::wlan::aps::status/) {
+    if ($self->{wlanAPStatus} eq 'down') {
+      $self->add_critical();
+    } else {
+      $self->add_ok();
+    }
+  }
+}
+
+package Classes::Alcatel::OmniAccess;
+our @ISA = qw(Classes::Alcatel);
+use strict;
+
+sub init {
+  my $self = shift;
+  if ($self->mode =~ /device::hardware::health/) {
+    $self->analyze_and_check_environmental_subsystem("Classes::Alcatel::OmniAccess::Component::EnvironmentalSubsystem");
+    # waere praktischer, aber in diesem fall muss alarmdreck ausgeputzt werden
+    #$self->analyze_and_check_alarm_subsystem("Classes::ALARMMIB::Component::AlarmSubsystem");
+    $self->{components}->{alarm_subsystem} = Classes::ALARMMIB::Component::AlarmSubsystem->new();
+    @{$self->{components}->{alarm_subsystem}->{alarms}} = grep {
+      # accesspoint down und so interface-zeugs interessiert hier nicht, dafuer
+      # gibt's die *accesspoint*- und *interface*-modes
+      $_->{alarmActiveDescription} =~ /(Temperature is out of range)|(Out of range voltage)|(failed)/ ? 1 : undef;
+    } @{$self->{components}->{alarm_subsystem}->{alarms}};
+    $self->{components}->{alarm_subsystem}->{stats}->[0]->{alarmActiveStatsActiveCurrent} = scalar(@{$self->{components}->{alarm_subsystem}->{alarms}});
+    $self->check_alarm_subsystem();
+  } elsif ($self->mode =~ /device::hardware::load/) {
+    $self->analyze_and_check_cpu_subsystem("Classes::Alcatel::OmniAccess::Component::CpuSubsystem");
+  } elsif ($self->mode =~ /device::hardware::memory/) {
+    $self->analyze_and_check_mem_subsystem("Classes::Alcatel::OmniAccess::Component::MemSubsystem");
+  } elsif ($self->mode =~ /device::wlan/) {
+    $self->analyze_and_check_wlan_subsystem("Classes::Alcatel::OmniAccess::Component::WlanSubsystem");
+  } elsif ($self->mode =~ /device::ha::/) {
+    $self->analyze_and_check_ha_subsystem("Classes::Alcatel::OmniAccess::Component::HaSubsystem");
+  } else {
+    $self->no_such_mode();
+  }
+}
+
+package Classes::Alcatel;
+our @ISA = qw(Classes::Device);
+use strict;
+
+sub init {
+  my $self = shift;
+  if ($self->{productname} =~ /AOS.*OAW/i) {
+    bless $self, 'Classes::Alcatel::OmniAccess';
+    $self->debug('using Classes::Alcatel::OmniAccess');
+  }
+  if (ref($self) ne "Classes::Alcatel") {
+    $self->init();
+  }
+}
+
+package Classes::ALARMMIB::Component::AlarmSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('ALARM-MIB', [
+      #['models', 'alarmModelTable', 'Classes::ALARMMIB::Component::AlarmSubsystem::AlarmModel'],
+      #['variables', 'alarmActiveVariableTable', 'Classes::ALARMMIB::Component::AlarmSubsystem::AlarmVariable'],
+      ['alarms', 'alarmActiveTable', 'Classes::ALARMMIB::Component::AlarmSubsystem::Alarm'],
+      ['stats', 'alarmActiveStatsTable', 'Classes::ALARMMIB::Component::AlarmSubsystem::AlarmStats'],
+  ]);
+}
+
+
+package Classes::ALARMMIB::Component::AlarmSubsystem::Alarm;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+package Classes::ALARMMIB::Component::AlarmSubsystem::AlarmModel;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+package Classes::ALARMMIB::Component::AlarmSubsystem::AlarmVariable;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my $self = shift;
+  $self->{ceAlarmTypes} = [];
+  if ($self->{alarmActiveVariableValueType} eq 'octetString') {
+    my $index = 0;
+    $self->{alarmActiveVariableOctetStringVal2} = join("", map {
+      chr(hex($_));
+    } map {
+      /0x(\w+)/ ? $1 : $_;
+    } split(/\s+/, $self->{alarmActiveVariableOctetStringVal}));
+  }
+}
+
+
+package Classes::ALARMMIB::Component::AlarmSubsystem::AlarmStats;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf "there are %d active alarms",
+      $self->{alarmActiveStatsActiveCurrent});
+  if ($self->{alarmActiveStatsActiveCurrent}) {
+    $self->add_critical();
+  } else {
+    $self->add_ok();
+  }
+}
+
 package Classes::Foundry::Component::SLBSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
@@ -14083,6 +15142,10 @@ $Monitoring::GLPlugin::SNMP::mib_ids = {
   'IP-FORWARD-MIB' => '1.3.6.1.2.1.4.24',
   'RAPID-CITY-MIB' => '1.3.6.1.4.1.2272',
   'S5-CHASSIS-MIB' => '1.3.6.1.4.1.45.1.6.3',
+  'ONEACCESS-SYS-MIB' => '1.3.6.1.4.1.13191.1.100.671',
+  'ALCATEL-IND1-BASE-MIB' => '1.3.6.1.4.1.6486.800',
+  'WLSX-SYSTEMEXT-MIB' => '1.3.6.1.4.1.14823.2.2.1.2',
+  'WLSX-WLAN-MIB' => '1.3.6.1.4.1.14823.2.2.1.5',
 };
 
 $Monitoring::GLPlugin::SNMP::mibs_and_oids = {
@@ -20990,6 +22053,136 @@ $Monitoring::GLPlugin::SNMP::mibs_and_oids = {
     ospfAreaLsaCountNumber => '1.3.6.1.2.1.14.20.1.3',
   },
   'S5-CHASSIS-MIB' => {
+    s5ChasGen => '1.3.6.1.4.1.45.1.6.3.1',
+    s5ChasType => '1.3.6.1.4.1.45.1.6.3.1.1',
+    s5ChasDescr => '1.3.6.1.4.1.45.1.6.3.1.2',
+    s5ChasLocation => '1.3.6.1.4.1.45.1.6.3.1.3',
+    s5ChasContact => '1.3.6.1.4.1.45.1.6.3.1.4',
+    s5ChasVer => '1.3.6.1.4.1.45.1.6.3.1.5',
+    s5ChasSerNum => '1.3.6.1.4.1.45.1.6.3.1.6',
+    s5ChasGblPhysChngs => '1.3.6.1.4.1.45.1.6.3.1.7',
+    s5ChasGblPhysLstChng => '1.3.6.1.4.1.45.1.6.3.1.8',
+    s5ChasGblAttChngs => '1.3.6.1.4.1.45.1.6.3.1.9',
+    s5ChasGblAttLstChng => '1.3.6.1.4.1.45.1.6.3.1.10',
+    s5ChasGblConfChngs => '1.3.6.1.4.1.45.1.6.3.1.11',
+    s5ChasGblConfLstChng => '1.3.6.1.4.1.45.1.6.3.1.12',
+    s5ChasGrp => '1.3.6.1.4.1.45.1.6.3.2',
+    s5ChasGrpTable => '1.3.6.1.4.1.45.1.6.3.2.1',
+    s5ChasGrpEntry => '1.3.6.1.4.1.45.1.6.3.2.1.1',
+    s5ChasGrpIndx => '1.3.6.1.4.1.45.1.6.3.2.1.1.1',
+    s5ChasGrpType => '1.3.6.1.4.1.45.1.6.3.2.1.1.2',
+    s5ChasGrpDescr => '1.3.6.1.4.1.45.1.6.3.2.1.1.3',
+    s5ChasGrpMaxEnts => '1.3.6.1.4.1.45.1.6.3.2.1.1.4',
+    s5ChasGrpNumEnts => '1.3.6.1.4.1.45.1.6.3.2.1.1.5',
+    s5ChasGrpPhysChngs => '1.3.6.1.4.1.45.1.6.3.2.1.1.6',
+    s5ChasGrpPhysLstChng => '1.3.6.1.4.1.45.1.6.3.2.1.1.7',
+    s5ChasGrpEncodeFactor => '1.3.6.1.4.1.45.1.6.3.2.1.1.8',
+    s5ChasCom => '1.3.6.1.4.1.45.1.6.3.3',
+    s5ChasComTable => '1.3.6.1.4.1.45.1.6.3.3.1',
+    s5ChasComEntry => '1.3.6.1.4.1.45.1.6.3.3.1.1',
+    s5ChasComGrpIndx => '1.3.6.1.4.1.45.1.6.3.3.1.1.1',
+    s5ChasComIndx => '1.3.6.1.4.1.45.1.6.3.3.1.1.2',
+    s5ChasComSubIndx => '1.3.6.1.4.1.45.1.6.3.3.1.1.3',
+    s5ChasComType => '1.3.6.1.4.1.45.1.6.3.3.1.1.4',
+    s5ChasComDescr => '1.3.6.1.4.1.45.1.6.3.3.1.1.5',
+    s5ChasComVer => '1.3.6.1.4.1.45.1.6.3.3.1.1.6',
+    s5ChasComSerNum => '1.3.6.1.4.1.45.1.6.3.3.1.1.7',
+    s5ChasComLstChng => '1.3.6.1.4.1.45.1.6.3.3.1.1.8',
+    s5ChasComAdminState => '1.3.6.1.4.1.45.1.6.3.3.1.1.9',
+    s5ChasComAdminStateDefinition => {
+      6 => 'test',
+      4 => 'enable',
+      5 => 'reset',
+      1 => 'other',
+      2 => 'notAvail',
+      3 => 'disable',
+    },
+    s5ChasComOperState => '1.3.6.1.4.1.45.1.6.3.3.1.1.10',
+    s5ChasComOperStateDefinition => {
+      7 => 'testing',
+      4 => 'disabled',
+      10 => 'fatalErr',
+      5 => 'normal',
+      12 => 'obsoleted',
+      11 => 'notConfig',
+      6 => 'resetInProg',
+      9 => 'nonFatalErr',
+      1 => 'other',
+      3 => 'removed',
+      8 => 'warning',
+      2 => 'notAvail',
+    },
+    s5ChasComMaxSubs => '1.3.6.1.4.1.45.1.6.3.3.1.1.11',
+    s5ChasComNumSubs => '1.3.6.1.4.1.45.1.6.3.3.1.1.12',
+    s5ChasComRelPos => '1.3.6.1.4.1.45.1.6.3.3.1.1.13',
+    s5ChasComLocation => '1.3.6.1.4.1.45.1.6.3.3.1.1.14',
+    s5ChasComGroupMap => '1.3.6.1.4.1.45.1.6.3.3.1.1.15',
+    s5ChasComBaseNumPorts => '1.3.6.1.4.1.45.1.6.3.3.1.1.16',
+    s5ChasComTotalNumPorts => '1.3.6.1.4.1.45.1.6.3.3.1.1.17',
+    s5ChasComIpAddress => '1.3.6.1.4.1.45.1.6.3.3.1.1.18',
+    s5ChasBrd => '1.3.6.1.4.1.45.1.6.3.4',
+    s5ChasBrdTable => '1.3.6.1.4.1.45.1.6.3.4.1',
+    s5ChasBrdEntry => '1.3.6.1.4.1.45.1.6.3.4.1.1',
+    s5ChasBrdIndx => '1.3.6.1.4.1.45.1.6.3.4.1.1.1',
+    s5ChasBrdLeds => '1.3.6.1.4.1.45.1.6.3.4.1.1.2',
+    s5ChasBrdNumAtt => '1.3.6.1.4.1.45.1.6.3.4.1.1.3',
+    s5ChasBrdAttChngs => '1.3.6.1.4.1.45.1.6.3.4.1.1.4',
+    s5ChasBrdAttLstChng => '1.3.6.1.4.1.45.1.6.3.4.1.1.5',
+    s5ChasBrdStatusDsply => '1.3.6.1.4.1.45.1.6.3.4.1.1.6',
+    s5ChasBrdDateCode => '1.3.6.1.4.1.45.1.6.3.4.1.1.7',
+    s5ChasBrdCfgSrc => '1.3.6.1.4.1.45.1.6.3.4.1.1.8',
+    s5ChasBrdCfgSrcDefinition => {
+      8 => 'smBrdCfg',
+      7 => 'smPrmMem',
+      6 => 'smDfltJmpr',
+      5 => 'sm',
+      1 => 'other',
+      4 => 'brdCfg',
+      3 => 'prmMem',
+      2 => 'dfltJmpr',
+    },
+    s5ChasBrdCfgChngs => '1.3.6.1.4.1.45.1.6.3.4.1.1.9',
+    s5ChasAttTable => '1.3.6.1.4.1.45.1.6.3.4.2',
+    s5ChasAttEntry => '1.3.6.1.4.1.45.1.6.3.4.2.1',
+    s5ChasAttBrdIndx => '1.3.6.1.4.1.45.1.6.3.4.2.1.1',
+    s5ChasAttIndx => '1.3.6.1.4.1.45.1.6.3.4.2.1.2',
+    s5ChasAttDfltAtt => '1.3.6.1.4.1.45.1.6.3.4.2.1.3',
+    s5ChasAttCurAtt => '1.3.6.1.4.1.45.1.6.3.4.2.1.4',
+    s5ChasAttChngs => '1.3.6.1.4.1.45.1.6.3.4.2.1.5',
+    s5ChasAttLstChng => '1.3.6.1.4.1.45.1.6.3.4.2.1.6',
+    s5ChasAttClusterConnCapability => '1.3.6.1.4.1.45.1.6.3.4.2.1.7',
+    s5ChasLocChanTable => '1.3.6.1.4.1.45.1.6.3.4.3',
+    s5ChasLocChanEntry => '1.3.6.1.4.1.45.1.6.3.4.3.1',
+    s5ChasLocChanBrdIndx => '1.3.6.1.4.1.45.1.6.3.4.3.1.1',
+    s5ChasLocChanIndx => '1.3.6.1.4.1.45.1.6.3.4.3.1.2',
+    s5ChasLocChanBkplMode => '1.3.6.1.4.1.45.1.6.3.4.3.1.3',
+    s5ChasLocChanBkplModeDefinition => {
+      2 => 'connected',
+      1 => 'other',
+      3 => 'notConnected',
+    },
+    s5ChasStore => '1.3.6.1.4.1.45.1.6.3.5',
+    s5ChasStoreTable => '1.3.6.1.4.1.45.1.6.3.5.1',
+    s5ChasStoreEntry => '1.3.6.1.4.1.45.1.6.3.5.1.1',
+    s5ChasStoreGrpIndx => '1.3.6.1.4.1.45.1.6.3.5.1.1.1',
+    s5ChasStoreComIndx => '1.3.6.1.4.1.45.1.6.3.5.1.1.2',
+    s5ChasStoreSubIndx => '1.3.6.1.4.1.45.1.6.3.5.1.1.3',
+    s5ChasStoreIndx => '1.3.6.1.4.1.45.1.6.3.5.1.1.4',
+    s5ChasStoreType => '1.3.6.1.4.1.45.1.6.3.5.1.1.5',
+    s5ChasStoreCurSize => '1.3.6.1.4.1.45.1.6.3.5.1.1.6',
+    s5ChasStoreCntntVer => '1.3.6.1.4.1.45.1.6.3.5.1.1.7',
+    s5ChasStoreFilename => '1.3.6.1.4.1.45.1.6.3.5.1.1.8',
+    s5ChasSm => '1.3.6.1.4.1.45.1.6.3.6',
+    s5ChasSmLeds => '1.3.6.1.4.1.45.1.6.3.6.1',
+    s5ChasSmDateCode => '1.3.6.1.4.1.45.1.6.3.6.2',
+    s5ChasTmpSnr => '1.3.6.1.4.1.45.1.6.3.7',
+    s5ChasTmpSnrTable => '1.3.6.1.4.1.45.1.6.3.7.1',
+    s5ChasTmpSnrEntry => '1.3.6.1.4.1.45.1.6.3.7.1.1',
+    s5ChasTmpSnrGrpIndx => '1.3.6.1.4.1.45.1.6.3.7.1.1.1',
+    s5ChasTmpSnrIndx => '1.3.6.1.4.1.45.1.6.3.7.1.1.2',
+    s5ChasTmpSnrSubIndx => '1.3.6.1.4.1.45.1.6.3.7.1.1.3',
+    s5ChasTmpSnrValue => '1.3.6.1.4.1.45.1.6.3.7.1.1.4',
+    s5ChasTmpSnrTmpValue => '1.3.6.1.4.1.45.1.6.3.7.1.1.5',
     s5ChasUtil => '1.3.6.1.4.1.45.1.6.3.8',
     s5ChasUtilTable => '1.3.6.1.4.1.45.1.6.3.8.1',
     s5ChasUtilEntry => '1.3.6.1.4.1.45.1.6.3.8.1.1',
@@ -21004,6 +22197,19 @@ $Monitoring::GLPlugin::SNMP::mibs_and_oids = {
     s5ChasUtilMemoryAvailable => '1.3.6.1.4.1.45.1.6.3.8.1.1.9',
     s5ChasUtilMemoryMinAvailable => '1.3.6.1.4.1.45.1.6.3.8.1.1.10',
     s5ChasUtilCPUUsageLast10Seconds => '1.3.6.1.4.1.45.1.6.3.8.1.1.11',
+    s5ChasUtilMemoryTotalMB => '1.3.6.1.4.1.45.1.6.3.8.1.1.12',
+    s5ChasUtilMemoryAvailableMB => '1.3.6.1.4.1.45.1.6.3.8.1.1.13',
+    s5ChasPs => '1.3.6.1.4.1.45.1.6.3.9',
+    s5ChasPsRpsuTable => '1.3.6.1.4.1.45.1.6.3.9.1',
+    s5ChasPsRpsuEntry => '1.3.6.1.4.1.45.1.6.3.9.1.1',
+    s5ChasPsRpsuGrpIndx => '1.3.6.1.4.1.45.1.6.3.9.1.1.1',
+    s5ChasPsRpsuIndx => '1.3.6.1.4.1.45.1.6.3.9.1.1.2',
+    s5ChasPsRpsuSubIndx => '1.3.6.1.4.1.45.1.6.3.9.1.1.3',
+    s5ChasPsRpsuType => '1.3.6.1.4.1.45.1.6.3.9.1.1.4',
+    s5ChasPsRpsuTypeDefinition => {
+      2 => 'nes',
+      1 => 'bayStack10',
+    },
   },
   'RAPID-CITY-MIB' => {
     rcSysCpuUtil => '1.3.6.1.4.1.2272.1.1.20',
@@ -21062,6 +22268,554 @@ $Monitoring::GLPlugin::SNMP::mibs_and_oids = {
     rcChasPowerSupplyDetailHardwareRevision => '1.3.6.1.4.1.2272.1.4.8.2.1.4',
     rcChasPowerSupplyDetailPartNumber => '1.3.6.1.4.1.2272.1.4.8.2.1.5',
     rcChasPowerSupplyDetailDescription => '1.3.6.1.4.1.2272.1.4.8.2.1.6',
+  },
+  'ONEACCESS-SYS-MIB' => {
+    oacSysMIBModule => '1.3.6.1.4.1.13191.1.100.671',
+    oacExpIMSysStatistics => '1.3.6.1.4.1.13191.10.3.3.1',
+    oacSysMemStatistics => '1.3.6.1.4.1.13191.10.3.3.1.1',
+    oacSysMemoryFree => '1.3.6.1.4.1.13191.10.3.3.1.1.1',
+    oacSysMemoryAllocated => '1.3.6.1.4.1.13191.10.3.3.1.1.2',
+    oacSysMemoryTotal => '1.3.6.1.4.1.13191.10.3.3.1.1.3',
+    oacSysMemoryUsed => '1.3.6.1.4.1.13191.10.3.3.1.1.4',
+    oacSysCpuStatistics => '1.3.6.1.4.1.13191.10.3.3.1.2',
+    oacSysCpuUsed => '1.3.6.1.4.1.13191.10.3.3.1.2.1',
+    oacSysSecureCrashlogCount => '1.3.6.1.4.1.13191.10.3.3.1.100',
+    oacExpIMSysHardwareDescription => '1.3.6.1.4.1.13191.10.3.3.2',
+    oacSysIMSysMainBoard => '1.3.6.1.4.1.13191.10.3.3.2.1',
+    oacSysIMSysMainIdentifier => '1.3.6.1.4.1.13191.10.3.3.2.1.1',
+    oacSysIMSysMainManufacturedIdentity => '1.3.6.1.4.1.13191.10.3.3.2.1.2',
+    oacSysIMSysMainManufacturedDate => '1.3.6.1.4.1.13191.10.3.3.2.1.3',
+    oacSysIMSysMainCPU => '1.3.6.1.4.1.13191.10.3.3.2.1.4',
+    oacSysIMSysMainBSPVersion => '1.3.6.1.4.1.13191.10.3.3.2.1.5',
+    oacSysIMSysMainBootVersion => '1.3.6.1.4.1.13191.10.3.3.2.1.6',
+    oacSysIMSysMainBootDateCreation => '1.3.6.1.4.1.13191.10.3.3.2.1.7',
+    oacExpIMSysHwComponents => '1.3.6.1.4.1.13191.10.3.3.2.2',
+    oacExpIMSysHwComponentsCount => '1.3.6.1.4.1.13191.10.3.3.2.2.1',
+    oacExpIMSysHwComponentsTable => '1.3.6.1.4.1.13191.10.3.3.2.2.2',
+    oacExpIMSysHwComponentsEntry => '1.3.6.1.4.1.13191.10.3.3.2.2.2.1',
+    oacExpIMSysHwcIndex => '1.3.6.1.4.1.13191.10.3.3.2.2.2.1.1',
+    oacExpIMSysHwcClass => '1.3.6.1.4.1.13191.10.3.3.2.2.2.1.2',
+    oacExpIMSysHwcClassDefinitions => {
+      0 => 'board',
+      1 => 'cpu',
+      2 => 'slot',
+    },
+    oacExpIMSysHwcType => '1.3.6.1.4.1.13191.10.3.3.2.2.2.1.3',
+    oacExpIMSysHwcTypeDefinition => {
+      0 => 'mainboard',
+      1 => 'microprocessor',
+      2 => 'ram',
+      3 => 'flash',
+      4 => 'dsp',
+      5 => 'uplink',
+      6 => 'module',
+    },
+    oacExpIMSysHwcDescription => '1.3.6.1.4.1.13191.10.3.3.2.2.2.1.4',
+    oacExpIMSysHwcSerialNumber => '1.3.6.1.4.1.13191.10.3.3.2.2.2.1.5',
+    oacExpIMSysHwcManufacturer => '1.3.6.1.4.1.13191.10.3.3.2.2.2.1.6',
+    oacExpIMSysHwcManufacturedDate => '1.3.6.1.4.1.13191.10.3.3.2.2.2.1.7',
+  },
+  'WLSX-WLAN-MIB' => {
+    wlsxWlanMIB => '1.3.6.1.4.1.14823.2.2.1.5',
+    wlsxWlanConfigGroup => '1.3.6.1.4.1.14823.2.2.1.5.1',
+    wlsxWlanStateGroup => '1.3.6.1.4.1.14823.2.2.1.5.2',
+    wlsxWlanAccessPointInfoGroup => '1.3.6.1.4.1.14823.2.2.1.5.2.1',
+    wlsxWlanTotalNumAccessPoints => '1.3.6.1.4.1.14823.2.2.1.5.2.1.1',
+    wlsxWlanTotalNumStationsAssociated => '1.3.6.1.4.1.14823.2.2.1.5.2.1.2',
+    wlsxWlanAPGroupTable => '1.3.6.1.4.1.14823.2.2.1.5.2.1.3',
+    wlsxWlanAPGroupEntry => '1.3.6.1.4.1.14823.2.2.1.5.2.1.3.1',
+    wlanAPGroup => '1.3.6.1.4.1.14823.2.2.1.5.2.1.3.1.1',
+    wlanAPNumAps => '1.3.6.1.4.1.14823.2.2.1.5.2.1.3.1.2',
+    wlsxWlanAPTable => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4',
+    wlsxWlanAPEntry => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1',
+    wlanAPMacAddress => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.1',
+    wlanAPIpAddress => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.2',
+    wlanAPName => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.3',
+    wlanAPGroupName => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.4',
+    wlanAPModel => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.5',
+    wlanAPSerialNumber => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.6',
+    wlanAPdot11aAntennaGain => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.7',
+    wlanAPdot11gAntennaGain => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.8',
+    wlanAPNumRadios => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.9',
+    wlanAPEnet1Mode => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.10',
+    wlanAPIpsecMode => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.11',
+    wlanAPUpTime => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.12',
+    wlanAPModelName => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.13',
+    wlanAPLocation => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.14',
+    wlanAPBuilding => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.15',
+    wlanAPFloor => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.16',
+    wlanAPLoc => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.17',
+    wlanAPExternalAntenna => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.18',
+    wlanAPStatus => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.19',
+    wlanAPStatusDefinition => {
+      1 => 'up',
+      2 => 'down',
+    },
+    wlanAPNumBootstraps => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.20',
+    wlanAPNumReboots => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.21',
+    wlanAPUnprovisioned => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.22',
+    wlanAPMonitorMode => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.23',
+    wlanAPFQLNBuilding => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.24',
+    wlanAPFQLNFloor => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.25',
+    wlanAPFQLN => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.26',
+    wlanAPFQLNCampus => '1.3.6.1.4.1.14823.2.2.1.5.2.1.4.1.27',
+    wlsxWlanRadioTable => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5',
+    wlsxWlanRadioEntry => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5.1',
+    wlanAPRadioNumber => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5.1.1',
+    wlanAPRadioType => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5.1.2',
+    wlanAPRadioChannel => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5.1.3',
+    wlanAPRadioTransmitPower => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5.1.4',
+    wlanAPRadioMode => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5.1.5',
+    wlanAPRadioUtilization => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5.1.6',
+    wlanAPRadioNumAssociatedClients => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5.1.7',
+    wlanAPRadioNumMonitoredClients => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5.1.8',
+    wlanAPRadioNumActiveBSSIDs => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5.1.9',
+    wlanAPRadioNumMonitoredBSSIDs => '1.3.6.1.4.1.14823.2.2.1.5.2.1.5.1.10',
+    wlsxWlanAPBssidTable => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7',
+    wlsxWlanAPBssidEntry => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1',
+    wlanAPBSSID => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.1',
+    wlanAPESSID => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.2',
+    wlanAPBssidSlot => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.3',
+    wlanAPBssidPort => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.4',
+    wlanAPBssidPhyType => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.5',
+    wlanAPBssidRogueType => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.6',
+    wlanAPBssidMode => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.7',
+    wlanAPBssidModeDefinition => 'WLSX-WLAN-MIB::wlanAPBssidMode',
+    wlanAPBssidChannel => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.8',
+    wlanAPBssidUpTime => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.9',
+    wlanAPBssidInactiveTime => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.10',
+    wlanAPBssidLoadBalancing => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.11',
+    wlanAPBssidNumAssociatedStations => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.12',
+    wlanAPBssidAPMacAddress => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.13',
+    wlanAPBssidPhyNumber => '1.3.6.1.4.1.14823.2.2.1.5.2.1.7.1.14',
+    wlsxWlanESSIDTable => '1.3.6.1.4.1.14823.2.2.1.5.2.1.8',
+    wlsxWlanESSIDEntry => '1.3.6.1.4.1.14823.2.2.1.5.2.1.8.1',
+    wlanESSID => '1.3.6.1.4.1.14823.2.2.1.5.2.1.8.1.1',
+    wlanESSIDNumStations => '1.3.6.1.4.1.14823.2.2.1.5.2.1.8.1.2',
+    wlanESSIDNumAccessPointsUp => '1.3.6.1.4.1.14823.2.2.1.5.2.1.8.1.3',
+    wlanESSIDNumAccessPointsDown => '1.3.6.1.4.1.14823.2.2.1.5.2.1.8.1.4',
+    wlanESSIDEncryptionType => '1.3.6.1.4.1.14823.2.2.1.5.2.1.8.1.5',
+    wlsxWlanESSIDVlanPoolTable => '1.3.6.1.4.1.14823.2.2.1.5.2.1.9',
+    wlsxWlanESSIDVlanPoolEntry => '1.3.6.1.4.1.14823.2.2.1.5.2.1.9.1',
+    wlanESSIDVlanId => '1.3.6.1.4.1.14823.2.2.1.5.2.1.9.1.1',
+    wlanESSIDVlanPoolStatus => '1.3.6.1.4.1.14823.2.2.1.5.2.1.9.1.2',
+    wlsxWlanStationInfoGroup => '1.3.6.1.4.1.14823.2.2.1.5.2.2',
+    wlsxWlanStationTable => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1',
+    wlsxWlanStationEntry => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1',
+    wlanStaPhyAddress => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.1',
+    wlanStaApBssid => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.2',
+    wlanStaPhyType => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.3',
+    wlanStaIsAuthenticated => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.4',
+    wlanStaIsAssociated => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.5',
+    wlanStaChannel => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.6',
+    wlanStaVlanId => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.7',
+    wlanStaVOIPState => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.8',
+    wlanStaVOIPProtocol => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.9',
+    wlanStaTransmitRate => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.10',
+    wlanStaAssociationID => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.11',
+    wlanStaAccessPointESSID => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.12',
+    wlanStaPhyNumber => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.13',
+    wlanStaRSSI => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.14',
+    wlanStaUpTime => '1.3.6.1.4.1.14823.2.2.1.5.2.2.1.1.15',
+    wlsxWlanStaAssociationFailureTable => '1.3.6.1.4.1.14823.2.2.1.5.2.2.2',
+    wlsxWlanStaAssociationFailureEntry => '1.3.6.1.4.1.14823.2.2.1.5.2.2.2.1',
+    wlanStaAssocFailureApName => '1.3.6.1.4.1.14823.2.2.1.5.2.2.2.1.1',
+    wlanStaAssocFailureApEssid => '1.3.6.1.4.1.14823.2.2.1.5.2.2.2.1.2',
+    wlanStaAssocFailurePhyNum => '1.3.6.1.4.1.14823.2.2.1.5.2.2.2.1.3',
+    wlanStaAssocFailurePhyType => '1.3.6.1.4.1.14823.2.2.1.5.2.2.2.1.4',
+    wlanStaAssocFailureElapsedTime => '1.3.6.1.4.1.14823.2.2.1.5.2.2.2.1.5',
+    wlanStaAssocFailureReason => '1.3.6.1.4.1.14823.2.2.1.5.2.2.2.1.6',
+    wlsxWlanAssociationInfoGroup => '1.3.6.1.4.1.14823.2.2.1.5.2.3',
+    wlsxWlanStatsGroup => '1.3.6.1.4.1.14823.2.2.1.5.3',
+    wlsxWlanAccessPointStatsGroup => '1.3.6.1.4.1.14823.2.2.1.5.3.1',
+    wlsxWlanAPStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1',
+    wlsxWlanAPStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1',
+    wlanAPCurrentChannel => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.1',
+    wlanAPNumClients => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.2',
+    wlanAPTxPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.3',
+    wlanAPTxBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.4',
+    wlanAPRxPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.5',
+    wlanAPRxBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.6',
+    wlanAPTxDeauthentications => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.7',
+    wlanAPRxDeauthentications => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.8',
+    wlanAPChannelThroughput => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.9',
+    wlanAPFrameRetryRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.10',
+    wlanAPFrameLowSpeedRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.11',
+    wlanAPFrameNonUnicastRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.12',
+    wlanAPFrameFragmentationRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.13',
+    wlanAPFrameBandwidthRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.14',
+    wlanAPFrameRetryErrorRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.15',
+    wlanAPChannelErrorRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.16',
+    wlanAPFrameReceiveErrorRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.17',
+    wlanAPRxDataPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.18',
+    wlanAPRxDataBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.19',
+    wlanAPTxDataPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.20',
+    wlanAPTxDataBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.21',
+    wlanAPRxDataPkts64 => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.22',
+    wlanAPRxDataBytes64 => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.23',
+    wlanAPTxDataPkts64 => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.24',
+    wlanAPTxDataBytes64 => '1.3.6.1.4.1.14823.2.2.1.5.3.1.1.1.25',
+    wlsxWlanAPRateStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2',
+    wlsxWlanAPRateStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1',
+    wlanAPStatsTotPktsAt1Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.1',
+    wlanAPStatsTotBytesAt1Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.2',
+    wlanAPStatsTotPktsAt2Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.3',
+    wlanAPStatsTotBytesAt2Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.4',
+    wlanAPStatsTotPktsAt5Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.5',
+    wlanAPStatsTotBytesAt5Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.6',
+    wlanAPStatsTotPktsAt11Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.7',
+    wlanAPStatsTotBytesAt11Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.8',
+    wlanAPStatsTotPktsAt6Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.9',
+    wlanAPStatsTotBytesAt6Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.10',
+    wlanAPStatsTotPktsAt12Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.11',
+    wlanAPStatsTotBytesAt12Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.12',
+    wlanAPStatsTotPktsAt18Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.13',
+    wlanAPStatsTotBytesAt18Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.14',
+    wlanAPStatsTotPktsAt24Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.15',
+    wlanAPStatsTotBytesAt24Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.16',
+    wlanAPStatsTotPktsAt36Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.17',
+    wlanAPStatsTotBytesAt36Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.18',
+    wlanAPStatsTotPktsAt48Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.19',
+    wlanAPStatsTotBytesAt48Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.20',
+    wlanAPStatsTotPktsAt54Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.21',
+    wlanAPStatsTotBytesAt54Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.22',
+    wlanAPStatsTotPktsAt9Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.23',
+    wlanAPStatsTotBytesAt9Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.1.2.1.24',
+    wlsxWlanAPDATypeStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.1.3',
+    wlsxWlanAPDATypeStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.1.3.1',
+    wlanAPStatsTotDABroadcastPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.3.1.1',
+    wlanAPStatsTotDABroadcastBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.3.1.2',
+    wlanAPStatsTotDAMulticastPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.3.1.3',
+    wlanAPStatsTotDAMulticastBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.3.1.4',
+    wlanAPStatsTotDAUnicastPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.3.1.5',
+    wlanAPStatsTotDAUnicastBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.3.1.6',
+    wlsxWlanAPFrameTypeStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.1.4',
+    wlsxWlanAPFrameTypeStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.1.4.1',
+    wlanAPStatsTotMgmtPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.4.1.1',
+    wlanAPStatsTotMgmtBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.4.1.2',
+    wlanAPStatsTotCtrlPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.4.1.3',
+    wlanAPStatsTotCtrlBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.4.1.4',
+    wlanAPStatsTotDataPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.4.1.5',
+    wlanAPStatsTotDataBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.4.1.6',
+    wlsxWlanAPPktSizeStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.1.5',
+    wlsxWlanAPPktSizeStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.1.5.1',
+    wlanAPStatsPkts63Bytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.5.1.1',
+    wlanAPStatsPkts64To127 => '1.3.6.1.4.1.14823.2.2.1.5.3.1.5.1.2',
+    wlanAPStatsPkts128To255 => '1.3.6.1.4.1.14823.2.2.1.5.3.1.5.1.3',
+    wlanAPStatsPkts256To511 => '1.3.6.1.4.1.14823.2.2.1.5.3.1.5.1.4',
+    wlanAPStatsPkts512To1023 => '1.3.6.1.4.1.14823.2.2.1.5.3.1.5.1.5',
+    wlanAPStatsPkts1024To1518 => '1.3.6.1.4.1.14823.2.2.1.5.3.1.5.1.6',
+    wlsxWlanAPChStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6',
+    wlsxWlanAPChStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1',
+    wlanAPChannelNumber => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.1',
+    wlanAPChNumStations => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.2',
+    wlanAPChTotPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.3',
+    wlanAPChTotBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.4',
+    wlanAPChTotRetryPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.5',
+    wlanAPChTotFragmentedPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.6',
+    wlanAPChTotPhyErrPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.7',
+    wlanAPChTotMacErrPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.8',
+    wlanAPChNoise => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.9',
+    wlanAPChCoverageIndex => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.10',
+    wlanAPChInterferenceIndex => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.11',
+    wlanAPChFrameRetryRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.12',
+    wlanAPChFrameLowSpeedRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.13',
+    wlanAPChFrameNonUnicastRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.14',
+    wlanAPChFrameFragmentationRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.15',
+    wlanAPChFrameBandwidthRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.16',
+    wlanAPChFrameRetryErrorRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.17',
+    wlanAPChBusyRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.18',
+    wlanAPChNumAPs => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.19',
+    wlanAPChFrameReceiveErrorRate => '1.3.6.1.4.1.14823.2.2.1.5.3.1.6.1.20',
+    wlsxWlanStationStatsGroup => '1.3.6.1.4.1.14823.2.2.1.5.3.2',
+    wlsxWlanStationStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1',
+    wlsxWlanStationStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1',
+    wlanStaChannelNum => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.1',
+    wlanStaTxPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.2',
+    wlanStaTxBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.3',
+    wlanStaRxPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.4',
+    wlanStaRxBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.5',
+    wlanStaTxBCastPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.6',
+    wlanStaRxBCastBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.7',
+    wlanStaTxMCastPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.8',
+    wlanStaRxMCastBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.9',
+    wlanStaDataPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.10',
+    wlanStaCtrlPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.11',
+    wlanStaNumAssocRequests => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.12',
+    wlanStaNumAuthRequests => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.13',
+    wlanStaTxDeauthentications => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.14',
+    wlanStaRxDeauthentications => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.15',
+    wlanStaFrameRetryRate => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.16',
+    wlanStaFrameLowSpeedRate => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.17',
+    wlanStaFrameNonUnicastRate => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.18',
+    wlanStaFrameFragmentationRate => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.19',
+    wlanStaFrameBandwidthRate => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.20',
+    wlanStaFrameRetryErrorRate => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.21',
+    wlanStaFrameReceiveErrorRate => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.22',
+    wlanStaTxBCastBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.23',
+    wlanStaTxMCastBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.1.1.24',
+    wlsxWlanStaRateStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2',
+    wlsxWlanStaRateStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1',
+    wlanStaTxPktsAt1Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.1',
+    wlanStaTxBytesAt1Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.2',
+    wlanStaTxPktsAt2Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.3',
+    wlanStaTxBytesAt2Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.4',
+    wlanStaTxPktsAt5Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.5',
+    wlanStaTxBytesAt5Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.6',
+    wlanStaTxPktsAt11Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.7',
+    wlanStaTxBytesAt11Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.8',
+    wlanStaTxPktsAt6Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.9',
+    wlanStaTxBytesAt6Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.10',
+    wlanStaTxPktsAt12Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.11',
+    wlanStaTxBytesAt12Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.12',
+    wlanStaTxPktsAt18Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.13',
+    wlanStaTxBytesAt18Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.14',
+    wlanStaTxPktsAt24Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.15',
+    wlanStaTxBytesAt24Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.16',
+    wlanStaTxPktsAt36Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.17',
+    wlanStaTxBytesAt36Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.18',
+    wlanStaTxPktsAt48Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.19',
+    wlanStaTxBytesAt48Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.20',
+    wlanStaTxPktsAt54Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.21',
+    wlanStaTxBytesAt54Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.22',
+    wlanStaRxPktsAt1Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.23',
+    wlanStaRxBytesAt1Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.24',
+    wlanStaRxPktsAt2Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.25',
+    wlanStaRxBytesAt2Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.26',
+    wlanStaRxPktsAt5Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.27',
+    wlanStaRxBytesAt5Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.28',
+    wlanStaRxPktsAt11Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.29',
+    wlanStaRxBytesAt11Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.30',
+    wlanStaRxPktsAt6Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.31',
+    wlanStaRxBytesAt6Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.32',
+    wlanStaRxPktsAt12Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.33',
+    wlanStaRxBytesAt12Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.34',
+    wlanStaRxPktsAt18Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.35',
+    wlanStaRxBytesAt18Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.36',
+    wlanStaRxPktsAt24Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.37',
+    wlanStaRxBytesAt24Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.38',
+    wlanStaRxPktsAt36Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.39',
+    wlanStaRxBytesAt36Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.40',
+    wlanStaRxPktsAt48Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.41',
+    wlanStaRxBytesAt48Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.42',
+    wlanStaRxPktsAt54Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.43',
+    wlanStaRxBytesAt54Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.44',
+    wlanStaTxPktsAt9Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.45',
+    wlanStaTxBytesAt9Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.46',
+    wlanStaRxPktsAt9Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.47',
+    wlanStaRxBytesAt9Mbps => '1.3.6.1.4.1.14823.2.2.1.5.3.2.2.1.48',
+    wlsxWlanStaDATypeStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.2.3',
+    wlsxWlanStaDATypeStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.2.3.1',
+    wlanStaTxDABroadcastPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.3.1.1',
+    wlanStaTxDABroadcastBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.3.1.2',
+    wlanStaTxDAMulticastPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.3.1.3',
+    wlanStaTxDAMulticastBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.3.1.4',
+    wlanStaTxDAUnicastPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.3.1.5',
+    wlanStaTxDAUnicastBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.3.1.6',
+    wlsxWlanStaFrameTypeStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4',
+    wlsxWlanStaFrameTypeStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1',
+    wlanStaTxMgmtPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.1',
+    wlanStaTxMgmtBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.2',
+    wlanStaTxCtrlPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.3',
+    wlanStaTxCtrlBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.4',
+    wlanStaTxDataPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.5',
+    wlanStaTxDataBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.6',
+    wlanStaRxMgmtPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.7',
+    wlanStaRxMgmtBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.8',
+    wlanStaRxCtrlPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.9',
+    wlanStaRxCtrlBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.10',
+    wlanStaRxDataPkts => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.11',
+    wlanStaRxDataBytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.4.1.12',
+    wlsxWlanStaPktSizeStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5',
+    wlsxWlanStaPktSizeStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1',
+    wlanStaTxPkts63Bytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.1',
+    wlanStaTxPkts64To127 => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.2',
+    wlanStaTxPkts128To255 => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.3',
+    wlanStaTxPkts256To511 => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.4',
+    wlanStaTxPkts512To1023 => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.5',
+    wlanStaTxPkts1024To1518 => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.6',
+    wlanStaRxPkts63Bytes => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.7',
+    wlanStaRxPkts64To127 => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.8',
+    wlanStaRxPkts128To255 => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.9',
+    wlanStaRxPkts256To511 => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.10',
+    wlanStaRxPkts512To1023 => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.11',
+    wlanStaRxPkts1024To1518 => '1.3.6.1.4.1.14823.2.2.1.5.3.2.5.1.12',
+    wlsxWlanSwitchStatsGroup => '1.3.6.1.4.1.14823.2.2.1.5.3.3',
+    wlsxWlanEthStatsTable => '1.3.6.1.4.1.14823.2.2.1.5.3.3.2',
+    wlsxWlanEthStatsEntry => '1.3.6.1.4.1.14823.2.2.1.5.3.3.2.1',
+    wlanEthRxRate => '1.3.6.1.4.1.14823.2.2.1.5.3.3.2.1.1',
+    wlanEthTxRate => '1.3.6.1.4.1.14823.2.2.1.5.3.3.2.1.2',
+  },
+  'WLSX-SYSTEMEXT-MIB' => {
+    wlsxSystemExtMIB => '1.3.6.1.4.1.14823.2.2.1.2',
+    wlsxSystemExtGroup => '1.3.6.1.4.1.14823.2.2.1.2.1',
+    wlsxSysExtSwitchIp => '1.3.6.1.4.1.14823.2.2.1.2.1.1',
+    wlsxSysExtHostname => '1.3.6.1.4.1.14823.2.2.1.2.1.2',
+    wlsxSysExtModelName => '1.3.6.1.4.1.14823.2.2.1.2.1.3',
+    wlsxSysExtSwitchRole => '1.3.6.1.4.1.14823.2.2.1.2.1.4',
+    wlsxSysExtSwitchRoleDefinition => 'ARUBA-TC::ArubaSwitchRole',
+    wlsxSysExtSwitchMasterIp => '1.3.6.1.4.1.14823.2.2.1.2.1.5',
+    wlsxSysExtSwitchDate => '1.3.6.1.4.1.14823.2.2.1.2.1.6',
+    wlsxSysExtSwitchBaseMacaddress => '1.3.6.1.4.1.14823.2.2.1.2.1.7',
+    wlsxSysExtFanTrayAssemblyNumber => '1.3.6.1.4.1.14823.2.2.1.2.1.8',
+    wlsxSysExtFanTraySerialNumber => '1.3.6.1.4.1.14823.2.2.1.2.1.9',
+    wlsxSysExtInternalTemparature => '1.3.6.1.4.1.14823.2.2.1.2.1.10',
+    wlsxSysExtLicenseSerialNumber => '1.3.6.1.4.1.14823.2.2.1.2.1.11',
+    wlsxSysExtSwitchLicenseCount => '1.3.6.1.4.1.14823.2.2.1.2.1.12',
+    wlsxSysExtProcessorTable => '1.3.6.1.4.1.14823.2.2.1.2.1.13',
+    wlsxSysExtProcessorEntry => '1.3.6.1.4.1.14823.2.2.1.2.1.13.1',
+    sysExtProcessorID => '1.3.6.1.4.1.14823.2.2.1.2.1.13.1.1',
+    sysExtProcessorDescr => '1.3.6.1.4.1.14823.2.2.1.2.1.13.1.2',
+    sysExtProcessorLoad => '1.3.6.1.4.1.14823.2.2.1.2.1.13.1.3',
+    wlsxSysExtStorageTable => '1.3.6.1.4.1.14823.2.2.1.2.1.14',
+    wlsxSysExtStorageEntry => '1.3.6.1.4.1.14823.2.2.1.2.1.14.1',
+    sysExtStorageIndex => '1.3.6.1.4.1.14823.2.2.1.2.1.14.1.1',
+    sysExtStorageType => '1.3.6.1.4.1.14823.2.2.1.2.1.14.1.2',
+    sysExtStorageTypeDefinition => 'WLSX-SYSTEMEXT-MIB::sysExtStorageType',
+    sysExtStorageSize => '1.3.6.1.4.1.14823.2.2.1.2.1.14.1.3',
+    sysExtStorageUsed => '1.3.6.1.4.1.14823.2.2.1.2.1.14.1.4',
+    sysExtStorageName => '1.3.6.1.4.1.14823.2.2.1.2.1.14.1.5',
+    wlsxSysExtMemoryTable => '1.3.6.1.4.1.14823.2.2.1.2.1.15',
+    wlsxSysExtMemoryEntry => '1.3.6.1.4.1.14823.2.2.1.2.1.15.1',
+    sysExtMemoryIndex => '1.3.6.1.4.1.14823.2.2.1.2.1.15.1.1',
+    sysExtMemorySize => '1.3.6.1.4.1.14823.2.2.1.2.1.15.1.2',
+    sysExtMemoryUsed => '1.3.6.1.4.1.14823.2.2.1.2.1.15.1.3',
+    sysExtMemoryFree => '1.3.6.1.4.1.14823.2.2.1.2.1.15.1.4',
+    wlsxSysExtCardTable => '1.3.6.1.4.1.14823.2.2.1.2.1.16',
+    wlsxSysExtCardEntry => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1',
+    sysExtCardSlot => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.1',
+    sysExtCardType => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.2',
+    sysExtCardNumOfPorts => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.3',
+    sysExtCardNumOfFastethernetPorts => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.4',
+    sysExtCardNumOfGigPorts => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.5',
+    sysExtCardSerialNo => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.6',
+    sysExtCardAssemblyNo => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.7',
+    sysExtCardManufacturingDate => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.8',
+    sysExtCardHwRevision => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.9',
+    sysExtCardFpgaRevision => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.10',
+    sysExtCardSwitchChip => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.11',
+    sysExtCardStatus => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.12',
+    sysExtCardUserSlot => '1.3.6.1.4.1.14823.2.2.1.2.1.16.1.13',
+    wlsxSysExtFanTable => '1.3.6.1.4.1.14823.2.2.1.2.1.17',
+    wlsxSysExtFanEntry => '1.3.6.1.4.1.14823.2.2.1.2.1.17.1',
+    sysExtFanIndex => '1.3.6.1.4.1.14823.2.2.1.2.1.17.1.1',
+    sysExtFanStatus => '1.3.6.1.4.1.14823.2.2.1.2.1.17.1.2',
+    sysExtFanStatusDefinition => 'ARUBA-TC::ArubaActiveState',
+    wlsxSysExtPowerSupplyTable => '1.3.6.1.4.1.14823.2.2.1.2.1.18',
+    wlsxSysExtPowerSupplyEntry => '1.3.6.1.4.1.14823.2.2.1.2.1.18.1',
+    sysExtPowerSupplyIndex => '1.3.6.1.4.1.14823.2.2.1.2.1.18.1.1',
+    sysExtPowerSupplyStatus => '1.3.6.1.4.1.14823.2.2.1.2.1.18.1.2',
+    sysExtPowerSupplyStatusDefinition => 'ARUBA-TC::ArubaActiveState',
+    wlsxSysExtSwitchListTable => '1.3.6.1.4.1.14823.2.2.1.2.1.19',
+    wlsxSysExtSwitchListEntry => '1.3.6.1.4.1.14823.2.2.1.2.1.19.1',
+    sysExtSwitchIPAddress => '1.3.6.1.4.1.14823.2.2.1.2.1.19.1.1',
+    sysExtSwitchRole => '1.3.6.1.4.1.14823.2.2.1.2.1.19.1.2',
+    sysExtSwitchLocation => '1.3.6.1.4.1.14823.2.2.1.2.1.19.1.3',
+    sysExtSwitchSWVersion => '1.3.6.1.4.1.14823.2.2.1.2.1.19.1.4',
+    sysExtSwitchStatus => '1.3.6.1.4.1.14823.2.2.1.2.1.19.1.5',
+    sysExtSwitchName => '1.3.6.1.4.1.14823.2.2.1.2.1.19.1.6',
+    sysExtSwitchSerNo => '1.3.6.1.4.1.14823.2.2.1.2.1.19.1.7',
+    wlsxSysExtSwitchLicenseTable => '1.3.6.1.4.1.14823.2.2.1.2.1.20',
+    wlsxSysExtLicenseEntry => '1.3.6.1.4.1.14823.2.2.1.2.1.20.1',
+    sysExtLicenseIndex => '1.3.6.1.4.1.14823.2.2.1.2.1.20.1.1',
+    sysExtLicenseKey => '1.3.6.1.4.1.14823.2.2.1.2.1.20.1.2',
+    sysExtLicenseInstalled => '1.3.6.1.4.1.14823.2.2.1.2.1.20.1.3',
+    sysExtLicenseExpires => '1.3.6.1.4.1.14823.2.2.1.2.1.20.1.4',
+    sysExtLicenseFlags => '1.3.6.1.4.1.14823.2.2.1.2.1.20.1.5',
+    sysExtLicenseService => '1.3.6.1.4.1.14823.2.2.1.2.1.20.1.6',
+    wlsxSysExtMMSCompatLevel => '1.3.6.1.4.1.14823.2.2.1.2.1.21',
+    wlsxSysExtMMSConfigID => '1.3.6.1.4.1.14823.2.2.1.2.1.22',
+    wlsxSysExtControllerConfigID => '1.3.6.1.4.1.14823.2.2.1.2.1.23',
+    wlsxSysExtIsMMSConfigUpdateEnabled => '1.3.6.1.4.1.14823.2.2.1.2.1.24',
+    wlsxSysExtSwitchLastReload => '1.3.6.1.4.1.14823.2.2.1.2.1.25',
+    wlsxSystemExtTableGenNumberGroup => '1.3.6.1.4.1.14823.2.2.1.2.2',
+    wlsxSysExtUserTableGenNumber => '1.3.6.1.4.1.14823.2.2.1.2.2.1',
+    wlsxSysExtAPBssidTableGenNumber => '1.3.6.1.4.1.14823.2.2.1.2.2.2',
+    wlsxSysExtAPRadioTableGenNumber => '1.3.6.1.4.1.14823.2.2.1.2.2.3',
+    wlsxSysExtAPTableGenNumber => '1.3.6.1.4.1.14823.2.2.1.2.2.4',
+    wlsxSysExtSwitchListTableGenNumber => '1.3.6.1.4.1.14823.2.2.1.2.2.5',
+    wlsxSysExtPortTableGenNumber => '1.3.6.1.4.1.14823.2.2.1.2.2.6',
+    wlsxSysExtVlanTableGenNumber => '1.3.6.1.4.1.14823.2.2.1.2.2.7',
+    wlsxSysExtVlanInterfaceTableGenNumber => '1.3.6.1.4.1.14823.2.2.1.2.2.8',
+    wlsxSysExtLicenseTableGenNumber => '1.3.6.1.4.1.14823.2.2.1.2.2.9',
+    wlsxSysExtMonAPTableGenNumber => '1.3.6.1.4.1.14823.2.2.1.2.2.10',
+    wlsxSysExtMonStationTableGenNumber => '1.3.6.1.4.1.14823.2.2.1.2.2.11',
+  },
+  'ALARM-MIB' => {
+    alarmMIB => '1.3.6.1.2.1.118',
+    alarmNotifications => '1.3.6.1.2.1.118.0',
+    alarmObjects => '1.3.6.1.2.1.118.1',
+    alarmModel => '1.3.6.1.2.1.118.1.1',
+    alarmModelLastChanged => '1.3.6.1.2.1.118.1.1.1',
+    alarmModelTable => '1.3.6.1.2.1.118.1.1.2',
+    alarmModelEntry => '1.3.6.1.2.1.118.1.1.2.1',
+    alarmModelIndex => '1.3.6.1.2.1.118.1.1.2.1.1',
+    alarmModelState => '1.3.6.1.2.1.118.1.1.2.1.2',
+    alarmModelNotificationId => '1.3.6.1.2.1.118.1.1.2.1.3',
+    alarmModelVarbindIndex => '1.3.6.1.2.1.118.1.1.2.1.4',
+    alarmModelVarbindValue => '1.3.6.1.2.1.118.1.1.2.1.5',
+    alarmModelDescription => '1.3.6.1.2.1.118.1.1.2.1.6',
+    alarmModelSpecificPointer => '1.3.6.1.2.1.118.1.1.2.1.7',
+    alarmModelVarbindSubtree => '1.3.6.1.2.1.118.1.1.2.1.8',
+    alarmModelResourcePrefix => '1.3.6.1.2.1.118.1.1.2.1.9',
+    alarmModelRowStatus => '1.3.6.1.2.1.118.1.1.2.1.10',
+    alarmActive => '1.3.6.1.2.1.118.1.2',
+    alarmActiveLastChanged => '1.3.6.1.2.1.118.1.2.1',
+    alarmActiveTable => '1.3.6.1.2.1.118.1.2.2',
+    alarmActiveEntry => '1.3.6.1.2.1.118.1.2.2.1',
+    alarmListName => '1.3.6.1.2.1.118.1.2.2.1.1',
+    alarmActiveDateAndTime => '1.3.6.1.2.1.118.1.2.2.1.2',
+    alarmActiveIndex => '1.3.6.1.2.1.118.1.2.2.1.3',
+    alarmActiveEngineID => '1.3.6.1.2.1.118.1.2.2.1.4',
+    alarmActiveEngineAddressType => '1.3.6.1.2.1.118.1.2.2.1.5',
+    alarmActiveEngineAddress => '1.3.6.1.2.1.118.1.2.2.1.6',
+    alarmActiveContextName => '1.3.6.1.2.1.118.1.2.2.1.7',
+    alarmActiveVariables => '1.3.6.1.2.1.118.1.2.2.1.8',
+    alarmActiveNotificationID => '1.3.6.1.2.1.118.1.2.2.1.9',
+    alarmActiveResourceId => '1.3.6.1.2.1.118.1.2.2.1.10',
+    alarmActiveDescription => '1.3.6.1.2.1.118.1.2.2.1.11',
+    alarmActiveLogPointer => '1.3.6.1.2.1.118.1.2.2.1.12',
+    alarmActiveModelPointer => '1.3.6.1.2.1.118.1.2.2.1.13',
+    alarmActiveSpecificPointer => '1.3.6.1.2.1.118.1.2.2.1.14',
+    alarmActiveVariableTable => '1.3.6.1.2.1.118.1.2.3',
+    alarmActiveVariableEntry => '1.3.6.1.2.1.118.1.2.3.1',
+    alarmActiveVariableIndex => '1.3.6.1.2.1.118.1.2.3.1.1',
+    alarmActiveVariableID => '1.3.6.1.2.1.118.1.2.3.1.2',
+    alarmActiveVariableValueType => '1.3.6.1.2.1.118.1.2.3.1.3',
+    alarmActiveVariableValueTypeDefinition => 'ALARM-MIB::alarmActiveVariableValueType',
+    alarmActiveVariableCounter32Val => '1.3.6.1.2.1.118.1.2.3.1.4',
+    alarmActiveVariableUnsigned32Val => '1.3.6.1.2.1.118.1.2.3.1.5',
+    alarmActiveVariableTimeTicksVal => '1.3.6.1.2.1.118.1.2.3.1.6',
+    alarmActiveVariableInteger32Val => '1.3.6.1.2.1.118.1.2.3.1.7',
+    alarmActiveVariableOctetStringVal => '1.3.6.1.2.1.118.1.2.3.1.8',
+    alarmActiveVariableIpAddressVal => '1.3.6.1.2.1.118.1.2.3.1.9',
+    alarmActiveVariableOidVal => '1.3.6.1.2.1.118.1.2.3.1.10',
+    alarmActiveVariableCounter64Val => '1.3.6.1.2.1.118.1.2.3.1.11',
+    alarmActiveVariableOpaqueVal => '1.3.6.1.2.1.118.1.2.3.1.12',
+    alarmActiveStatsTable => '1.3.6.1.2.1.118.1.2.4',
+    alarmActiveStatsEntry => '1.3.6.1.2.1.118.1.2.4.1',
+    alarmActiveStatsActiveCurrent => '1.3.6.1.2.1.118.1.2.4.1.1',
+    alarmActiveStatsActives => '1.3.6.1.2.1.118.1.2.4.1.2',
+    alarmActiveStatsLastRaise => '1.3.6.1.2.1.118.1.2.4.1.3',
+    alarmActiveStatsLastClear => '1.3.6.1.2.1.118.1.2.4.1.4',
+    alarmActiveOverflow => '1.3.6.1.2.1.118.1.2.5',
+    alarmClear => '1.3.6.1.2.1.118.1.3',
+    alarmClearMaximum => '1.3.6.1.2.1.118.1.3.1',
+    alarmClearTable => '1.3.6.1.2.1.118.1.3.2',
+    alarmClearEntry => '1.3.6.1.2.1.118.1.3.2.1',
+    alarmClearIndex => '1.3.6.1.2.1.118.1.3.2.1.1',
+    alarmClearDateAndTime => '1.3.6.1.2.1.118.1.3.2.1.2',
+    alarmClearEngineID => '1.3.6.1.2.1.118.1.3.2.1.3',
+    alarmClearEngineAddressType => '1.3.6.1.2.1.118.1.3.2.1.4',
+    alarmClearEngineAddress => '1.3.6.1.2.1.118.1.3.2.1.5',
+    alarmClearContextName => '1.3.6.1.2.1.118.1.3.2.1.6',
+    alarmClearNotificationID => '1.3.6.1.2.1.118.1.3.2.1.7',
+    alarmClearResourceId => '1.3.6.1.2.1.118.1.3.2.1.8',
+    alarmClearLogIndex => '1.3.6.1.2.1.118.1.3.2.1.9',
+    alarmClearModelPointer => '1.3.6.1.2.1.118.1.3.2.1.10',
+    alarmConformance => '1.3.6.1.2.1.118.2',
+    alarmCompliances => '1.3.6.1.2.1.118.2.1',
+    alarmGroups => '1.3.6.1.2.1.118.2.2',
   },
 };
 
@@ -22072,7 +23826,43 @@ $Monitoring::GLPlugin::SNMP::definitions = {
         return 0;
       }
     },
-  }
+  },
+  'ARUBA-TC' => {
+    'ArubaSwitchRole' => {
+      1 => 'master',
+      2 => 'local',
+      3 => 'backupmaster',
+    },
+    'ArubaActiveState' => {
+      1 => 'active',
+      2 => 'inactive',
+    },
+  },
+  'WLSX-SYSTEMEXT-MIB' => {
+    sysExtStorageType => {
+      '1' => 'ram',
+      '2' => 'flashMemory',
+    },
+  },
+  'WLSX-WLAN-MIB' => {
+    wlanAPBssidMode => {
+      '1' => 'ap',
+      '2' => 'am',
+    },
+  },
+  'ALARM-MIB' => {
+    alarmActiveVariableValueType => {
+      '1' => 'counter32',
+      '2' => 'unsigned32',
+      '3' => 'timeTicks',
+      '4' => 'integer32',
+      '5' => 'ipAddress',
+      '6' => 'octetString',
+      '7' => 'objectId',
+      '8' => 'counter64',
+      '9' => 'opaque',
+    },
+  },
 };
 
 package Classes::Device;
@@ -22086,9 +23876,14 @@ sub classify {
   } else {
     if ($self->opts->servertype && $self->opts->servertype eq 'linuxlocal') {
     } elsif ($self->opts->servertype && $self->opts->servertype eq 'windowslocal') {
-      eval "use DBD::WMI";
+      eval "require DBD::WMI";
       if ($@) {
         $self->add_unknown("module DBD::WMI is not installed");
+      }
+    } elsif ($self->opts->servertype && $self->opts->servertype eq 'solarislocal') {
+      eval "require Sun::Solaris::Kstat";
+      if ($@) {
+        $self->add_unknown("module Sun::Solaris::Kstat is not installed");
       }
     } elsif ($self->opts->port && $self->opts->port == 49000) {
       $self->{productname} = 'upnp';
@@ -22128,6 +23923,9 @@ sub classify {
       } elsif ($self->{productname} =~ /windowslocal/i) {
         bless $self, 'Server::Windows';
         $self->debug('using Server::Windows');
+      } elsif ($self->{productname} =~ /solarislocal/i) {
+        bless $self, 'Server::Solaris';
+        $self->debug('using Server::Solaris');
       } elsif ($self->{productname} =~ /Cisco/i) {
         bless $self, 'Classes::Cisco';
         $self->debug('using Classes::Cisco');
@@ -22225,6 +24023,12 @@ sub classify {
       } elsif ($self->{productname} =~ /Fortinet|Fortigate/i) {
         bless $self, 'Classes::Fortigate';
         $self->debug('using Classes::Fortigate');
+      } elsif ($self->implements_mib('ALCATEL-IND1-BASE-MIB')) {
+        bless $self, 'Classes::Alcatel';
+        $self->debug('using Classes::Alcatel');
+      } elsif ($self->implements_mib('ONEACCESS-SYS-MIB')) {
+        bless $self, 'Classes::OneOS';
+        $self->debug('using Classes::OneOS');
       } elsif ($self->{productname} eq "ifmib") {
         bless $self, 'Classes::Generic';
         $self->debug('using Classes::Generic');
@@ -22284,12 +24088,11 @@ package main;
 use strict;
 no warnings qw(once);
 
-
 eval {
   if ( ! grep /AUTOLOAD/, keys %Monitoring::GLPlugin::) {
-    require "Monitoring::GLPlugin";
-    require "Monitoring::GLPlugin::SNMP";
-    require "Monitoring::GLPlugin::UPNP";
+    require Monitoring::GLPlugin;
+    require Monitoring::GLPlugin::SNMP;
+    require Monitoring::GLPlugin::UPNP;
   }
 };
 if ($@) {
@@ -22304,17 +24107,11 @@ my $plugin = Classes::Device->new(
         '--mode <what-to-do> '.
         '--hostname <network-component> --community <snmp-community>'.
         '  ...]',
-    version => '$Revision: 4.1 $',
+    version => '$Revision: 4.3.1 $',
     blurb => 'This plugin checks various parameters of network components ',
     url => 'http://labs.consol.de/nagios/check_nwc_health',
     timeout => 60,
     plugin => $Monitoring::GLPlugin::pluginname,
-);
-$plugin->add_mode(
-    internal => 'device::uptime',
-    spec => 'uptime',
-    alias => undef,
-    help => 'Check the uptime of the device',
 );
 $plugin->add_mode(
     internal => 'device::hardware::health',
@@ -22647,18 +24444,7 @@ $plugin->add_mode(
     alias => undef,
     help => 'Show the cumulated power consumption of a Fritz!DECT 200 plug',
 );
-$plugin->add_mode(
-    internal => 'device::walk',
-    spec => 'walk',
-    alias => undef,
-    help => 'Show snmpwalk command with the oids necessary for a simulation',
-);
-$plugin->add_mode(
-    internal => 'device::supportedmibs',
-    spec => 'supportedmibs',
-    alias => undef,
-    help => 'Shows the names of the mibs which this devices has implemented (only lausser may run this command)',
-);
+$plugin->add_snmp_modes();
 $plugin->add_snmp_args();
 $plugin->add_default_args();
 $plugin->mod_arg("name",
@@ -22695,13 +24481,6 @@ $plugin->add_arg(
    The role of this device in a hsrp group (active/standby/listen)",
     required => 0,
 );
-$plugin->add_arg(
-    spec => 'servertype=s',
-    help => '--servertype
-   The type of the network device: cisco (default). Use it if auto-detection
-   is not possible',
-    required => 0,
-);
 
 $plugin->getopts();
 $plugin->classify();
@@ -22725,7 +24504,5 @@ my ($code, $message) = $plugin->opts->multiline ?
     $plugin->check_messages(join => ', ', join_all => ', ');
 $message .= sprintf "\n%s\n", $plugin->get_info("\n")
     if $plugin->opts->verbose >= 1;
-#printf "%s\n", Data::Dumper::Dumper($plugin);
 
 $plugin->nagios_exit($code, $message);
-printf "schluss\n";
