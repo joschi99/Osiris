@@ -1,0 +1,16 @@
+Plugins install manual
+
+check_hpasm
+./configure --enable-perfdata --enable-extendedinfo --with-nagios-user=centreon --with-nagios-group=centreon --with-degrees=celsius
+
+check_mssql_health
+./configure --with-nagios-user=centreon --with-nagios-group=centreon
+
+check_mysql_health
+./configure --with-nagios-user=centreon --with-nagios-group=centreon
+
+check_nwc_health
+./configure --with-nagios-user=centreon --with-nagios-group=centreon
+
+check_oracle_health
+./configure --with-nagios-user=centreon --with-nagios-group=centreon
