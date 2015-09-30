@@ -1,4 +1,3 @@
-curl -XPUT localhost:9200/_template/postfix -d '
 { 
     "template" : "postfix-*", 
     "settings" : { "index.refresh_interval" : "5s" }, 
@@ -30,4 +29,3 @@ curl -XPUT localhost:9200/_template/postfix -d '
         } 
     } 
 }
-'
