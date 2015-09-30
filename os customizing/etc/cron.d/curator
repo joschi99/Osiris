@@ -1,5 +1,5 @@
 # 01:00 alle Daten > 30 Tage
-00 01 * * * elasticsearch curator delete indices --older-than 1 --time-unit months --timestring %Y.%m.%d --all-indices >> /var/log/curator.log 2>&1
+00 01 * * * elasticsearch curator delete indices --older-than 1 --time-unit months --timestring %Y.%m.%d >> /var/log/curator.log 2>&1
 
 # 01:10 max 20GB Daten
 10 01 * * * elasticsearch curator delete --disk-space 20 indices --all-indices >> /var/log/curator.log 2>&1
