@@ -14,7 +14,7 @@
               "string_fields" : {
                 "match" : "*",
                 "match_mapping_type" : "string",
-                "mapping" : { "type" : "string", "index" : "analyzed", "omit_norms" : true }
+                "mapping" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true }
               }
             }],
             "properties" : {
@@ -27,6 +27,7 @@
                 "Keywords" : { "type" : "string", "index" : "analyzed", "omit_norms" : true },
                 "SeverityValue" : { "type" : "integer", "norms" : { "enabled" : false } },
                 "Hostname" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true },
+                "SourceName" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true },
                 "ThreadID" : { "type" : "long", "norms" : { "enabled" : false } }
             }
         }
