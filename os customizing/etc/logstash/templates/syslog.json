@@ -1,0 +1,34 @@
+{
+    "template" : "syslog-*",
+    "settings" : { "index.refresh_interval" : "5s" },
+    "mappings" : {
+        "_default_" : {
+            "_all" : { "enabled" : true, "omit_norms" : true },
+            "dynamic_templates" : [{
+              "message_field" : {
+                "match" : "message",
+                "match_mapping_type" : "string",
+                "mapping" : { "type" : "string", "index" : "analyzed", "omit_norms" : true }
+              }
+            }, {
+              "string_fields" : {
+                "match" : "*",
+                "match_mapping_type" : "string",
+                "mapping" : { "type" : "string", "index" : "analyzed", "omit_norms" : true }
+              }
+            }],
+            "properties" : {
+                "@timestamp" : { "type" : "date", "format" : "dateOptionalTime" },
+                "@version" : { "type" : "integer", "index" : "not_analyzed" },
+                "host" : { "type" : "ip", "norms" : { "enabled" : false } },
+                "syslog_hostname" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true },
+                "syslog_program" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true },
+                "syslog_pri" : { "type" : "integer", "norms" : { "enabled" : false } },
+                "syslog_pid" : { "type" : "long", "norms" : { "enabled" : false } },
+                "syslog_facility" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true },
+                "syslog_facility_code" : { "type" : "integer", "norms" : { "enabled" : false } },
+                "syslog_severity_code" : { "type" : "integer", "norms" : { "enabled" : false } }
+            }
+        }
+    }
+}
