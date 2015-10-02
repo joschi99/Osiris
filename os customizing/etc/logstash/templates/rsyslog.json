@@ -23,6 +23,8 @@ curl -XPUT localhost:9200/_template/rsyslog -d '
                 "timegenerated" : { "type" : "date", "format" : "dateOptionalTime" }, 
                 "facility-id" : { "type" : "integer", "norms" : { "enabled" : false } }, 
                 "fromhost-ip" : { "type" : "ip", "norms" : { "enabled" : false } },
+                "fromhost" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true }, 
+                "programname" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true }, 
                 "priority-id" : { "type" : "integer", "norms" : { "enabled" : false } },
                 "severity-id" : { "type" : "integer", "norms" : { "enabled" : false } }
             } 
