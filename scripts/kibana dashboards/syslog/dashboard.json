@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "Syslog",
+    "_type": "dashboard",
+    "_source": {
+      "title": "Syslog",
+      "hits": 0,
+      "description": "",
+      "panelsJSON": "[{\"col\":1,\"id\":\"Syslog-all-events-timeline\",\"row\":1,\"size_x\":6,\"size_y\":3,\"type\":\"visualization\"},{\"col\":7,\"id\":\"Syslog-warn-events-timeline-top-hosts\",\"row\":1,\"size_x\":6,\"size_y\":3,\"type\":\"visualization\"},{\"col\":1,\"id\":\"warning-severity\",\"row\":4,\"size_x\":3,\"size_y\":2,\"type\":\"visualization\"},{\"col\":4,\"id\":\"Syslog-warning-facility\",\"row\":4,\"size_x\":3,\"size_y\":2,\"type\":\"visualization\"},{\"col\":7,\"id\":\"Syslog-warning-program\",\"row\":4,\"size_x\":3,\"size_y\":2,\"type\":\"visualization\"},{\"col\":1,\"columns\":[\"syslog_hostname\",\"syslog_severity\",\"syslog_program\",\"syslog_message\",\"syslog_facility\"],\"id\":\"Syslog-critical\",\"row\":6,\"size_x\":9,\"size_y\":3,\"sort\":[\"@timestamp\",\"desc\"],\"type\":\"search\"},{\"col\":1,\"columns\":[\"syslog_hostname\",\"syslog_severity\",\"syslog_program\",\"syslog_message\",\"syslog_facility\"],\"id\":\"Syslog-warning\",\"row\":9,\"size_x\":9,\"size_y\":3,\"sort\":[\"@timestamp\",\"desc\"],\"type\":\"search\"},{\"col\":10,\"id\":\"Syslog-warning-host\",\"row\":4,\"size_x\":3,\"size_y\":2,\"type\":\"visualization\"},{\"id\":\"Syslog-no-events-critical\",\"type\":\"visualization\",\"size_x\":3,\"size_y\":2,\"col\":10,\"row\":6},{\"id\":\"Syslog-no-events-warn\",\"type\":\"visualization\",\"size_x\":3,\"size_y\":2,\"col\":10,\"row\":8},{\"id\":\"Syslog-no-events-all\",\"type\":\"visualization\",\"size_x\":3,\"size_y\":2,\"col\":10,\"row\":10}]",
+      "version": 1,
+      "timeRestore": true,
+      "timeTo": "now",
+      "timeFrom": "now-1h",
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"filter\":[{\"query\":{\"query_string\":{\"analyze_wildcard\":true,\"query\":\"*\"}}}]}"
+      }
+    }
+  }
+]

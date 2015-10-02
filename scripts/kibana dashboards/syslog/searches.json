@@ -1,0 +1,74 @@
+[
+  {
+    "_id": "Syslog-all",
+    "_type": "search",
+    "_source": {
+      "title": "Syslog all",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "syslog_hostname",
+        "syslog_severity",
+        "syslog_program",
+        "syslog_message",
+        "syslog_facility"
+      ],
+      "sort": [
+        "@timestamp",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"[syslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"analyze_wildcard\":true,\"query\":\"*\"}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+      }
+    }
+  },
+  {
+    "_id": "Syslog-critical",
+    "_type": "search",
+    "_source": {
+      "title": "Syslog critical",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "syslog_hostname",
+        "syslog_severity",
+        "syslog_program",
+        "syslog_message",
+        "syslog_facility"
+      ],
+      "sort": [
+        "@timestamp",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"[syslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"syslog_severity_code: [0 TO 3]\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+      }
+    }
+  },
+  {
+    "_id": "Syslog-warning",
+    "_type": "search",
+    "_source": {
+      "title": "Syslog warning",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "syslog_hostname",
+        "syslog_severity",
+        "syslog_program",
+        "syslog_message",
+        "syslog_facility"
+      ],
+      "sort": [
+        "@timestamp",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"[syslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"syslog_severity_code: [0 TO 4]\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+      }
+    }
+  }
+]
