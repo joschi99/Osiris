@@ -1,6 +1,9 @@
 Osiris 2.2
 	Syslog & Logmanagement
 		- Upgrade Logstash 1.5.4
+		- Windows EventLog: nxlog -> elastic -> kibana
+		- elastic: templates for RSyslog and nxlog
+		- Kibana: dashboards for Syslog
 Osiris 2.1
 	Monitoring
 		- Upgrade Centreon Core 2.6.1
