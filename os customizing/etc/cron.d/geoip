@@ -1,0 +1,2 @@
+# Jeden 1. des Monats update der GEOIP Datenbank
+0 0 1 1 * root /opt/bi-s/software/scripts/elk/geoip-update.sh >> /var/log/geoip-update.log 2>&1
