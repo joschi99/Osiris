@@ -1,17 +1,17 @@
 [
   {
-    "_id": "Syslog-all",
+    "_id": "Syslog-critical-events",
     "_type": "search",
     "_source": {
-      "title": "Syslog all",
+      "title": "Syslog critical events",
       "description": "",
       "hits": 0,
       "columns": [
-        "syslog_hostname",
-        "syslog_severity",
-        "syslog_program",
-        "syslog_message",
-        "syslog_facility"
+        "fromhost",
+        "severity",
+        "facility",
+        "programname",
+        "message"
       ],
       "sort": [
         "@timestamp",
@@ -19,23 +19,23 @@
       ],
       "version": 1,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[syslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"analyze_wildcard\":true,\"query\":\"*\"}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+        "searchSourceJSON": "{\"index\":\"[rsyslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"severity-id: [0 TO 3]\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
       }
     }
   },
   {
-    "_id": "Syslog-critical",
+    "_id": "Syslog-warning-events",
     "_type": "search",
     "_source": {
-      "title": "Syslog critical",
+      "title": "Syslog warning events",
       "description": "",
       "hits": 0,
       "columns": [
-        "syslog_hostname",
-        "syslog_severity",
-        "syslog_program",
-        "syslog_message",
-        "syslog_facility"
+        "fromhost",
+        "severity",
+        "facility",
+        "programname",
+        "message"
       ],
       "sort": [
         "@timestamp",
@@ -43,23 +43,23 @@
       ],
       "version": 1,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[syslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"syslog_severity_code: [0 TO 3]\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+        "searchSourceJSON": "{\"index\":\"[rsyslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"severity-id: [0 TO 4]\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
       }
     }
   },
   {
-    "_id": "Syslog-warning",
+    "_id": "Syslog-all-events",
     "_type": "search",
     "_source": {
-      "title": "Syslog warning",
+      "title": "Syslog all events",
       "description": "",
       "hits": 0,
       "columns": [
-        "syslog_hostname",
-        "syslog_severity",
-        "syslog_program",
-        "syslog_message",
-        "syslog_facility"
+        "fromhost",
+        "severity",
+        "facility",
+        "programname",
+        "message"
       ],
       "sort": [
         "@timestamp",
@@ -67,7 +67,7 @@
       ],
       "version": 1,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[syslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"syslog_severity_code: [0 TO 4]\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+        "searchSourceJSON": "{\"index\":\"[rsyslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"*\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
       }
     }
   }
