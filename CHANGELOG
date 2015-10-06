@@ -1,7 +1,7 @@
 Osiris 2.1
 	Monitoring
 		- Upgrade Centreon Core 2.6.3
-		- New Centreon Engine 1.4.14
+		- New Centreon Engine 1.4.15
 		- New Centreon Broker 2.10
 		- New Centreon SNMPTrap handler
 		- Upgrade Selenium 2.47
