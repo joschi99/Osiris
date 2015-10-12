@@ -3,7 +3,7 @@
  *
  * global.php - File for global constants and some other standards
  *
- * Copyright (c) 2004-2011 NagVis Project (Contact: info@nagvis.org)
+ * Copyright (c) 2004-2015 NagVis Project (Contact: info@nagvis.org)
  *
  * License:
  *
@@ -26,28 +26,8 @@
  * @author      Lars Michelsen <lars@vertical-visions.de>
  */
 
-if(session_id() == '') {
-    session_start();
-}
-
-$url = $_SERVER['REQUEST_URI'];
-$lookfor = "readonly";
-$pos = strpos($url, $lookfor);
-
-if ($pos === false) {
-        //
-} else {
-        $_SESSION['nagvis']=1;
-}
-
-if(isset($_SESSION['nagvis']) && $_SESSION['nagvis']==1) {
-        if(!isset($_SERVER['REMOTE_USER'])){
-                $_SERVER['REMOTE_USER']="nagvis";
-        }
-}
-
 // NagVis Version
-define('CONST_VERSION', '1.7.10');
+define('CONST_VERSION', '1.8.5');
 
 // Set PHP error handling to standard level
 // Different levels for php versions below 5.1 because PHP 5.1 reports
@@ -112,7 +92,7 @@ define('HTDOCS_DIR', 'share');
 define('CONST_NEEDED_PHP_VERSION', '5.0');
 
 // NagVis session name
-// define('SESSION_NAME', 'nagvis_session');
+//define('SESSION_NAME', 'nagvis_session');
 define('SESSION_NAME', 'PHPSESSID');
 
 // Other basic constants
@@ -136,6 +116,58 @@ define('SUMMARY_STATE', true);
 define('COUNT_QUERY', true);
 define('MEMBER_QUERY', true);
 define('HOST_QUERY', true);
+
+// Field definitions - fields in state constructs. There is one
+// basic state construct which is used wherever an object is only
+// handled as member state. The exteded state construct is used
+// for hosts/services which are directly added to a map to get
+// more details from those objects
+//
+// basic state
+define('STATE',     0);
+define('OUTPUT',    1);
+define('ACK',       2);
+define('DOWNTIME',  3);
+define('STALE',     4);
+// extended generic
+define('STATE_TYPE',              5);
+define('CURRENT_ATTEMPT',         6);
+define('MAX_CHECK_ATTEMPTS',      7);
+define('LAST_CHECK',              8);
+define('NEXT_CHECK',              9);
+define('LAST_HARD_STATE_CHANGE', 10);
+define('LAST_STATE_CHANGE',      11);
+define('PERFDATA',               12);
+define('DISPLAY_NAME',           13);
+define('ALIAS',                  14);
+define('ADDRESS',                15);
+define('NOTES',                  16);
+define('CHECK_COMMAND',          17);
+define('CUSTOM_VARS',            18);
+define('DOWNTIME_AUTHOR',        19);
+define('DOWNTIME_DATA',          20);
+define('DOWNTIME_START',         21);
+define('DOWNTIME_END',           22);
+// extended service
+define('DESCRIPTION',            23);
+
+// Number of fields in extended state structures
+define('EXT_STATE_SIZE', 24);
+
+// State definitions - internal numbers representing the states
+// hosts
+define('UNCHECKED',   14);
+define('UNREACHABLE', 12);
+define('DOWN',        11);
+define('UP',          10);
+// services
+define('PENDING',      4);
+define('UNKNOWN',      3);
+define('CRITICAL',     2);
+define('WARNING',      1);
+define('OK',           0);
+// generic
+define('ERROR',       -1);
 
 // Maximum length for usernames/passwords
 define('AUTH_MAX_PASSWORD_LENGTH', 30);

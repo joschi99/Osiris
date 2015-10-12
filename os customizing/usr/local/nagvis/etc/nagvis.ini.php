@@ -201,11 +201,10 @@ urltarget="_parent"
 mapurl="/centreon/main.php?p=403&map=[map_name]"
 hosturl="/centreon/main.php?p=20201&o=svc&host_search=[host_name]&search=&poller=&hostgroup=&output_search="
 serviceurl="/centreon/main.php?p=20201&o=svcd&host_name=[host_name]&service_description=[service_description]&poller=&hostgroup=&output_search="
-hostgroupurl=
-servicegroupurl=
 label_show=1
 
 ; Options to configure the Overview page of NagVis
+zoombar=1
 [index]
 ; Color of the overview background
 ;backgroundcolor=#ffffff
