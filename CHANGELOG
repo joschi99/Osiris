@@ -4,6 +4,7 @@ Osiris 2.2
 		- Windows EventLog: nxlog -> elastic -> kibana
 		- elastic: templates for RSyslog and nxlog
 		- Kibana: dashboards for Syslog
+		- Upgrade NagVis 1.8.5
 Osiris 2.1
 	Monitoring
 		- Upgrade Centreon Core 2.6.1
