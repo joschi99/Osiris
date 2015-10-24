@@ -5,14 +5,15 @@
 #               befinden.
 #               Files vor $RETTIME werden gelöscht
 #
-# Copyright (c) 2009-2011 Osiris 2.0 NMS (Contact: info@bi-s.it)
+# Copyright (c) 2009-2011 Osiris 2.2 NMS (Contact: info@bi-s.it)
 #
 # Development:
 #  Jochen Platzgummer
 #
-# Version 2.0
+# Version 2.1
 #
 # Changelog
+#   24.10.2015: Neu gpg.cfg
 #   12.09.2011: Anpassung an Osiris 2.0
 #   04.06.2010: SMB-Berechtigungen angepasst
 #   28.04.2010: setze Berechtigung auf Verzeichnis für SMB-Zugriff
@@ -22,12 +23,11 @@
 #
 ###############################################################################
 
-#RSYSLOG_PATH muss mit Path in /etc/rsyslog.conf zusammenstimmen
-RSYSLOG_PATH=/opt/bi-s/cifs/rsyslog
+source gpg.cfg
+
 DATUM=$(date -d '1 day ago' +%Y%m%d)
 PERIODE=$(date -d '1 day ago' +%Y%m)
 AKT_PATH=$RSYSLOG_PATH/$PERIODE/$DATUM
-RETTIME=180
 
 echo "$AKT_PATH"
 
