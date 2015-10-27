@@ -23,7 +23,7 @@
 #
 ###############################################################################
 
-source gpg.cfg
+source /opt/bi-s/software/scripts/gpg/gpg.cfg
 
 DATUM=$(date -d '1 day ago' +%Y%m%d)
 PERIODE=$(date -d '1 day ago' +%Y%m)
