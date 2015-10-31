@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "Win-Eventlog",
+    "_type": "dashboard",
+    "_source": {
+      "title": "Windows Eventlog",
+      "hits": 0,
+      "description": "",
+      "panelsJSON": "[\n  {\n    \"col\": 1,\n    \"id\": \"Win-evt-log-timeline\",\n    \"row\": 1,\n    \"size_x\": 6,\n    \"size_y\": 3,\n    \"type\": \"visualization\"\n  },\n  {\n    \"col\": 7,\n    \"id\": \"Win-Evt-log-top-10-hosts\",\n    \"row\": 1,\n    \"size_x\": 6,\n    \"size_y\": 3,\n    \"type\": \"visualization\"\n  },\n  {\n    \"col\": 1,\n    \"id\": \"Win-evt-log-severity\",\n    \"row\": 4,\n    \"size_x\": 3,\n    \"size_y\": 2,\n    \"type\": \"visualization\"\n  },\n  {\n    \"col\": 4,\n    \"id\": \"Win-evt-log-channel\",\n    \"row\": 4,\n    \"size_x\": 3,\n    \"size_y\": 2,\n    \"type\": \"visualization\"\n  },\n  {\n    \"col\": 1,\n    \"columns\": [\n      \"Hostname\",\n      \"Severity\",\n      \"Channel\",\n      \"SourceName\",\n      \"Context\",\n      \"Message\"\n    ],\n    \"id\": \"Windows-Events-warning\",\n    \"row\": 9,\n    \"size_x\": 10,\n    \"size_y\": 3,\n    \"sort\": [\n      \"@timestamp\",\n      \"desc\"\n    ],\n    \"type\": \"search\"\n  },\n  {\n    \"col\": 1,\n    \"columns\": [\n      \"Hostname\",\n      \"Severity\",\n      \"Channel\",\n      \"SourceName\",\n      \"Context\",\n      \"Message\"\n    ],\n    \"id\": \"Windows-Events-error\",\n    \"row\": 6,\n    \"size_x\": 10,\n    \"size_y\": 3,\n    \"sort\": [\n      \"@timestamp\",\n      \"desc\"\n    ],\n    \"type\": \"search\"\n  },\n  {\n    \"col\": 11,\n    \"id\": \"Win-no-evt-logs\",\n    \"row\": 10,\n    \"size_x\": 2,\n    \"size_y\": 2,\n    \"type\": \"visualization\"\n  },\n  {\n    \"col\": 11,\n    \"id\": \"Win-no-evt-logs-warn\",\n    \"row\": 8,\n    \"size_x\": 2,\n    \"size_y\": 2,\n    \"type\": \"visualization\"\n  },\n  {\n    \"col\": 11,\n    \"id\": \"Win-no-evt-logs-error\",\n    \"row\": 6,\n    \"size_x\": 2,\n    \"size_y\": 2,\n    \"type\": \"visualization\"\n  },\n  {\n    \"col\": 7,\n    \"id\": \"Win-evt-log-source-top-10\",\n    \"row\": 4,\n    \"size_x\": 3,\n    \"size_y\": 2,\n    \"type\": \"visualization\"\n  },\n  {\n    \"id\": \"Win-evt-log-warnings-top-10-hosts\",\n    \"type\": \"visualization\",\n    \"size_x\": 3,\n    \"size_y\": 2,\n    \"col\": 10,\n    \"row\": 4\n  }\n]",
+      "version": 1,
+      "timeRestore": true,
+      "timeTo": "now",
+      "timeFrom": "now-1h",
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\n  \"filter\": [\n    {\n      \"query\": {\n        \"query_string\": {\n          \"analyze_wildcard\": true,\n          \"query\": \"*\"\n        }\n      }\n    }\n  ]\n}"
+      }
+    }
+  }
+]
