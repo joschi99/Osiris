@@ -1,0 +1,77 @@
+[
+  {
+    "_id": "Windows-Events-error",
+    "_type": "search",
+    "_source": {
+      "title": "Windows Events error",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "Hostname",
+        "Severity",
+        "Channel",
+        "SourceName",
+        "Context",
+        "Message"
+      ],
+      "sort": [
+        "@timestamp",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"[win_evt-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"SeverityValue: >3\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+      }
+    }
+  },
+  {
+    "_id": "Windows-Events",
+    "_type": "search",
+    "_source": {
+      "title": "Windows Events",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "Hostname",
+        "Severity",
+        "Channel",
+        "SourceName",
+        "Context",
+        "Message"
+      ],
+      "sort": [
+        "@timestamp",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"[win_evt-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"analyze_wildcard\":true,\"query\":\"*\"}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+      }
+    }
+  },
+  {
+    "_id": "Windows-Events-warning",
+    "_type": "search",
+    "_source": {
+      "title": "Windows Events warning",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "Hostname",
+        "Severity",
+        "Channel",
+        "SourceName",
+        "Context",
+        "Message"
+      ],
+      "sort": [
+        "@timestamp",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"[win_evt-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"SeverityValue: >2\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+      }
+    }
+  }
+]
