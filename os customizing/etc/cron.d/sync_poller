@@ -1,0 +1,2 @@
+#Poller wird jede Stunde syncronisiert
+0 */1 * * * root /opt/bi-s/software/scripts/sync/sync_poller.sh
