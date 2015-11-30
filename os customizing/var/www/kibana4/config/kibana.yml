@@ -29,7 +29,6 @@ kibana_index: ".kibana"
 # If you need to provide a CA certificate for your Elasticsarech instance, put
 # the path of the pem file here.
 # ca: /path/to/your/CA.pem
-ca: /etc/pki/tls/certs/ca.crt
 
 # The default application to load.
 default_app_id: "discover"
@@ -65,6 +64,10 @@ ssl_cert_file: /etc/pki/tls/certs/osiris2.bi-s.it.crt
 # If you would like to send the log output to a file you can set the path below.
 # This will also turn off the STDOUT log output.
 # log_file: ./kibana.log
+
+# A value to use as a XSRF token. This token is sent back to the server on each request
+# and required if you want to execute requests from other clients (like curl).
+# xsrf_token: ""
 
 # Plugins that are included in the build, and no longer found in the plugins/ folder
 bundled_plugin_ids:
