@@ -1,6 +1,10 @@
 Osiris 2.2
 	Syslog & Logmanagement
-		- Upgrade Logstash 1.5.5
+		- Upgrade Elastic 2.1
+		- Upgrade Kibana 4.3
+		- Upgrade curator 3.4.0
+		- Upgrade ElasticHQ 2.0.3
+		- Upgrade Logstash todo
 		- Windows EventLog: nxlog -> elastic -> kibana
 		- elastic: templates for RSyslog and nxlog
 		- Kibana: dashboards for Syslog
