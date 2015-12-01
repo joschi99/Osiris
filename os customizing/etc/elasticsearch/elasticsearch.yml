@@ -97,10 +97,11 @@
 
 
 # Osiris settings
+# network.host must be set with local IP address (don't forget to set the same address in kibana config and curator config)
+# network.host: 192.168.0.1
 cluster.name: osiris
 node.name: "Osiris Node 1"
 path.data: /elasticsearch/data
-# Kibana 3
+
 http.cors.enabled: true
 http.cors.allow-origin: "/.*/"
-
