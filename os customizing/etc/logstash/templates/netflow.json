@@ -9,6 +9,8 @@
         "properties" : {
           "@version": { "index": "analyzed", "type": "integer" },
           "@timestamp": { "index": "analyzed", "type": "date" },
+          "geoip_src": { "type" : "object", "dynamic" : true, "path" : "full", "properties" : { "location" : { "type" : "geo_point" } } },
+          "geoip_dst": { "type" : "object", "dynamic" : true, "path" : "full", "properties" : { "location" : { "type" : "geo_point" } } },
           "netflow": {
             "dynamic": true,
             "type": "object",
@@ -37,9 +39,7 @@
               "src_as": { "index": "analyzed", "type": "integer" },
               "dst_as": { "index": "analyzed", "type": "integer" },
               "src_mask": { "index": "analyzed", "type": "integer" },
-              "dst_mask": { "index": "analyzed", "type": "integer" },
-              "geoip_src": { "type" : "object", "dynamic" : true, "path" : "full", "properties" : { "location" : { "type" : "geo_point" } } },
-              "geoip_dst": { "type" : "object", "dynamic" : true, "path" : "full", "properties" : { "location" : { "type" : "geo_point" } } }
+              "dst_mask": { "index": "analyzed", "type": "integer" }
             }
           }
         }
