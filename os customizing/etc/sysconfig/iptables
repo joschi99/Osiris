@@ -27,6 +27,7 @@
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 5669 -j ACCEPT
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 9200 -j ACCEPT
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 9300 -j ACCEPT
+-A INPUT -m state --state NEW -m udp -p udp --dport 9901 -j ACCEPT
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 5601 -j ACCEPT
 -A INPUT -m state --state NEW -m tcp -p tcp --dport 62354 -j ACCEPT
 -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
