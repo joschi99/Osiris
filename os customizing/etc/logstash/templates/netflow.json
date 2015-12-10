@@ -9,8 +9,30 @@
         "properties" : {
           "@version": { "index": "analyzed", "type": "integer" },
           "@timestamp": { "index": "analyzed", "type": "date" },
-          "geoip_src": { "type" : "object", "dynamic" : true, "path" : "full", "properties" : { "location" : { "type" : "geo_point" } } },
-          "geoip_dst": { "type" : "object", "dynamic" : true, "path" : "full", "properties" : { "location" : { "type" : "geo_point" } } },
+          "geoip_src": {
+            "type" : "object",
+            "dynamic" : true,
+            "path" : "full",
+            "properties" : {
+              "location" : { "type" : "geo_point" },
+              "city_name": {"index": "not_analyzed", "type": "string" },
+              "country_name": {"index": "not_analyzed", "type": "string" },
+              "real_region_name": {"index": "not_analyzed", "type": "string" },
+              "region_name": {"index": "not_analyzed", "type": "string" }
+            }
+          },
+          "geoip_dst": {
+            "type" : "object",
+            "dynamic" : true,
+            "path" : "full",
+            "properties" : {
+              "location" : { "type" : "geo_point" },
+              "city_name": {"index": "not_analyzed", "type": "string" },
+              "country_name": {"index": "not_analyzed", "type": "string" },
+              "real_region_name": {"index": "not_analyzed", "type": "string" },
+              "region_name": {"index": "not_analyzed", "type": "string" }
+            }
+          },
           "netflow": {
             "dynamic": true,
             "type": "object",
@@ -31,8 +53,8 @@
               "in_bytes": { "index": "analyzed", "type": "long" },
               "first_switched": { "index": "not_analyzed", "type": "date" },
               "last_switched": { "index": "not_analyzed", "type": "date" },
-              "l4_src_port": { "index": "analyzed", "type": "long" },
-              "l4_dst_port": { "index": "analyzed", "type": "long" },
+              "l4_src_port": { "index": "not_analyzed", "type": "string" },
+              "l4_dst_port": { "index": "not_analyzed", "type": "string" },
               "tcp_flags": { "index": "analyzed", "type": "integer" },
               "protocol": { "index": "analyzed", "type": "integer" },
               "src_tos": { "index": "analyzed", "type": "integer" },
