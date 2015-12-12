@@ -9,6 +9,8 @@
         "properties" : {
           "@version": { "index": "analyzed", "type": "integer" },
           "@timestamp": { "index": "analyzed", "type": "date" },
+          "src_app": {"index": "not_analyzed", "type": "string" },
+          "dst_app": {"index": "not_analyzed", "type": "string" },
           "geoip_src": {
             "type" : "object",
             "dynamic" : true,

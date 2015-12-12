@@ -1,0 +1,46 @@
+"20": FTP
+"21": FTP
+"22": SSH
+"23": Telnet
+"25": SMTP
+"43": WHOIS
+"53": DNS
+"69": TFTP
+"80": HTTP
+"88": Kerberos
+"110": POP3
+"119": NNTP
+"123": NTP
+"135": Microsoft EPMAP
+"137": Netbios
+"138": Netbios
+"139": Netbios
+"143": IMAP
+"161": SNMP
+"162": SNMP Trap
+"194": IRC
+"220": IMAP v3
+"311": Mac OS X Server
+"389": LDAP
+"443": HTTPS
+"445": SMB
+"465": SMTP over TLS/SSL
+"548": Apple Filing Protocol
+"554": RTSP
+"593": HTTP RPC
+"873": rsync
+"1194": OpenVPN
+"1214": Kazaa
+"1433": MS SQL
+"1512": WINS
+"1521": Oracle
+"1720": H.323
+"1812": Radius
+"1813": Radius
+"3020": CIFS/SMB
+"3268": MS Global Catalog
+"3306": MySQL
+"3389": RDP
+"5500": VNC
+"8443": HTTPS
+"8080": HTTP
