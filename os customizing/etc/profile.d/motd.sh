@@ -3,7 +3,7 @@
 echo -e "
 ##################################
 #
-# Osiris 2.1.0 NMS
+# Osiris 2.1.1 NMS
 #
 # All rights reserved
 # (c)2014, BI-S des Jochen Platzgummer
