@@ -2,7 +2,7 @@ CENT_USER="admin"
 CENT_PWD="password"
 
 function find_poller() {
-  /usr/share/centreon/www/modules/centreon-clapi/core/centreon -u $CENT_USER -p $CENT_PWD -o INSTANCE -a show > /tmp/poller.txt
+  /usr/share/centreon/bin/centreon -u $CENT_USER -p $CENT_PWD -o INSTANCE -a show > /tmp/poller.txt
   IFS=";"
   while read ID NAME LOCALHOST IP ACTIVATE STATUS OTHERS
   do
