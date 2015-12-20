@@ -9,9 +9,10 @@
 # Development:
 #  Jochen Platzgummer
 #
-# Version 2.1
+# Version 2.2
 #
 # Changelog
+#	20.12.2015: Remove backup from centreon_syslog DB
 #   09.04.2014: Osiris 2.1 Anpassungen
 #   23.01.2014: Backup DB LogAnalyser
 #   09.09.2011: Anpassung an Osiris 2.0
@@ -32,7 +33,7 @@
 BACKUP_PATH=/opt/bi-s/cifs/backup
 DIR=$(date +%Y%m%d)
 FILE=$(date +%Y%m%d_%H%M).sql.gz
-BACKUP_RETTIME=60
+BACKUP_RETTIME=5
 DB_USER=backup
 DB_PWD=mFRiQYIuwHhCIk6s753Q
 
@@ -60,10 +61,6 @@ echo "End backup db CENTREON"
 echo "Start backup db NEDI"
 mysqldump -u $DB_USER -p$DB_PWD nedi | gzip > $BACKUP_PATH/$DIR/nedi_$FILE
 echo "End backup db NEDI"
-
-echo "Start backup db CENTREON_SYSLOG"
-mysqldump -u $DB_USER -p$DB_PWD centreon_syslog | gzip > $BACKUP_PATH/$DIR/centreon_syslog_$FILE
-echo "End backup db CENTREON_SYSLOG"
 
 echo "Start backup db MEDIAWIKI"
 mysqldump -u $DB_USER -p$DB_PWD mediawiki | gzip > $BACKUP_PATH/$DIR/wikidb_$FILE
