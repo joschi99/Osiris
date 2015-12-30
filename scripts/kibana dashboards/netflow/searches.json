@@ -1,0 +1,103 @@
+[
+  {
+    "_id": "netflow-src-address-extern",
+    "_type": "search",
+    "_source": {
+      "title": "netflow src address extern",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "host",
+        "netflow.ipv4_src_addr",
+        "netflow.ipv4_dst_addr",
+        "netflow.in_bytes",
+        "netflow.in_pkts",
+        "netflow.l4_src_port"
+      ],
+      "sort": [
+        "@timestamp",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"[netflow-]YYYY.MM.DD\",\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[],\"query\":{\"query_string\":{\"query\":\"(netflow.ipv4_src_addr: [0.0.0.0 TO 9.255.255.255] OR netflow.ipv4_src_addr: [11.0.0.0 TO 172.15.255.255] OR netflow.ipv4_src_addr: [172.32.0.0 TO 192.167.255.255] OR netflow.ipv4_src_addr: [192.169.0.0 TO 255.255.255.255])  AND NOT netflow.ipv4_src_addr: [89.190.160.16 TO 89.190.160.30]\",\"analyze_wildcard\":true}}}"
+      }
+    }
+  },
+  {
+    "_id": "netflow-http(s)",
+    "_type": "search",
+    "_source": {
+      "title": "netflow http(s)",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "host",
+        "netflow.ipv4_src_addr",
+        "netflow.ipv4_dst_addr",
+        "netflow.in_bytes",
+        "netflow.in_pkts",
+        "netflow.l4_dst_port"
+      ],
+      "sort": [
+        "@timestamp",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"[netflow-]YYYY.MM.DD\",\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[],\"query\":{\"query_string\":{\"query\":\"netflow.l4_dst_port: 80 OR netflow.l4_dst_port: 443 OR netflow.l4_dst_port: 8080\",\"analyze_wildcard\":true}}}"
+      }
+    }
+  },
+  {
+    "_id": "netflow-dst-address-extern",
+    "_type": "search",
+    "_source": {
+      "title": "netflow dst address extern",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "host",
+        "netflow.ipv4_src_addr",
+        "netflow.ipv4_dst_addr",
+        "netflow.in_bytes",
+        "netflow.in_pkts",
+        "netflow.l4_dst_port"
+      ],
+      "sort": [
+        "@timestamp",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"[netflow-]YYYY.MM.DD\",\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[],\"query\":{\"query_string\":{\"query\":\"(netflow.ipv4_dst_addr: [0.0.0.0 TO 9.255.255.255] OR netflow.ipv4_dst_addr: [11.0.0.0 TO 172.15.255.255] OR netflow.ipv4_dst_addr: [172.32.0.0 TO 192.167.255.255] OR netflow.ipv4_dst_addr: [192.169.0.0 TO 255.255.255.255])  AND NOT netflow.ipv4_dst_addr: [89.190.160.16 TO 89.190.160.30]\",\"analyze_wildcard\":true}}}"
+      }
+    }
+  },
+  {
+    "_id": "netflow-all",
+    "_type": "search",
+    "_source": {
+      "title": "netflow all",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "host",
+        "netflow.ipv4_src_addr",
+        "netflow.ipv4_dst_addr",
+        "netflow.in_bytes",
+        "netflow.in_pkts",
+        "src_app",
+        "dst_app"
+      ],
+      "sort": [
+        "@timestamp",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"[netflow-]YYYY.MM.DD\",\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[],\"query\":{\"query_string\":{\"analyze_wildcard\":true,\"query\":\"*\"}}}"
+      }
+    }
+  }
+]
