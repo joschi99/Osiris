@@ -1,0 +1,19 @@
+[
+  {
+    "_id": "Netflow-Analysis",
+    "_type": "dashboard",
+    "_source": {
+      "title": "Netflow Analysis",
+      "hits": 0,
+      "description": "",
+      "panelsJSON": "[{\"col\":1,\"id\":\"nf-country-source-traffic\",\"row\":4,\"size_x\":5,\"size_y\":3,\"type\":\"visualization\"},{\"col\":6,\"id\":\"nf-country-destination-traffic\",\"row\":4,\"size_x\":5,\"size_y\":3,\"type\":\"visualization\"},{\"col\":1,\"id\":\"nf-city-source-traffic\",\"row\":7,\"size_x\":5,\"size_y\":3,\"type\":\"visualization\"},{\"col\":6,\"id\":\"nf-city-destination-traffic\",\"row\":7,\"size_x\":5,\"size_y\":3,\"type\":\"visualization\"},{\"col\":1,\"id\":\"nf-geo-source-traffic\",\"row\":10,\"size_x\":6,\"size_y\":4,\"type\":\"visualization\"},{\"col\":7,\"id\":\"nf-geo-destination-traffic\",\"row\":10,\"size_x\":6,\"size_y\":4,\"type\":\"visualization\"},{\"col\":1,\"id\":\"nf-traffic-timeline\",\"row\":1,\"size_x\":12,\"size_y\":3,\"type\":\"visualization\"},{\"col\":10,\"id\":\"nf-destination-ports-top-10\",\"row\":14,\"size_x\":3,\"size_y\":3,\"type\":\"visualization\"},{\"col\":4,\"id\":\"nf-source-ports-top-15\",\"row\":14,\"size_x\":3,\"size_y\":3,\"type\":\"visualization\"},{\"col\":7,\"id\":\"nf-destination-hosts-top-10\",\"row\":14,\"size_x\":3,\"size_y\":3,\"type\":\"visualization\"},{\"col\":1,\"id\":\"nf-source-hosts-top-10\",\"row\":14,\"size_x\":3,\"size_y\":3,\"type\":\"visualization\"},{\"col\":11,\"id\":\"nf-packets\",\"row\":6,\"size_x\":2,\"size_y\":2,\"type\":\"visualization\"},{\"col\":11,\"id\":\"nf-traffic\",\"row\":4,\"size_x\":2,\"size_y\":2,\"type\":\"visualization\"},{\"col\":11,\"id\":\"nf-events\",\"row\":8,\"size_x\":2,\"size_y\":2,\"type\":\"visualization\"},{\"col\":1,\"columns\":[\"host\",\"netflow.ipv4_src_addr\",\"netflow.ipv4_dst_addr\",\"netflow.in_bytes\",\"netflow.in_pkts\",\"src_app\",\"dst_app\"],\"id\":\"netflow-all\",\"row\":20,\"size_x\":12,\"size_y\":3,\"sort\":[\"@timestamp\",\"desc\"],\"type\":\"search\"},{\"id\":\"nf-source-ports-timeline\",\"type\":\"visualization\",\"size_x\":6,\"size_y\":3,\"col\":1,\"row\":17},{\"id\":\"nf-destination-ports-timeline\",\"type\":\"visualization\",\"size_x\":6,\"size_y\":3,\"col\":7,\"row\":17}]",
+      "version": 1,
+      "timeRestore": true,
+      "timeTo": "now",
+      "timeFrom": "now-4h",
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"filter\":[{\"query\":{\"query_string\":{\"analyze_wildcard\":true,\"query\":\"*\"}}}]}"
+      }
+    }
+  }
+]
