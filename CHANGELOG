@@ -4,8 +4,10 @@ Osiris 2.2
 		- Upgrade Fusion Inventory Server for GLPI 0.90+1.0
 	Network
 		- Logstash netflow configuration (Kibana Dashboard not implementet yet)
+		- Upgrade Packetbeat 1.0.1
 	System
 		- Upgrade PHP 5.4.45
+		- New Topbeat 1.0.1
 Osiris 2.1.1
 	Monitoring
 		- Upgrade Centreon Core 2.7.0
