@@ -36,8 +36,12 @@ openssl enc -aes-256-cbc -pass file:/opt/bi-s/software/scripts/gpg/.gpg_passwd.t
 rm -rf $FILE_LIC_TXT
 
 #create osiris license csv file
-echo "Company,$COMP_NAME" >> $FILE_LIC_CSV
+echo "Company,$COMP_NAME" > $FILE_LIC_CSV
 echo "E-Mail,$EMAIL" >> $FILE_LIC_CSV
 echo "Serial Number,$SN" >> $FILE_LIC_CSV
-echo "Expire Date,$(date -d $EXPIRE_DATE +%d/%m/%Y)" >> $FILE_LIC_CSV
+if [[ $EXPIRE_DATE = "never" ]]; then
+  echo "Expire Date,$EXPIRE_DATE" >> $FILE_LIC_CSV
+else
+  echo "Expire Date,$(date -d $EXPIRE_DATE +%d/%m/%Y)" >> $FILE_LIC_CSV
+fi
 echo "Created,$(date +%d/%m/%Y)" >> $FILE_LIC_CSV
