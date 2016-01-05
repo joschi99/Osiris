@@ -93,7 +93,7 @@ function calc_sn() {
 
 #check if license file exists
 if [ ! -f $PATH_LICFILE/$FILE_LIC ]; then
-	LICSTATUS = "there is NO Osiris license file"
+	LICSTATUS="there is NO Osiris license file"
 	echo "$LICSTATUS" | logger
 	echo "$LICSTATUS" >> /etc/issue
 	update_licstatus $ERR_DESC
@@ -105,6 +105,7 @@ if [ ! -f $PATH_LICFILE/$FILE_LIC ]; then
 	#send email
 	send_mail "NO Osiris license file" "Es ist kein Osiris Lizenzfile vorhanden, shutdown geplant"
 	echo "$ERR_DESC - $LICSTATUS"
+	exit $?
 fi
 
 #read license file
