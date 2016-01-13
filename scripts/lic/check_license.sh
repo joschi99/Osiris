@@ -1,14 +1,20 @@
 #!/bin/bash
 
+FILE_LIC_TXT="osiris.lic.txt"
+FILE_LIC_CSV="osiris.lic.csv"
 FILE_LIC="osiris.lic"
 PATH_TMP="/tmp"
 PATH_LICFILE="/etc"
+SHUTDOWN_CMD="/opt/bi-s/software/scripts/lic/shutdown"
 EMAIL_SENDER="osiris@bi-s.it"
 EMAIL_RECIPIENT="support@bi-s.it"
 
-declare -r OK_DESC="OK"
-declare -r WARN_DESC="WARNING"
+declare -r STATUS_ERR=2
 declare -r ERR_DESC="ERROR"
+declare -r STATUS_WARN=1
+declare -r WARN_DESC="WARNING"
+declare -r STATUS_OK=0
+declare -r OK_DESC="OK"
 
 function send_mail() {
 	local SUBJECT
@@ -35,8 +41,6 @@ function send_mail() {
 }
 
 send_shutdown_command() {
-	local SHUTDOWN_CMD="/opt/bi-s/software/scripts/lic/shutdown"
-		
 	#create a empty shutdown file
 	rm -rf $SHUTDOWN_CMD
 	touch $SHUTDOWN_CMD
@@ -46,8 +50,6 @@ send_shutdown_command() {
 }
 
 function parse_licfile() {
-	local FILE_LIC_TXT="osiris.lic.txt"
-
 	#decode license file
 	openssl enc -d -aes-256-cbc -pass file:/opt/bi-s/software/scripts/gpg/.gpg_passwd.txt -in $PATH_LICFILE/$FILE_LIC -out $PATH_TMP/$FILE_LIC_TXT
 
@@ -66,7 +68,6 @@ function parse_licfile() {
 }
 
 function update_licstatus () {
-	local FILE_LIC_CSV="osiris.lic.csv"
 	local LICSTATCSV
 
 	LICSTATCSV="$(cat $PATH_LICFILE/$FILE_LIC_CSV |grep 'Status,')"
@@ -78,18 +79,9 @@ function update_licstatus () {
 	fi
 }
 
-function read_sysuuid() {
-	SYSGUID="$(/usr/sbin/dmidecode |grep UUID)"
-	SYSGUID=${SYSGUID:7}
-}
-
-function calc_sn() {
-	local S1
-
-	read_sysuuid
-	S1="$SYSGUID $COMP_NAME_LIC $EXP_DATE"
-	SN="$(echo -n "$S1" | md5sum)"
-}
+#read system uuid
+SYSGUID="$(/usr/sbin/dmidecode |grep UUID)"
+SYSGUID=${SYSGUID:7}
 
 #check if license file exists
 if [ ! -f $PATH_LICFILE/$FILE_LIC ]; then
@@ -105,14 +97,15 @@ if [ ! -f $PATH_LICFILE/$FILE_LIC ]; then
 	#send email
 	send_mail "NO Osiris license file" "Es ist kein Osiris Lizenzfile vorhanden, shutdown geplant"
 	echo "$ERR_DESC - $LICSTATUS"
-	exit $?
+	exit $STATUS_ERR
 fi
 
 #read license file
 parse_licfile
 
 #recalculate SN
-calc_sn
+S1="$SYSGUID $COMP_NAME_LIC $EXP_DATE"
+SN="$(echo -n "$S1" | md5sum)"
 
 echo "$(cat /opt/bi-s/software/scripts/lic/issue)" > /etc/issue
 
@@ -135,8 +128,9 @@ if [ "$SN" = "$SN_LIC" ] && (( "$DIFF_DAYS" >= 1 )); then
 
 		#send email
 		send_mail "$COMP_NAME_LIC: Osiris licensed will expire in $DIFF_DAYS days" "Osiris Lizenz verfällt in $DIFF_DAYS Tagen"
-		
+
 		echo "$WARN_DESC - $LICSTATUS"
+		exit $STATUS_WARN
 	fi
 	LICSTATUS="Osiris license is valid"
 	echo "$LICSTATUS" | logger
@@ -148,6 +142,7 @@ if [ "$SN" = "$SN_LIC" ] && (( "$DIFF_DAYS" >= 1 )); then
 	send_shutdown_command
 
 	echo "$OK_DESC - $LICSTATUS"
+	exit $STATUS_OK
 elif [ "$SN" != "$SN_LIC" ] || (( "$DIFF_DAYS" <= 0 )); then
 	if  (( "$DIFF_DAYS" <= 0 )); then
 		LICSTATUS="your Osiris license key is expired"
@@ -175,4 +170,5 @@ elif [ "$SN" != "$SN_LIC" ] || (( "$DIFF_DAYS" <= 0 )); then
 		send_mail "$COMP_NAME_LIC: Osiris not licensed" "Osiris ist nicht lizenziert, shutdown geplant"
 	fi
 	echo "$ERR_DESC - $LICSTATUS"
+	exit $STATUS_ERR
 fi
