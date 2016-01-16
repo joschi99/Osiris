@@ -1,4 +1,19 @@
 #!/bin/bash
+###############################################################################
+#
+# send_licreq.sh - Schickt eine neue Lizenzanfrage an support@bi-s.it
+#
+# Copyright (c) 2016 Osiris 2.2 (Contact: info@bi-s.it)
+#
+# Development:
+#  Jochen Platzgummer
+#
+# Version 1.0
+#
+# Changelog
+#	16.01.2016: Erste Version für Osiris2.2
+###############################################################################
+
 FROM="osiris-lic@bi-s.it"
 TO="support@bi-s.it"
 
