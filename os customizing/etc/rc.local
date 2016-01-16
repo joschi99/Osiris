@@ -6,4 +6,4 @@
 
 touch /var/lock/subsys/local
 echo never > /sys/kernel/mm/transparent_hugepage/enabled
-/opt/bi-s/software/scripts/lic/check_license
+/opt/bi-s/software/scripts/lic2/check_lic
