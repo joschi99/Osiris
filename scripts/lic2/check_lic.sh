@@ -273,6 +273,13 @@ function write_statusfile () {
 
 	local current_time
 	
+	echo "$(cat /opt/bi-s/software/scripts/lic2/issue)" > /etc/issue
+	if [ $EXIT_STATUS = 0 ]
+	then
+		echo "Osiris license valid" >> /etc/issue
+	else
+		echo "ERROR: Osiris license problem" >> /etc/issue
+	fi
 	current_time=$(date "+%d.%m.%Y-%H:%M:%S")
 	echo "$LIC_GEN_STATUS,$LIC_GEN_STATUS_TEXT" > $PATH_LICFILE/$FILE_LIC_STATUS
 	echo "$LIC_STATUS,$LIC_STATUS_TEXT" >> $PATH_LICFILE/$FILE_LIC_STATUS
