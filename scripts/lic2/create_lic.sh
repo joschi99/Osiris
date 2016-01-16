@@ -1,4 +1,18 @@
 #!/bin/bash
+###############################################################################
+#
+# create_lic.sh - Erstellt das Osiris2.2 Lizenzfile
+#
+# Copyright (c) 2016 Osiris 2.2 (Contact: info@bi-s.it)
+#
+# Development:
+#  Jochen Platzgummer
+#
+# Version 1.0
+#
+# Changelog
+#	16.01.2016: Erste Version für Osiris2.2
+###############################################################################
 
 declare -r FILE_LIC_CSV="osiris2.lic.csv"
 declare -r FILE_LIC="osiris2.lic"

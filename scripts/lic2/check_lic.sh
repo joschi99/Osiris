@@ -1,4 +1,18 @@
 #!/bin/bash
+###############################################################################
+#
+# check_lic.sh - Prüft die Osiris2.2 Lizenz
+#
+# Copyright (c) 2016 Osiris 2.2 (Contact: info@bi-s.it)
+#
+# Development:
+#  Jochen Platzgummer
+#
+# Version 1.0
+#
+# Changelog
+#	16.01.2016: Erste Version für Osiris2.2
+###############################################################################
 
 declare -r FILE_LIC_TMP="osiris2.lic.tmp"
 declare -r FILE_LIC="osiris2.lic"
