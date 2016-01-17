@@ -23,7 +23,7 @@ declare -r PATH_LICFILE="/etc"
 declare -r PATH_TMP="/tmp"
 
 declare -r user="osiris"
-declare -r pwd="password"
+declare -r pwd="VSM3GzUJc9R63Nc72Mz5"
 declare -r db="osiris"
 
 declare -r LIC_STATUS_OK=0
