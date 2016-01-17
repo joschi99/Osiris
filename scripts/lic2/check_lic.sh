@@ -8,11 +8,16 @@
 # Development:
 #  Jochen Platzgummer
 #
-# Version 1.0
+# Version 1.1
 #
 # Changelog
+#	17.01.2016: check_lic.cfg
 #	16.01.2016: Erste Version für Osiris2.2
 ###############################################################################
+
+source /opt/bi-s/software/scripts/lic2/check_lic.cfg
+
+declare -r version="1.1"
 
 declare -r FILE_LIC_TMP="osiris2.lic.tmp"
 declare -r FILE_LIC="osiris2.lic"
@@ -21,10 +26,6 @@ declare -r FILE_LIC_STATUS="osiris2.licstatus.csv"
 
 declare -r PATH_LICFILE="/etc"
 declare -r PATH_TMP="/tmp"
-
-declare -r user="osiris"
-declare -r pwd="VSM3GzUJc9R63Nc72Mz5"
-declare -r db="osiris"
 
 declare -r LIC_STATUS_OK=0
 declare -r LIC_STATUS_ERR=1
@@ -618,4 +619,10 @@ function create_GUID () {
   GUID="$UUID $COMPANY $CREATE_DATE"
 }
 
+
+if [ "$1" = "--version" ]
+then
+	echo "check_lic version $version"
+	exit
+fi
 start
