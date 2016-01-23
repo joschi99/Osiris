@@ -1,5 +1,5 @@
 #
-# Copyright 2015 Centreon (http://www.centreon.com/)
+# Copyright 2016 Centreon (http://www.centreon.com/)
 #
 # Centreon is a full-fledged industry-strength solution that meets
 # the needs in IT infrastructure and application monitoring for
@@ -51,6 +51,7 @@ sub new {
                          'snapshotage'      => 'storage::netapp::snmp::mode::snapshotage',
                          'temperature'      => 'storage::netapp::snmp::mode::temperature',
                          'volumeoptions'    => 'storage::netapp::snmp::mode::volumeoptions',
+                         'cache-age'        => 'storage::netapp::snmp::mode::cacheage',
                          );
 
     return $self;

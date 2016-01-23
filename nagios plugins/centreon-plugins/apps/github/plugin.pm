@@ -1,5 +1,5 @@
 #
-# Copyright 2015 Centreon (http://www.centreon.com/)
+# Copyright 2016 Centreon (http://www.centreon.com/)
 #
 # Centreon is a full-fledged industry-strength solution that meets
 # the needs in IT infrastructure and application monitoring for
@@ -36,6 +36,7 @@ sub new {
                         'issues'       => 'apps::github::mode::issues',
                         'commits'      => 'apps::github::mode::commits',
                         'pullrequests' => 'apps::github::mode::pullrequests',
+                        'stats'        => 'apps::github::mode::stats',
                         );
     return $self;
 }
