@@ -1,6 +1,8 @@
 Osiris 2.2.0
 	Monitoring
 		- Upgrade Centreon Core 2.7.1
+		- Upgrade Selenium 2.49.0
+		- Upgrade mklivestatus 1.2.6p16
 	Inventory
 		- Upgrade GLPI 0.90.1
 		- Upgrade Fusion Inventory Server for GLPI 0.90+1.0
