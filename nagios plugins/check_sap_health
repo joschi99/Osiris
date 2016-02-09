@@ -1,4 +1,5 @@
 #! /usr/bin/perl -w
+# nagios: +epn
 
 package GLPlugin;
 use strict;
@@ -14,11 +15,12 @@ use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
 {
   our $mode = undef;
   our $plugin = undef;
-  our $pluginname = basename($0);
+  our $pluginname = basename($ENV{'NAGIOS_PLUGIN'} || $0);
   our $blacklist = undef;
   our $info = [];
   our $extendedinfo = [];
   our $summary = [];
+  our $variables = {};
 }
 
 sub new {
@@ -30,86 +32,34 @@ sub new {
   return $self;
 }
 
-sub statefilesdir {
+sub init {
   my $self = shift;
-  return $GLPlugin::plugin->{statefilesdir};
-}
-
-#
-# Plugin-related methods
-#
-sub mode {
-  my $self = shift;
-  return $GLPlugin::mode;
-}
-
-sub add_ok {
-  my $self = shift;
-  my $message = shift || $self->{info};
-  $self->add_message(OK, $message);
-}
-
-sub add_warning {
-  my $self = shift;
-  my $message = shift || $self->{info};
-  $self->add_message(WARNING, $message);
-}
-
-sub add_critical {
-  my $self = shift;
-  my $message = shift || $self->{info};
-  $self->add_message(CRITICAL, $message);
-}
-
-sub add_unknown {
-  my $self = shift;
-  my $message = shift || $self->{info};
-  $self->add_message(UNKNOWN, $message);
-}
-
-sub add_message {
-  my $self = shift;
-  my $level = shift;
-  my $message = shift || $self->{info};
-  $GLPlugin::plugin->add_message($level, $message)
-      unless $self->is_blacklisted();
-  if (exists $self->{failed}) {
-    if ($level == UNKNOWN && $self->{failed} == OK) {
-      $self->{failed} = $level;
-    } elsif ($level > $self->{failed}) {
-      $self->{failed} = $level;
-    }
+  if ($self->opts->can("blacklist") && $self->opts->blacklist &&
+      -f $self->opts->blacklist) {
+    $self->opts->blacklist = do {
+        local (@ARGV, $/) = $self->opts->blacklist; <> };
   }
 }
 
-sub clear_ok {
+sub dumper {
   my $self = shift;
-  $self->clear_messages(OK);
+  my $object = shift;
+  my $run = $object->{runtime};
+  delete $object->{runtime};
+  printf STDERR "%s\n", Data::Dumper::Dumper($object);
+  $object->{runtime} = $run;
 }
 
-sub clear_warning {
+sub no_such_mode {
   my $self = shift;
-  $self->clear_messages(WARNING);
+  printf "Mode %s is not implemented for this type of device\n",
+      $self->opts->mode;
+  exit 3;
 }
 
-sub clear_critical {
-  my $self = shift;
-  $self->clear_messages(CRITICAL);
-}
-
-sub clear_unknown {
-  my $self = shift;
-  $self->clear_messages(UNKNOWN);
-}
-
-sub clear_all {
-  my $self = shift;
-  $self->clear_ok();
-  $self->clear_warning();
-  $self->clear_critical();
-  $self->clear_unknown();
-}
-
+#########################################################
+# framework-related. setup, options
+#
 sub add_modes {
   my $self = shift;
   my $modes = shift;
@@ -148,16 +98,6 @@ sub add_mode {
     $GLPlugin::plugin->{modestring} .= sprintf $format, $_->{spec}, $_->{help};
   }
   $GLPlugin::plugin->{modestring} .= "\n";
-}
-
-sub getopts {
-  my $self = shift;
-  $GLPlugin::plugin->getopts();
-}
-
-sub override_opt {
-  my $self = shift;
-  $GLPlugin::plugin->override_opt(@_);
 }
 
 sub validate_args {
@@ -201,8 +141,16 @@ sub validate_args {
     $ENV{NRPE_MULTILINESUPPORT} = 0;
   }
   if (! $self->opts->statefilesdir) {
-    if (exists $ENV{NAGIOS__SERVICESTATEFILESDIR}) {
-      $self->override_opt('statefilesdir', $ENV{NAGIOS__SERVICESTATEFILESDIR});
+    if ($^O =~ /MSWin/) {
+      if (defined $ENV{TEMP}) {
+        $self->override_opt('statefilesdir', $ENV{TEMP}."/".$GLPlugin::plugin->{name});
+      } elsif (defined $ENV{TMP}) {
+        $self->override_opt('statefilesdir', $ENV{TMP}."/".$GLPlugin::plugin->{name});
+      } elsif (defined $ENV{windir}) {
+        $self->override_opt('statefilesdir', File::Spec->catfile($ENV{windir}, 'Temp')."/".$GLPlugin::plugin->{name});
+      } else {
+        $self->override_opt('statefilesdir', "C:/".$GLPlugin::plugin->{name});
+      }
     } elsif (exists $ENV{OMD_ROOT}) {
       $self->override_opt('statefilesdir', $ENV{OMD_ROOT}."/var/tmp/".$GLPlugin::plugin->{name});
     } else {
@@ -222,6 +170,11 @@ sub validate_args {
           critical => $self->opts->criticalx->{$key});
     }
   }
+  $self->set_timeout_alarm() if ! $SIG{'ALRM'};
+}
+
+sub set_timeout_alarm {
+  my $self = shift;
   $SIG{'ALRM'} = sub {
     printf "UNKNOWN - %s timed out after %d seconds\n",
         $GLPlugin::plugin->{name}, $self->opts->timeout;
@@ -230,22 +183,31 @@ sub validate_args {
   alarm($self->opts->timeout);
 }
 
-
-sub init {
+#########################################################
+# global helpers
+#
+sub set_variable {
   my $self = shift;
-  if ($self->opts->can("blacklist") && $self->opts->blacklist &&
-      -f $self->opts->blacklist) {
-    $self->opts->blacklist = do {
-        local (@ARGV, $/) = $self->opts->blacklist; <> };
-  }
+  my $key = shift;
+  my $value = shift;
+  $GLPlugin::variables->{$key} = $value;
+}
+
+sub get_variable {
+  my $self = shift;
+  my $key = shift;
+  my $fallback = shift;
+  return exists $GLPlugin::variables->{$key} ?
+      $GLPlugin::variables->{$key} : $fallback;
 }
 
 sub debug {
   my $self = shift;
   my $format = shift;
-  my $tracefile = "/tmp/".$0.".trace";
+  my $tracefile = "/tmp/".$GLPlugin::pluginname.".trace";
   $self->{trace} = -f $tracefile ? 1 : 0;
-  if ($self->opts->verbose && $self->opts->verbose > 10) {
+  if ($self->get_variable("verbose") &&
+      $self->get_variable("verbose") > $self->get_variable("verbosity", 10)) {
     printf("%s: ", scalar localtime);
     printf($format, @_);
     printf "\n";
@@ -300,440 +262,35 @@ sub filter_name3 {
   return $self->filter_namex($self->opts->name3, $name);
 }
 
-sub blacklist {
+sub version_is_minimum {
   my $self = shift;
-  $self->{blacklisted} = 1;
-}
-
-sub add_blacklist {
-  my $self = shift;
-  my $list = shift;
-  $GLPlugin::blacklist = join('/',
-      (split('/', $self->opts->blacklist), $list));
-}
-
-sub is_blacklisted {
-  my $self = shift;
-  if (! $self->opts->can("blacklist")) {
+  my $version = shift;
+  my $installed_version;
+  my $newer = 1;
+  if ($self->get_variable("version")) {
+    $installed_version = $self->get_variable("version");
+  } elsif (exists $self->{version}) {
+    $installed_version = $self->{version};
+  } else {
     return 0;
   }
-  if (! exists $self->{blacklisted}) {
-    $self->{blacklisted} = 0;
+  my @v1 = map { $_ eq "x" ? 0 : $_ } split(/\./, $version);
+  my @v2 = split(/\./, $installed_version);
+  if (scalar(@v1) > scalar(@v2)) {
+    push(@v2, (0) x (scalar(@v1) - scalar(@v2)));
+  } elsif (scalar(@v2) > scalar(@v1)) {
+    push(@v1, (0) x (scalar(@v2) - scalar(@v1)));
   }
-  if (exists $self->{blacklisted} && $self->{blacklisted}) {
-    return $self->{blacklisted};
-  }
-  # FAN:459,203/TEMP:102229/ENVSUBSYSTEM
-  # FAN_459,FAN_203,TEMP_102229,ENVSUBSYSTEM
-  if ($self->opts->blacklist =~ /_/) {
-    foreach my $bl_item (split(/,/, $self->opts->blacklist)) {
-      if ($bl_item eq $self->internal_name()) {
-        $self->{blacklisted} = 1;
-      }
-    }
-  } else {
-    foreach my $bl_items (split(/\//, $self->opts->blacklist)) {
-      if ($bl_items =~ /^(\w+):([\:\d\-,]+)$/) {
-        my $bl_type = $1;
-        my $bl_names = $2;
-        foreach my $bl_name (split(/,/, $bl_names)) {
-          if ($bl_type."_".$bl_name eq $self->internal_name()) {
-            $self->{blacklisted} = 1;
-          }
-        }
-      } elsif ($bl_items =~ /^(\w+)$/) {
-        if ($bl_items eq $self->internal_name()) {
-          $self->{blacklisted} = 1;
-        }
-      }
-    }
-  } 
-  return $self->{blacklisted};
-}
-
-
-sub set_thresholds {
-  my $self = shift;
-  $GLPlugin::plugin->set_thresholds(@_);
-}
-
-sub force_thresholds {
-  my $self = shift;
-  $GLPlugin::plugin->force_thresholds(@_);
-}
-
-sub check_thresholds {
-  my $self = shift;
-  my @params = @_;
-  #($self->{warning}, $self->{critical}) =
-  #    $GLPlugin::plugin->get_thresholds(@params);
-  return $GLPlugin::plugin->check_thresholds(@params);
-}
-
-sub get_thresholds {
-  my $self = shift;
-  my @params = @_;
-  my @thresholds = $GLPlugin::plugin->get_thresholds(@params);
-  #my($warning, $critical) = $GLPlugin::plugin->get_thresholds(@params);
-  #$self->{warning} = $thresholds[0];
-  #$self->{critical} = $thresholds[1];
-  return @thresholds;
-}
-
-sub set_level {
-  my $self = shift;
-  my $code = shift;
-  $code = (qw(ok warning critical unknown))[$code] if $code =~ /^\d+$/;
-  $code = lc $code;
-  if (! exists $self->{tmp_level}) {
-    $self->{tmp_level} = {
-      ok => 0,
-      warning => 0,
-      critical => 0,
-      unknown => 0,
-    };
-  }
-  $self->{tmp_level}->{$code}++;
-}
-
-sub get_level {
-  my $self = shift;
-  return OK if ! exists $self->{tmp_level};
-  my $code = OK;
-  $code ||= CRITICAL if $self->{tmp_level}->{critical};
-  $code ||= WARNING  if $self->{tmp_level}->{warning};
-  $code ||= UNKNOWN  if $self->{tmp_level}->{unknown};
-  return $code;
-}
-
-sub add_info {
-  my $self = shift;
-  my $info = shift;
-  $info = $self->is_blacklisted() ? $info.' (blacklisted)' : $info;
-  $self->{info} = $info;
-  push(@{$GLPlugin::info}, $info);
-}
-
-sub annotate_info {
-  my $self = shift;
-  my $annotation = shift;
-  my $lastinfo = pop(@{$GLPlugin::info});
-  $lastinfo .= sprintf ' (%s)', $annotation;
-  push(@{$GLPlugin::info}, $lastinfo);
-}
-
-sub add_extendedinfo {
-  my $self = shift;
-  my $info = shift;
-  $self->{extendedinfo} = $info;
-  return if ! $self->opts->extendedinfo;
-  push(@{$GLPlugin::extendedinfo}, $info);
-}
-
-sub get_info {
-  my $self = shift;
-  my $separator = shift || ' ';
-  return join($separator , @{$GLPlugin::info});
-}
-
-sub get_extendedinfo {
-  my $self = shift;
-  my $separator = shift || ' ';
-  return join($separator, @{$GLPlugin::extendedinfo});
-}
-
-sub add_summary {
-  my $self = shift;
-  my $summary = shift;
-  push(@{$GLPlugin::summary}, $summary);
-}
-
-sub get_summary {
-  my $self = shift;
-  return join(', ', @{$GLPlugin::summary});
-}
-
-sub opts {
-  my $self = shift;
-  return $GLPlugin::plugin->opts();
-}
-
-sub valdiff {
-  my $self = shift;
-  my $pparams = shift;
-  my %params = %{$pparams};
-  my @keys = @_;
-  my $now = time;
-  my $newest_history_set = {};
-  my $last_values = $self->load_state(%params) || eval {
-    my $empty_events = {};
-    foreach (@keys) {
-      if (ref($self->{$_}) eq "ARRAY") {
-        $empty_events->{$_} = [];
-      } else {
-        $empty_events->{$_} = 0;
-      }
-    }
-    $empty_events->{timestamp} = 0;
-    if ($self->opts->lookback) {
-      $empty_events->{lookback_history} = {};
-    }
-    $empty_events;
-  };
-  foreach (@keys) {
-    if ($self->opts->lookback) {
-      # find a last_value in the history which fits lookback best
-      # and overwrite $last_values->{$_} with historic data
-      if (exists $last_values->{lookback_history}->{$_}) {
-        foreach my $date (sort {$a <=> $b} keys %{$last_values->{lookback_history}->{$_}}) {
-            $newest_history_set->{$_} = $last_values->{lookback_history}->{$_}->{$date};
-            $newest_history_set->{timestamp} = $date;
-        }
-        foreach my $date (sort {$a <=> $b} keys %{$last_values->{lookback_history}->{$_}}) {
-          if ($date >= ($now - $self->opts->lookback)) {
-            $last_values->{$_} = $last_values->{lookback_history}->{$_}->{$date};
-            $last_values->{timestamp} = $date;
-            last;
-          } else {
-            delete $last_values->{lookback_history}->{$_}->{$date};
-          }
-        }
-      }
-    }
-    if ($self->{$_} =~ /^\d+$/) {
-      $last_values->{$_} = 0 if ! exists $last_values->{$_};
-      if ($self->{$_} >= $last_values->{$_}) {
-        $self->{'delta_'.$_} = $self->{$_} - $last_values->{$_};
-      } else {
-        # vermutlich db restart und zaehler alle auf null
-        $self->{'delta_'.$_} = $self->{$_};
-      }
-      $self->debug(sprintf "delta_%s %f", $_, $self->{'delta_'.$_});
-    } elsif (ref($self->{$_}) eq "ARRAY") {
-      if ((! exists $last_values->{$_} || ! defined $last_values->{$_}) && exists $params{lastarray}) {
-        # innerhalb der lookback-zeit wurde nichts in der lookback_history
-        # gefunden. allenfalls irgendwas aelteres. normalerweise
-        # wuerde jetzt das array als [] initialisiert.
-        # d.h. es wuerde ein delta geben, @found s.u.
-        # wenn man das nicht will, sondern einfach aktuelles array mit
-        # dem array des letzten laufs vergleichen will, setzt man lastarray
-        $last_values->{$_} = %{$newest_history_set} ?
-            $newest_history_set->{$_} : []
-      } elsif ((! exists $last_values->{$_} || ! defined $last_values->{$_}) && ! exists $params{lastarray}) {
-        $last_values->{$_} = [] if ! exists $last_values->{$_};
-      } elsif (exists $last_values->{$_} && ! defined $last_values->{$_}) {
-        # $_ kann es auch ausserhalb des lookback_history-keys als normalen
-        # key geben. der zeigt normalerweise auf den entspr. letzten
-        # lookback_history eintrag. wurde der wegen ueberalterung abgeschnitten
-        # ist der hier auch undef.
-        $last_values->{$_} = %{$newest_history_set} ?
-            $newest_history_set->{$_} : []
-      }
-      my %saved = map { $_ => 1 } @{$last_values->{$_}};
-      my %current = map { $_ => 1 } @{$self->{$_}};
-      my @found = grep(!defined $saved{$_}, @{$self->{$_}});
-      my @lost = grep(!defined $current{$_}, @{$last_values->{$_}});
-      $self->{'delta_found_'.$_} = \@found;
-      $self->{'delta_lost_'.$_} = \@lost;
+  foreach my $pos (0..$#v1) {
+    if ($v2[$pos] > $v1[$pos]) {
+      $newer = 1;
+      last;
+    } elsif ($v2[$pos] < $v1[$pos]) {
+      $newer = 0;
+      last;
     }
   }
-  $self->{'delta_timestamp'} = $now - $last_values->{timestamp};
-  $params{save} = eval {
-    my $empty_events = {};
-    foreach (@keys) {
-      $empty_events->{$_} = $self->{$_};
-    }
-    $empty_events->{timestamp} = $now;
-    if ($self->opts->lookback) {
-      $empty_events->{lookback_history} = $last_values->{lookback_history};
-      foreach (@keys) {
-        $empty_events->{lookback_history}->{$_}->{$now} = $self->{$_};
-      }
-    }
-    $empty_events;
-  };
-  $self->save_state(%params);
-}
-
-sub create_statefilesdir {
-  my $self = shift;
-  if (! -d $self->statefilesdir()) {
-    eval {
-      use File::Path;
-      mkpath $self->statefilesdir();
-    };
-    if ($@ || ! -w $self->statefilesdir()) {
-      $self->add_message(UNKNOWN,
-        sprintf "cannot create status dir %s! check your filesystem (permissions/usage/integrity) and disk devices", $self->statefilesdir());
-    }
-  } elsif (! -w $self->statefilesdir()) {
-    $self->add_message(UNKNOWN,
-        sprintf "cannot write status dir %s! check your filesystem (permissions/usage/integrity) and disk devices", $self->statefilesdir());
-  }
-}
-
-sub create_statefile {
-  my $self = shift;
-  my %params = @_;
-  my $extension = "";
-  $extension .= $params{name} ? '_'.$params{name} : '';
-  $extension =~ s/\//_/g;
-  $extension =~ s/\(/_/g;
-  $extension =~ s/\)/_/g;
-  $extension =~ s/\*/_/g;
-  $extension =~ s/\s/_/g;
-  return sprintf "%s/%s%s", $self->statefilesdir(),
-      $self->opts->mode, lc $extension;
-}
-
-sub schimpf {
-  my $self = shift;
-  printf "statefilesdir %s is not writable.\nYou didn't run this plugin as root, didn't you?\n", $self->statefilesdir();
-}
-
-# $self->protect_value('1.1-flat_index', 'cpu_busy', 'percent');
-sub protect_value {
-  my $self = shift;
-  my $ident = shift;
-  my $key = shift;
-  my $validfunc = shift;
-  if (ref($validfunc) ne "CODE" && $validfunc eq "percent") {
-    $validfunc = sub {
-      my $value = shift;
-      return ($value < 0 || $value > 100) ? 0 : 1;
-    };
-  }
-  if (&$validfunc($self->{$key})) {
-    $self->save_state(name => 'protect_'.$ident.'_'.$key, save => {
-        $key => $self->{$key},
-        exception => 0,
-    });
-  } else {
-    # if the device gives us an clearly wrong value, simply use the last value.
-    my $laststate = $self->load_state(name => 'protect_'.$ident.'_'.$key);
-    $self->debug(sprintf "self->{%s} is %s and invalid for the %dth time",
-        $key, $self->{$key}, $laststate->{exception} + 1);
-    if ($laststate->{exception} <= 5) {
-      # but only 5 times.
-      # if the error persists, somebody has to check the device.
-      $self->{$key} = $laststate->{$key};
-    }
-    $self->save_state(name => 'protect_'.$ident.'_'.$key, save => {
-        $key => $laststate->{$key},
-        exception => $laststate->{exception}++,
-    });
-  }
-}
-
-sub save_state {
-  my $self = shift;
-  my %params = @_;
-  $self->create_statefilesdir();
-  my $statefile = $self->create_statefile(%params);
-  if ((ref($params{save}) eq "HASH") && exists $params{save}->{timestamp}) {
-    $params{save}->{localtime} = scalar localtime $params{save}->{timestamp};
-  }
-  my $seekfh = new IO::File;
-  if ($seekfh->open($statefile, "w")) {
-    $seekfh->printf("%s", Data::Dumper::Dumper($params{save}));
-    $seekfh->close();
-    $self->debug(sprintf "saved %s to %s",
-        Data::Dumper::Dumper($params{save}), $statefile);
-  } else {
-    $self->add_message(UNKNOWN,
-        sprintf "cannot write status file %s! check your filesystem (permissions/usage/integrity) and disk devices", $statefile);
-  }
-}
-
-sub load_state {
-  my $self = shift;
-  my %params = @_;
-  my $statefile = $self->create_statefile(%params);
-  if ( -f $statefile) {
-    our $VAR1;
-    eval {
-      require $statefile;
-    };
-    if($@) {
-      printf "rumms\n";
-    }
-    $self->debug(sprintf "load %s", Data::Dumper::Dumper($VAR1));
-    return $VAR1;
-  } else {
-    return undef;
-  }
-}
-
-sub dumper {
-  my $self = shift;
-  my $object = shift;
-  my $run = $object->{runtime};
-  delete $object->{runtime};
-  printf STDERR "%s\n", Data::Dumper::Dumper($object);
-  $object->{runtime} = $run;
-}
-
-sub no_such_mode {
-  my $self = shift;
-  printf "Mode %s is not implemented for this type of device\n",
-      $self->opts->mode;
-  exit 3;
-}
-
-sub check_pidfile {
-  my $self = shift;
-  my $fh = new IO::File;
-  if ($fh->open($self->{pidfile}, "r")) {
-    my $pid = $fh->getline();
-    $fh->close();
-    if (! $pid) {
-      $self->debug("Found pidfile %s with no valid pid. Exiting.",
-          $self->{pidfile});
-      return 0;
-    } else {
-      $self->debug("Found pidfile %s with pid %d", $self->{pidfile}, $pid);
-      kill 0, $pid;
-      if ($! == Errno::ESRCH) {
-        $self->debug("This pidfile is stale. Writing a new one");
-        $self->write_pidfile();
-        return 1;
-      } else {
-        $self->debug("This pidfile is held by a running process. Exiting");
-        return 0;
-      }
-    }
-  } else {
-    $self->debug("Found no pidfile. Writing a new one");
-    $self->write_pidfile();
-    return 1;
-  }
-}
-
-sub write_pidfile {
-  my $self = shift;
-  if (! -d dirname($self->{pidfile})) {
-    eval "require File::Path;";
-    if (defined(&File::Path::mkpath)) {
-      import File::Path;
-      eval { mkpath(dirname($self->{pidfile})); };
-    } else {
-      my @dirs = ();
-      map {
-          push @dirs, $_;
-          mkdir(join('/', @dirs))
-              if join('/', @dirs) && ! -d join('/', @dirs);
-      } split(/\//, dirname($self->{pidfile}));
-    }
-  }
-  my $fh = new IO::File;
-  $fh->autoflush(1);
-  if ($fh->open($self->{pidfile}, "w")) {
-    $fh->printf("%s", $$);
-    $fh->close();
-  } else {
-    $self->debug("Could not write pidfile %s", $self->{pidfile});
-    die "pid file could not be written";
-  }
+  return $newer;
 }
 
 sub accentfree {
@@ -782,8 +339,21 @@ sub dump {
   printf "\n";
   foreach (grep !/^(info|trace|warning|critical|blacklisted|extendedinfo|flat_indices|indices)/, sort keys %{$self}) {
     if (defined $self->{$_} && ref($self->{$_}) eq "ARRAY") {
+      my $have_flat_indices = 1;
       foreach my $obj (@{$self->{$_}}) {
-        $obj->dump();
+        $have_flat_indices = 0 if (! exists $obj->{flat_indices});
+      }
+      if ($have_flat_indices) {
+        foreach my $obj (sort {
+            join('', map { sprintf("%30d",$_) } split( /\./, $a->{flat_indices})) cmp
+            join('', map { sprintf("%30d",$_) } split( /\./, $b->{flat_indices}))
+        } @{$self->{$_}}) {
+          $obj->dump();
+        }
+      } else {
+        foreach my $obj (@{$self->{$_}}) {
+          $obj->dump();
+        }
       }
     }
   }
@@ -870,7 +440,7 @@ sub load_my_extension {
     if (! $self->opts->get("with-mymodules-dyn-dir")) {
       $self->override_opt("with-mymodules-dyn-dir", "");
     }
-    my $plugin_name = basename($0);
+    my $plugin_name = $GLPlugin::pluginname;
     $plugin_name =~ /check_(.*?)_health/;
     $plugin_name = "Check".uc(substr($1, 0, 1)).substr($1, 1)."Health";
     foreach my $libpath (split(":", $self->opts->get("with-mymodules-dyn-dir"))) {
@@ -913,6 +483,540 @@ sub load_my_extension {
   }
 }
 
+sub decode_password {
+  my $self = shift;
+  my $password = shift;
+  if ($password && $password =~ /^rfc3986:\/\/(.*)/) {
+    $password =~ s/\%([A-Fa-f0-9]{2})/pack('C', hex($1))/seg;
+  }
+  return $password;
+}
+
+
+#########################################################
+# runtime methods
+#
+sub mode : lvalue {
+  my $self = shift;
+  $GLPlugin::mode;
+}
+
+sub statefilesdir {
+  my $self = shift;
+  return $GLPlugin::plugin->{statefilesdir};
+}
+
+sub opts { # die beiden _nicht_ in AUTOLOAD schieben, das kracht!
+  my $self = shift;
+  return $GLPlugin::plugin->opts();
+}
+
+sub getopts {
+  my $self = shift;
+  my $envparams = shift || [];
+  $GLPlugin::plugin->getopts();
+  # es kann sein, dass beim aufraeumen zum schluss als erstes objekt
+  # das $GLPlugin::plugin geloescht wird. in anderen destruktoren
+  # (insb. fuer dbi disconnect) steht dann $self->opts->verbose
+  # nicht mehr zur verfuegung bzw. $GLPlugin::plugin->opts ist undef.
+  $self->set_variable("verbose", $self->opts->verbose);
+  #
+  # die gueltigkeit von modes wird bereits hier geprueft und nicht danach
+  # in validate_args. (zwischen getopts und validate_args wird
+  # normalerweise classify aufgerufen, welches bereits eine verbindung
+  # zum endgeraet herstellt. bei falschem mode waere das eine verschwendung
+  # bzw. durch den exit3 ein evt. unsauberes beenden der verbindung.
+  if ((! grep { $self->opts->mode eq $_ } map { $_->{spec} } @{$GLPlugin::plugin->{modes}}) &&
+      (! grep { $self->opts->mode eq $_ } map { defined $_->{alias} ? @{$_->{alias}} : () } @{$GLPlugin::plugin->{modes}})) {
+    if ($self->opts->mode !~ /^my-/) {
+      printf "UNKNOWN - mode %s\n", $self->opts->mode;
+      $self->opts->print_help();
+      exit 3;
+    }
+  }
+}
+
+sub add_ok {
+  my $self = shift;
+  my $message = shift || $self->{info};
+  $self->add_message(OK, $message);
+}
+
+sub add_warning {
+  my $self = shift;
+  my $message = shift || $self->{info};
+  $self->add_message(WARNING, $message);
+}
+
+sub add_critical {
+  my $self = shift;
+  my $message = shift || $self->{info};
+  $self->add_message(CRITICAL, $message);
+}
+
+sub add_unknown {
+  my $self = shift;
+  my $message = shift || $self->{info};
+  $self->add_message(UNKNOWN, $message);
+}
+
+sub add_message {
+  my $self = shift;
+  my $level = shift;
+  my $message = shift || $self->{info};
+  $GLPlugin::plugin->add_message($level, $message)
+      unless $self->is_blacklisted();
+  if (exists $self->{failed}) {
+    if ($level == UNKNOWN && $self->{failed} == OK) {
+      $self->{failed} = $level;
+    } elsif ($level > $self->{failed}) {
+      $self->{failed} = $level;
+    }
+  }
+}
+
+sub clear_ok {
+  my $self = shift;
+  $self->clear_messages(OK);
+}
+
+sub clear_warning {
+  my $self = shift;
+  $self->clear_messages(WARNING);
+}
+
+sub clear_critical {
+  my $self = shift;
+  $self->clear_messages(CRITICAL);
+}
+
+sub clear_unknown {
+  my $self = shift;
+  $self->clear_messages(UNKNOWN);
+}
+
+sub clear_all { # deprecated, use clear_messages
+  my $self = shift;
+  $self->clear_ok();
+  $self->clear_warning();
+  $self->clear_critical();
+  $self->clear_unknown();
+}
+
+sub set_level {
+  my $self = shift;
+  my $code = shift;
+  $code = (qw(ok warning critical unknown))[$code] if $code =~ /^\d+$/;
+  $code = lc $code;
+  if (! exists $self->{tmp_level}) {
+    $self->{tmp_level} = {
+      ok => 0,
+      warning => 0,
+      critical => 0,
+      unknown => 0,
+    };
+  }
+  $self->{tmp_level}->{$code}++;
+}
+
+sub get_level {
+  my $self = shift;
+  return OK if ! exists $self->{tmp_level};
+  my $code = OK;
+  $code ||= CRITICAL if $self->{tmp_level}->{critical};
+  $code ||= WARNING  if $self->{tmp_level}->{warning};
+  $code ||= UNKNOWN  if $self->{tmp_level}->{unknown};
+  return $code;
+}
+
+#########################################################
+# blacklisting
+#
+sub blacklist {
+  my $self = shift;
+  $self->{blacklisted} = 1;
+}
+
+sub add_blacklist {
+  my $self = shift;
+  my $list = shift;
+  $GLPlugin::blacklist = join('/',
+      (split('/', $self->opts->blacklist), $list));
+}
+
+sub is_blacklisted {
+  my $self = shift;
+  if (! $self->opts->can("blacklist")) {
+    return 0;
+  }
+  if (! exists $self->{blacklisted}) {
+    $self->{blacklisted} = 0;
+  }
+  if (exists $self->{blacklisted} && $self->{blacklisted}) {
+    return $self->{blacklisted};
+  }
+  # FAN:459,203/TEMP:102229/ENVSUBSYSTEM
+  # FAN_459,FAN_203,TEMP_102229,ENVSUBSYSTEM
+  if ($self->opts->blacklist =~ /_/) {
+    foreach my $bl_item (split(/,/, $self->opts->blacklist)) {
+      if ($bl_item eq $self->internal_name()) {
+        $self->{blacklisted} = 1;
+      }
+    }
+  } else {
+    foreach my $bl_items (split(/\//, $self->opts->blacklist)) {
+      if ($bl_items =~ /^(\w+):([\:\d\-,]+)$/) {
+        my $bl_type = $1;
+        my $bl_names = $2;
+        foreach my $bl_name (split(/,/, $bl_names)) {
+          if ($bl_type."_".$bl_name eq $self->internal_name()) {
+            $self->{blacklisted} = 1;
+          }
+        }
+      } elsif ($bl_items =~ /^(\w+)$/) {
+        if ($bl_items eq $self->internal_name()) {
+          $self->{blacklisted} = 1;
+        }
+      }
+    }
+  } 
+  return $self->{blacklisted};
+}
+
+#########################################################
+# additional info
+#
+sub add_info {
+  my $self = shift;
+  my $info = shift;
+  $info = $self->is_blacklisted() ? $info.' (blacklisted)' : $info;
+  $self->{info} = $info;
+  push(@{$GLPlugin::info}, $info);
+}
+
+sub annotate_info {
+  my $self = shift;
+  my $annotation = shift;
+  my $lastinfo = pop(@{$GLPlugin::info});
+  $lastinfo .= sprintf ' (%s)', $annotation;
+  $self->{info} = $lastinfo;
+  push(@{$GLPlugin::info}, $lastinfo);
+}
+
+sub add_extendedinfo {  # deprecated
+  my $self = shift;
+  my $info = shift;
+  $self->{extendedinfo} = $info;
+  return if ! $self->opts->extendedinfo;
+  push(@{$GLPlugin::extendedinfo}, $info);
+}
+
+sub get_info {
+  my $self = shift;
+  my $separator = shift || ' ';
+  return join($separator , @{$GLPlugin::info});
+}
+
+sub get_last_info {
+  my $self = shift;
+  return pop(@{$GLPlugin::info});
+}
+
+sub get_extendedinfo {
+  my $self = shift;
+  my $separator = shift || ' ';
+  return join($separator, @{$GLPlugin::extendedinfo});
+}
+
+sub add_summary {  # deprecated
+  my $self = shift;
+  my $summary = shift;
+  push(@{$GLPlugin::summary}, $summary);
+}
+
+sub get_summary {
+  my $self = shift;
+  return join(', ', @{$GLPlugin::summary});
+}
+
+#########################################################
+# persistency
+#
+sub valdiff {
+  my $self = shift;
+  my $pparams = shift;
+  my %params = %{$pparams};
+  my @keys = @_;
+  my $now = time;
+  my $newest_history_set = {};
+  my $last_values = $self->load_state(%params) || eval {
+    my $empty_events = {};
+    foreach (@keys) {
+      if (ref($self->{$_}) eq "ARRAY") {
+        $empty_events->{$_} = [];
+      } else {
+        $empty_events->{$_} = 0;
+      }
+    }
+    $empty_events->{timestamp} = 0;
+    if ($self->opts->lookback) {
+      $empty_events->{lookback_history} = {};
+    }
+    $empty_events;
+  };
+  $self->{'delta_timestamp'} = $now - $last_values->{timestamp};
+  foreach (@keys) {
+    if ($self->opts->lookback) {
+      # find a last_value in the history which fits lookback best
+      # and overwrite $last_values->{$_} with historic data
+      if (exists $last_values->{lookback_history}->{$_}) {
+        foreach my $date (sort {$a <=> $b} keys %{$last_values->{lookback_history}->{$_}}) {
+            $newest_history_set->{$_} = $last_values->{lookback_history}->{$_}->{$date};
+            $newest_history_set->{timestamp} = $date;
+        }
+        foreach my $date (sort {$a <=> $b} keys %{$last_values->{lookback_history}->{$_}}) {
+          if ($date >= ($now - $self->opts->lookback)) {
+            $last_values->{$_} = $last_values->{lookback_history}->{$_}->{$date};
+            $last_values->{timestamp} = $date;
+            last;
+          } else {
+            delete $last_values->{lookback_history}->{$_}->{$date};
+          }
+        }
+      }
+    }
+    if ($self->{$_} =~ /^\d+$/) {
+      $last_values->{$_} = 0 if ! exists $last_values->{$_};
+      if ($self->{$_} >= $last_values->{$_}) {
+        $self->{'delta_'.$_} = $self->{$_} - $last_values->{$_};
+      } else {
+        # vermutlich db restart und zaehler alle auf null
+        $self->{'delta_'.$_} = $self->{$_};
+      }
+      $self->debug(sprintf "delta_%s %f", $_, $self->{'delta_'.$_});
+      $self->{$_.'_per_sec'} = $self->{'delta_timestamp'} ?
+          $self->{'delta_'.$_} / $self->{'delta_timestamp'} : 0;
+    } elsif (ref($self->{$_}) eq "ARRAY") {
+      if ((! exists $last_values->{$_} || ! defined $last_values->{$_}) && exists $params{lastarray}) {
+        # innerhalb der lookback-zeit wurde nichts in der lookback_history
+        # gefunden. allenfalls irgendwas aelteres. normalerweise
+        # wuerde jetzt das array als [] initialisiert.
+        # d.h. es wuerde ein delta geben, @found s.u.
+        # wenn man das nicht will, sondern einfach aktuelles array mit
+        # dem array des letzten laufs vergleichen will, setzt man lastarray
+        $last_values->{$_} = %{$newest_history_set} ?
+            $newest_history_set->{$_} : []
+      } elsif ((! exists $last_values->{$_} || ! defined $last_values->{$_}) && ! exists $params{lastarray}) {
+        $last_values->{$_} = [] if ! exists $last_values->{$_};
+      } elsif (exists $last_values->{$_} && ! defined $last_values->{$_}) {
+        # $_ kann es auch ausserhalb des lookback_history-keys als normalen
+        # key geben. der zeigt normalerweise auf den entspr. letzten
+        # lookback_history eintrag. wurde der wegen ueberalterung abgeschnitten
+        # ist der hier auch undef.
+        $last_values->{$_} = %{$newest_history_set} ?
+            $newest_history_set->{$_} : []
+      }
+      my %saved = map { $_ => 1 } @{$last_values->{$_}};
+      my %current = map { $_ => 1 } @{$self->{$_}};
+      my @found = grep(!defined $saved{$_}, @{$self->{$_}});
+      my @lost = grep(!defined $current{$_}, @{$last_values->{$_}});
+      $self->{'delta_found_'.$_} = \@found;
+      $self->{'delta_lost_'.$_} = \@lost;
+    }
+  }
+  $params{save} = eval {
+    my $empty_events = {};
+    foreach (@keys) {
+      $empty_events->{$_} = $self->{$_};
+    }
+    $empty_events->{timestamp} = $now;
+    if ($self->opts->lookback) {
+      $empty_events->{lookback_history} = $last_values->{lookback_history};
+      foreach (@keys) {
+        $empty_events->{lookback_history}->{$_}->{$now} = $self->{$_};
+      }
+    }
+    $empty_events;
+  };
+  $self->save_state(%params);
+}
+
+sub create_statefilesdir {
+  my $self = shift;
+  if (! -d $self->statefilesdir()) {
+    eval {
+      use File::Path;
+      mkpath $self->statefilesdir();
+    };
+    if ($@ || ! -w $self->statefilesdir()) {
+      $self->add_message(UNKNOWN,
+        sprintf "cannot create status dir %s! check your filesystem (permissions/usage/integrity) and disk devices", $self->statefilesdir());
+    }
+  } elsif (! -w $self->statefilesdir()) {
+    $self->add_message(UNKNOWN,
+        sprintf "cannot write status dir %s! check your filesystem (permissions/usage/integrity) and disk devices", $self->statefilesdir());
+  }
+}
+
+sub create_statefile {
+  my $self = shift;
+  my %params = @_;
+  my $extension = "";
+  $extension .= $params{name} ? '_'.$params{name} : '';
+  $extension =~ s/\//_/g;
+  $extension =~ s/\(/_/g;
+  $extension =~ s/\)/_/g;
+  $extension =~ s/\*/_/g;
+  $extension =~ s/\s/_/g;
+  return sprintf "%s/%s%s", $self->statefilesdir(),
+      $self->opts->mode, lc $extension;
+}
+
+sub schimpf {
+  my $self = shift;
+  printf "statefilesdir %s is not writable.\nYou didn't run this plugin as root, didn't you?\n", $self->statefilesdir();
+}
+
+# $self->protect_value('1.1-flat_index', 'cpu_busy', 'percent');
+sub protect_value {
+  my $self = shift;
+  my $ident = shift;
+  my $key = shift;
+  my $validfunc = shift;
+  if (ref($validfunc) ne "CODE" && $validfunc eq "percent") {
+    $validfunc = sub {
+      my $value = shift;
+      return ($value < 0 || $value > 100) ? 0 : 1;
+    };
+  } elsif (ref($validfunc) ne "CODE" && $validfunc eq "positive") {
+    $validfunc = sub {
+      my $value = shift;
+      return ($value < 0) ? 0 : 1;
+    };
+  }
+  if (&$validfunc($self->{$key})) {
+    $self->save_state(name => 'protect_'.$ident.'_'.$key, save => {
+        $key => $self->{$key},
+        exception => 0,
+    });
+  } else {
+    # if the device gives us an clearly wrong value, simply use the last value.
+    my $laststate = $self->load_state(name => 'protect_'.$ident.'_'.$key);
+    $self->debug(sprintf "self->{%s} is %s and invalid for the %dth time",
+        $key, $self->{$key}, $laststate->{exception} + 1);
+    if ($laststate->{exception} <= 5) {
+      # but only 5 times.
+      # if the error persists, somebody has to check the device.
+      $self->{$key} = $laststate->{$key};
+    }
+    $self->save_state(name => 'protect_'.$ident.'_'.$key, save => {
+        $key => $laststate->{$key},
+        exception => $laststate->{exception}++,
+    });
+  }
+}
+
+sub save_state {
+  my $self = shift;
+  my %params = @_;
+  $self->create_statefilesdir();
+  my $statefile = $self->create_statefile(%params);
+  my $tmpfile = $self->statefilesdir().'/check__health_tmp_'.$$;
+  if ((ref($params{save}) eq "HASH") && exists $params{save}->{timestamp}) {
+    $params{save}->{localtime} = scalar localtime $params{save}->{timestamp};
+  }
+  my $seekfh = new IO::File;
+  if ($seekfh->open($tmpfile, "w")) {
+    $seekfh->printf("%s", Data::Dumper::Dumper($params{save}));
+    $seekfh->flush();
+    $seekfh->close();
+    $self->debug(sprintf "saved %s to %s",
+        Data::Dumper::Dumper($params{save}), $statefile);
+  }
+  if (! rename $tmpfile, $statefile) {
+    $self->add_message(UNKNOWN,
+        sprintf "cannot write status file %s! check your filesystem (permissions/usage/integrity) and disk devices", $statefile);
+  }
+}
+
+sub load_state {
+  my $self = shift;
+  my %params = @_;
+  my $statefile = $self->create_statefile(%params);
+  if ( -f $statefile) {
+    our $VAR1;
+    eval {
+      require $statefile;
+    };
+    if($@) {
+      printf "rumms\n";
+    }
+    $self->debug(sprintf "load %s", Data::Dumper::Dumper($VAR1));
+    return $VAR1;
+  } else {
+    return undef;
+  }
+}
+
+#########################################################
+# daemon mode
+#
+sub check_pidfile {
+  my $self = shift;
+  my $fh = new IO::File;
+  if ($fh->open($self->{pidfile}, "r")) {
+    my $pid = $fh->getline();
+    $fh->close();
+    if (! $pid) {
+      $self->debug("Found pidfile %s with no valid pid. Exiting.",
+          $self->{pidfile});
+      return 0;
+    } else {
+      $self->debug("Found pidfile %s with pid %d", $self->{pidfile}, $pid);
+      kill 0, $pid;
+      if ($! == Errno::ESRCH) {
+        $self->debug("This pidfile is stale. Writing a new one");
+        $self->write_pidfile();
+        return 1;
+      } else {
+        $self->debug("This pidfile is held by a running process. Exiting");
+        return 0;
+      }
+    }
+  } else {
+    $self->debug("Found no pidfile. Writing a new one");
+    $self->write_pidfile();
+    return 1;
+  }
+}
+
+sub write_pidfile {
+  my $self = shift;
+  if (! -d dirname($self->{pidfile})) {
+    eval "require File::Path;";
+    if (defined(&File::Path::mkpath)) {
+      import File::Path;
+      eval { mkpath(dirname($self->{pidfile})); };
+    } else {
+      my @dirs = ();
+      map {
+          push @dirs, $_;
+          mkdir(join('/', @dirs))
+              if join('/', @dirs) && ! -d join('/', @dirs);
+      } split(/\//, dirname($self->{pidfile}));
+    }
+  }
+  my $fh = new IO::File;
+  $fh->autoflush(1);
+  if ($fh->open($self->{pidfile}, "w")) {
+    $fh->printf("%s", $$);
+    $fh->close();
+  } else {
+    $self->debug("Could not write pidfile %s", $self->{pidfile});
+    die "pid file could not be written";
+  }
+}
+
 sub AUTOLOAD {
   my $self = shift;
   return if ($AUTOLOAD =~ /DESTROY/);
@@ -941,9 +1045,9 @@ sub AUTOLOAD {
     $self->{components}->{$subsystem}->check();
     $self->{components}->{$subsystem}->dump()
         if $self->opts->verbose >= 2;
-  } elsif ($AUTOLOAD =~ /^.*::(status_code|check_messages|nagios_exit|html_string|perfdata_string|selected_perfdata)$/) {
+  } elsif ($AUTOLOAD =~ /^.*::(status_code|check_messages|nagios_exit|html_string|perfdata_string|selected_perfdata|check_thresholds|get_thresholds|opts)$/) {
     return $GLPlugin::plugin->$1(@_);
-  } elsif ($AUTOLOAD =~ /^.*::(clear_messages|suppress_messages|add_html|add_perfdata)$/) {
+  } elsif ($AUTOLOAD =~ /^.*::(clear_messages|suppress_messages|add_html|add_perfdata|override_opt|create_opt|set_thresholds|force_thresholds)$/) {
     $GLPlugin::plugin->$1(@_);
   } else {
     $self->debug("AUTOLOAD: class %s has no method %s\n",
@@ -991,29 +1095,53 @@ sub new {
   $GLPlugin::plugin = $self;
 }
 
-sub add_arg {
+sub AUTOLOAD {
   my $self = shift;
-  $self->{opts}->add_arg(@_);
+  return if ($AUTOLOAD =~ /DESTROY/);
+  $self->debug("AUTOLOAD %s\n", $AUTOLOAD)
+        if $self->{opts}->verbose >= 2;
+  if ($AUTOLOAD =~ /^.*::(add_arg|override_opt|create_opt)$/) {
+    $self->{opts}->$1(@_);
+  }
 }
 
-sub getopts {
+sub DESTROY {
   my $self = shift;
-  $self->{opts}->getopts();
+  # ohne dieses DESTROY rennt nagios_exit in obiges AUTOLOAD rein
+  # und fliegt aufs Maul, weil {opts} bereits nicht mehr existiert.
+  # Unerklaerliches Verhalten.
 }
 
-sub override_opt {
+sub debug {
   my $self = shift;
-  $self->{opts}->override_opt(@_);
-}
-
-sub create_opt {
-  my $self = shift;
-  $self->{opts}->create_opt(@_);
+  my $format = shift;
+  my $tracefile = "/tmp/".$GLPlugin::pluginname.".trace";
+  $self->{trace} = -f $tracefile ? 1 : 0;
+  if ($self->opts->verbose && $self->opts->verbose > 10) {
+    printf("%s: ", scalar localtime);
+    printf($format, @_);
+    printf "\n";
+  }
+  if ($self->{trace}) {
+    my $logfh = new IO::File;
+    $logfh->autoflush(1);
+    if ($logfh->open($tracefile, "a")) {
+      $logfh->printf("%s: ", scalar localtime);
+      $logfh->printf($format, @_);
+      $logfh->printf("\n");
+      $logfh->close();
+    }
+  }
 }
 
 sub opts {
   my $self = shift;
   return $self->{opts};
+}
+
+sub getopts {
+  my $self = shift;
+  $self->opts->getopts();
 }
 
 sub add_message {
@@ -1052,6 +1180,20 @@ sub add_perfdata {
   my $value = $args{value};
   my $uom = $args{uom} || "";
   my $format = '%d';
+
+  if ($self->opts->can("morphperfdata") && $self->opts->morphperfdata) {
+    # 'Intel [R] Interface (\d+) usage'='nic$1'
+    foreach my $key (keys %{$self->opts->morphperfdata}) {
+      if ($label =~ /$key/) {
+        my $replacement = '"'.$self->opts->morphperfdata->{$key}.'"';
+        my $oldlabel = $label;
+        $label =~ s/$key/$replacement/ee;
+        if (exists $self->{thresholds}->{$oldlabel}) {
+          %{$self->{thresholds}->{$label}} = %{$self->{thresholds}->{$oldlabel}};
+        }
+      }
+    }
+  }
   if ($value =~ /\./) {
     if (defined $args{places}) {
       $value = sprintf '%.'.$args{places}.'f', $value;
@@ -1063,8 +1205,8 @@ sub add_perfdata {
   }
   my $warn = "";
   my $crit = "";
-  my $min = "";
-  my $max = "";
+  my $min = defined $args{min} ? $args{min} : "";
+  my $max = defined $args{max} ? $args{max} : "";
   if ($args{thresholds} || (! exists $args{warning} && ! exists $args{critical})) {
     if (exists $self->{thresholds}->{$label}->{warning}) {
       $warn = $self->{thresholds}->{$label}->{warning};
@@ -1087,6 +1229,46 @@ sub add_perfdata {
   if ($uom eq "%") {
     $min = 0;
     $max = 100;
+  }
+  if (defined $args{places}) {
+    # cut off excessive decimals which may be the result of a division
+    # length = places*2, no trailing zeroes
+    if ($warn ne "") {
+      $warn = join("", map {
+          s/\.0+$//; $_
+      } map {
+          s/(\.[1-9]+)0+$/$1/; $_
+      } map {
+          /[\+\-\d\.]+/ ? sprintf '%.'.2*$args{places}.'f', $_ : $_;
+      } split(/([\+\-\d\.]+)/, $warn));
+    }
+    if ($crit ne "") {
+      $crit = join("", map {
+          s/\.0+$//; $_
+      } map {
+          s/(\.[1-9]+)0+$/$1/; $_
+      } map {
+          /[\+\-\d\.]+/ ? sprintf '%.'.2*$args{places}.'f', $_ : $_;
+      } split(/([\+\-\d\.]+)/, $crit));
+    }
+    if ($min ne "") {
+      $min = join("", map {
+          s/\.0+$//; $_
+      } map {
+          s/(\.[1-9]+)0+$/$1/; $_
+      } map {
+          /[\+\-\d\.]+/ ? sprintf '%.'.2*$args{places}.'f', $_ : $_;
+      } split(/([\+\-\d\.]+)/, $min));
+    }
+    if ($max ne "") {
+      $max = join("", map {
+          s/\.0+$//; $_
+      } map {
+          s/(\.[1-9]+)0+$/$1/; $_
+      } map {
+          /[\+\-\d\.]+/ ? sprintf '%.'.2*$args{places}.'f', $_ : $_;
+      } split(/([\+\-\d\.]+)/, $max));
+    }
   }
   push @{$self->{perfdata}}, sprintf("'%s'=%s%s;%s;%s;%s;%s",
       $label, $value, $uom, $warn, $crit, $min, $max)
@@ -1206,10 +1388,11 @@ sub nagios_exit {
       chomp $message;
   }
   if ($self->opts->negate) {
+    my $original_code = $code;
     foreach my $from (keys %{$self->opts->negate}) {
       if ((uc $from) =~ /^(OK|WARNING|CRITICAL|UNKNOWN)$/ &&
           (uc $self->opts->negate->{$from}) =~ /^(OK|WARNING|CRITICAL|UNKNOWN)$/) {
-        if ($code == $ERRORS{uc $from}) {
+        if ($original_code == $ERRORS{uc $from}) {
           $code = $ERRORS{uc $self->opts->negate->{$from}};
         }
       }
@@ -1232,9 +1415,18 @@ sub set_thresholds {
   my %params = @_;
   if (exists $params{metric}) {
     my $metric = $params{metric};
+    # erst die hartcodierten defaultschwellwerte
     $self->{thresholds}->{$metric}->{warning} = $params{warning};
     $self->{thresholds}->{$metric}->{critical} = $params{critical};
-    if ($self->opts->warningx) {
+    # dann die defaultschwellwerte von der kommandozeile
+    if (defined $self->opts->warning) {
+      $self->{thresholds}->{$metric}->{warning} = $self->opts->warning;
+    }
+    if (defined $self->opts->critical) {
+      $self->{thresholds}->{$metric}->{critical} = $self->opts->critical;
+    }
+    # dann die ganz spezifischen schwellwerte von der kommandozeile
+    if ($self->opts->warningx) { # muss nicht auf defined geprueft werden, weils ein hash ist
       foreach my $key (keys %{$self->opts->warningx}) {
         next if $key ne $metric;
         $self->{thresholds}->{$metric}->{warning} = $self->opts->warningx->{$key};
@@ -1248,12 +1440,11 @@ sub set_thresholds {
     }
   } else {
     $self->{thresholds}->{default}->{warning} =
-        $self->opts->warning || $params{warning} || 0;
+        defined $self->opts->warning ? $self->opts->warning : defined $params{warning} ? $params{warning} : 0;
     $self->{thresholds}->{default}->{critical} =
-        $self->opts->critical || $params{critical} || 0;
+        defined $self->opts->critical ? $self->opts->critical : defined $params{critical} ? $params{critical} : 0;
   }
 }
-
 
 sub force_thresholds {
   my $self = shift;
@@ -1311,7 +1502,9 @@ sub check_thresholds {
     $warningrange = $self->{thresholds}->{default}->{warning};
     $criticalrange = $self->{thresholds}->{default}->{critical};
   }
-  if ($warningrange =~ /^([-+]?[0-9]*\.?[0-9]+)$/) {
+  if (! defined $warningrange) {
+    # there was no set_thresholds for defaults, no --warning, no --warningx
+  } elsif ($warningrange =~ /^([-+]?[0-9]*\.?[0-9]+)$/) {
     # warning = 10, warn if > 10 or < 0
     $level = $ERRORS{WARNING}
         if ($value > $1 || $value < 0);
@@ -1332,7 +1525,9 @@ sub check_thresholds {
     $level = $ERRORS{WARNING}
         if ($value >= $1 && $value <= $2);
   }
-  if ($criticalrange =~ /^([-+]?[0-9]*\.?[0-9]+)$/) {
+  if (! defined $criticalrange) {
+    # there was no set_thresholds for defaults, no --critical, no --criticalx
+  } elsif ($criticalrange =~ /^([-+]?[0-9]*\.?[0-9]+)$/) {
     # critical = 10, crit if > 10 or < 0
     $level = $ERRORS{CRITICAL}
         if ($value > $1 || $value < 0);
@@ -1401,13 +1596,11 @@ sub _init {
   my $self = shift;
   my %params = @_;
   # Check params
-  my $plugin = basename($0);
-  #my %attr = validate( @_, {
   my %attr = (
     usage => 1,
     version => 0,
     url => 0,
-    plugin => { default => $plugin },
+    plugin => { default => $GLPlugin::pluginname },
     blurb => 0,
     extra => 0,
     'extra-opts' => 0,
@@ -1478,6 +1671,16 @@ sub getopts {
     }
     foreach (keys %commandline) {
       $self->{opts}->{$_} = $commandline{$_};
+    }
+    foreach (grep { exists $_->{env} } @{$self->{_args}}) {
+      $_->{spec} =~ /^([\w\-]+)/;
+      my $spec = $1;
+      if (exists $ENV{'NAGIOS__HOST'.$_->{env}}) {
+        $self->{opts}->{$spec} = $ENV{'NAGIOS__HOST'.$_->{env}};
+      }
+      if (exists $ENV{'NAGIOS__SERVICE'.$_->{env}}) {
+        $self->{opts}->{$spec} = $ENV{'NAGIOS__SERVICE'.$_->{env}};
+      }
     }
     foreach (grep { exists $_->{aliasfor} } @{$self->{_args}}) {
       my $field = $_->{aliasfor};
@@ -1603,6 +1806,7 @@ sub check {
   # normal tableitems should have their own check-method
 }
 
+
 package Classes::Device;
 our @ISA = qw(GLPlugin);
 use strict;
@@ -1610,7 +1814,8 @@ use strict;
 
 sub classify {
   my $self = shift;
-  if (! ($self->opts->ashost && $self->opts->username && $self->opts->password)) {
+  #if (! (($self->opts->ashost || $self->opts->mshost) && $self->opts->username && $self->opts->password)) {
+  if (! ($self->opts->ashost || $self->opts->mshost)) {
     $self->add_unknown('specify at least hostname, username and password');
   } else {
     bless $self, 'Classes::SAP';
@@ -1652,32 +1857,54 @@ sub check_rfc_and_model {
   chdir("/tmp");
   if (eval "require sapnwrfc") {
     my %params = (
-      'lcheck' => '1',
+      'LCHECK' => '1',
     );
-    if ($self->opts->mode =~ /sapinfo/) {
-      $params{lcheck} = 0;
-    }
     if ($self->opts->ashost) {
-      $params{ashost} = $self->opts->ashost;
+      $params{ASHOST} = $self->opts->ashost;
     }
     if ($self->opts->sysnr) {
-      $params{sysnr} = $self->opts->sysnr;
+      $params{SYSNR} = $self->opts->sysnr;
+    }
+    if ($self->opts->mshost) {
+      $params{MSHOST} = $self->opts->mshost;
+    }
+    if ($self->opts->msserv) {
+      $params{MSSERV} = $self->opts->msserv;
+    }
+    if ($self->opts->r3name) {
+      $params{R3NAME} = $self->opts->r3name;
+    }
+    if ($self->opts->group) {
+      $params{GROUP} = $self->opts->group;
+    }
+    if ($self->opts->gwhost) {
+      $params{GWHOST} = $self->opts->gwhost;
+    }
+    if ($self->opts->gwserv) {
+      $params{GWSERV} = $self->opts->gwserv;
     }
     if ($self->opts->client) {
-      $params{client} = $self->opts->client;
+      $params{CLIENT} = $self->opts->client;
     }
     if ($self->opts->lang) {
-      $params{lang} = $self->opts->lang;
+      $params{LANG} = $self->opts->lang;
     }
     if ($self->opts->username) {
-      $params{user} = $self->opts->username;
+      $params{USER} = $self->opts->username;
     }
     if ($self->opts->password) {
-      $params{passwd} = $self->opts->password;
+      $params{PASSWD} = $self->decode_password($self->opts->password);
     }
     if ($self->opts->verbose) {
-      $params{debug} = '1';
-      $params{trace} = '1';
+      $params{DEBUG} = '1';
+      $params{TRACE} = '1';
+    }
+    if ($self->opts->mode =~ /sapinfo/) {
+      $params{LCHECK} = '0';
+      $params{USER} = "";
+      $params{PASSWD} = "";
+      $params{ABAP_DEBUG} = 0;
+      $params{SAPGUI} = 0;
     }
     $self->{tic} = Time::HiRes::time();
     my $session = undef;
@@ -1743,6 +1970,8 @@ sub init {
     $self->analyze_and_check_snap_subsystem("Classes::SAP::Component::SNAP");
   } elsif ($self->mode =~ /^server::updates::/) {
     $self->analyze_and_check_snap_subsystem("Classes::SAP::Component::UpdateSubsystem");
+  } elsif ($self->mode =~ /^server::backgroundjobs::/) {
+    $self->analyze_and_check_snap_subsystem("Classes::SAP::Component::BackgroundjobSubsystem");
   }
 }
 
@@ -1766,6 +1995,32 @@ sub create_statefile {
   $extension =~ s/\s/_/g;
   return sprintf "%s/%s_%s_%s%s", $self->statefilesdir(),
       $self->opts->ashost, $self->opts->sysnr, $self->opts->mode, lc $extension;
+}
+
+sub epoch_to_abap_date {
+  my $self = shift;
+  my $timestamp = shift || time;
+  my($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) =
+      localtime($timestamp);
+  return sprintf "%04d%02d%02d", $year + 1900, $mon + 1, $mday;
+}
+
+sub epoch_to_abap_time {
+  my $self = shift;
+  my $timestamp = shift || time;
+  my($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) =
+      localtime($timestamp);
+  return sprintf "%02d%02d%02d", $hour, $min, $sec;
+}
+
+sub epoch_to_abap_date_and_time {
+  my $self = shift;
+  my $timestamp = shift || time;
+  my($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) =
+      localtime($timestamp);
+  my $date = sprintf "%04d%02d%02d", $year + 1900, $mon + 1, $mday;
+  my $time = sprintf "%02d%02d%02d", $hour, $min, $sec;
+  return ($date, $time);
 }
 
 sub DESTROY {
@@ -1805,6 +2060,10 @@ sub init {
   my $self = shift;
   my($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) =
       localtime(time);
+  {
+    no strict 'refs';
+    *{'Classes::SAP::Component::CCMS::create_statefile'} = \&{'Classes::SAP::create_statefile'};
+  }
   my $bapi_tic = Time::HiRes::time();
   if ($self->mode =~ /server::ccms::/) {
     eval {
@@ -1861,45 +2120,38 @@ sub init {
           if (! $self->opts->name || ! $self->opts->name2) {
             die "__no_internals__you need to specify --name moniset --name2 monitor";
           }
-          $fl = $self->session->function_lookup("BAPI_SYSTEM_MON_GETTREE");
-          $fc = $fl->create_function_call;
-          $fc->EXTERNAL_USER_NAME("Agent");
-          $fc->MONITOR_NAME({
-            MS_NAME => $self->opts->name,
-            MONI_NAME => $self->opts->name2,
-          });
-          $fc->invoke;
-          # TREE_NODES
-          if ($fc->RETURN->{TYPE} =~ /^E/) {
-            $self->add_critical($fc->RETURN->{MESSAGE});
-          } else {
-            my %seen;
-            my @mtes = sort {
-                $a->{MTNAMELONG} cmp $b->{MTNAMELONG}
-            } grep {
-              $self->filter_name3($_->{MTNAMELONG})
-            } grep {
-              ! $seen{$_->tid_flat()}++;
-            } map { 
-                MTE->new(%{$_});
-            } @{$fc->TREE_NODES};
-            if ($self->mode =~ /server::ccms::mte::list/) {
-              foreach my $mte (@mtes) {
-                printf "%s %d\n", $mte->{MTNAMELONG}, $mte->{MTCLASS};
-              }
-            } elsif ($self->mode =~ /server::ccms::mte::check/) {
-              $self->set_thresholds();
-              foreach my $mte (@mtes) {
-                next if grep { $mte->{MTCLASS} == $_ } (50, 70, 199);
-                $mte->collect_details($self->session);
-                $mte->check();
-              }
-              if (! @mtes) {
-                $self->add_unknown("no mtes");
-              }
+          if ($self->mode =~ /server::ccms::mte::list/) {
+            $self->update_tree_cache(1);
+          }
+          my @tree_nodes = $self->update_tree_cache(0);
+          my %seen;
+          my @mtes = sort {
+              $a->{MTNAMELONG} cmp $b->{MTNAMELONG}
+          } grep {
+            $self->filter_name3($_->{MTNAMELONG})
+          } grep {
+            ! $seen{$_->tid_flat()}++;
+          } map { 
+              MTE->new(%{$_});
+          } @tree_nodes;
+          if ($self->mode =~ /server::ccms::mte::list/) {
+            foreach my $mte (@mtes) {
+              printf "%s %d\n", $mte->{MTNAMELONG}, $mte->{MTCLASS};
+            }
+          } elsif ($self->mode =~ /server::ccms::mte::check/) {
+            $self->set_thresholds();
+            foreach my $mte (@mtes) {
+              next if grep { $mte->{MTCLASS} == $_ } (50, 70, 199);
+              $self->debug(sprintf "collect_details for %s", $mte->{MTNAMELONG});
+              $mte->collect_details($self->session);
+              $mte->check();
+            }
+            if (! @mtes) {
+              $self->add_unknown("no mtes");
             }
           }
         }
+        $self->debug("logoff");
         $fl = $self->session->function_lookup("BAPI_XMI_LOGOFF");
         $fc = $fl->create_function_call;
         $fc->INTERFACE('XAL');
@@ -1914,7 +2166,7 @@ sub init {
       $message =~ s/\s+$//g;
       chomp($message);
       if ($message =~ /__no_internals__/) {
-        $message =~ s/at $0 line.*//g;
+        $message =~ s/at $GLPlugin::pluginname line.*//g;
         $message =~ s/__no_internals__//g;
       }
       $self->add_unknown($message);
@@ -1930,6 +2182,43 @@ sub init {
   #    warning => $self->{warning},
   #    critical => $self->{critical},
   #);
+}
+
+sub update_tree_cache {
+  my $self = shift;
+  my $force = shift;
+  my @tree_nodes = ();
+  my $statefile = $self->create_statefile(name => 'tree_'.$self->opts->name.'_'.$self->opts->name2);
+  my $update = time - 24 * 3600;
+  if ($force || ! -f $statefile || ((stat $statefile)[9]) < ($update)) {
+    $self->debug(sprintf "updating the tree cache for %s %s",
+        $self->opts->name, $self->opts->name2);
+    my $fl = $self->session->function_lookup("BAPI_SYSTEM_MON_GETTREE");
+    my  $fc = $fl->create_function_call;
+    $fc->EXTERNAL_USER_NAME("Agent");
+    $fc->MONITOR_NAME({
+      MS_NAME => $self->opts->name,
+      MONI_NAME => $self->opts->name2,
+    });
+    $fc->invoke;
+    # TREE_NODES
+    if ($fc->RETURN->{TYPE} =~ /^E/) {
+      $self->add_critical($fc->RETURN->{MESSAGE});
+    } else {
+      map { push(@tree_nodes, $_) } @{$fc->TREE_NODES};
+    }
+    $self->debug(sprintf "updated the tree cache for %s %s",
+        $self->opts->name, $self->opts->name2);
+    $self->save_state(name => 'tree_'.$self->opts->name.'_'.$self->opts->name2, save => \@tree_nodes);
+  }
+  my $content = do { local (@ARGV, $/) = $statefile; my $x = <>; close ARGV; $x };
+  my $VAR1;
+  $VAR1 = eval "$content";
+  my $cache = $VAR1;;
+  @tree_nodes = @{$cache};
+  $self->debug(sprintf "return cached tree nodes for %s %s",
+      $self->opts->name, $self->opts->name2);
+  return @tree_nodes;
 }
 
 sub map_alvalue {
@@ -2343,8 +2632,8 @@ sub check {
     my $unit = $2;
     $self->add_perfdata(
         label => $self->{OBJECTNAME}."_".$self->{MTNAMESHRT},
-        value => $1,
-        uom => $2 eq "msec" ? "ms" : $2,
+        value => $value,
+        uom => $unit eq "msec" ? "ms" : $unit,
     );
   }
 }
@@ -2576,6 +2865,158 @@ sub init {
   }
 }
 
+package Classes::SAP::Component::BackgroundjobSubsystem;
+our @ISA = qw(GLPlugin::Item);
+use strict;
+
+sub session {
+  my $self = shift;
+  return $Classes::SAP::session;
+}
+
+sub init {
+  my $self = shift;
+  {
+    no strict 'refs';
+    *{'Classes::SAP::Component::BackgroundjobSubsystem::epoch_to_abap_date'} = \&{'Classes::SAP::epoch_to_abap_date'};
+    *{'Classes::SAP::Component::BackgroundjobSubsystem::epoch_to_abap_time'} = \&{'Classes::SAP::epoch_to_abap_time'};
+    *{'Classes::SAP::Component::BackgroundjobSubsystem::epoch_to_abap_date_and_time'} = \&{'Classes::SAP::epoch_to_abap_date_and_time'};
+  }
+  $self->{jobs} = [];
+  eval {
+    my $now = time - 1;
+    my ($todate, $totime) = $self->epoch_to_abap_date_and_time($now);
+    my $from = $self->opts->lookback ? $now - $self->opts->lookback :
+        $self->load_state( name => "to" ) ? $self->load_state( name => "to" )->{to} :
+        $now - 3600;
+    my ($fromdate, $fromtime) = $self->epoch_to_abap_date_and_time($from + 1);
+    my $fl = $self->session->function_lookup("RFC_READ_TABLE");
+    my $fc = $fl->create_function_call;
+    $fc->QUERY_TABLE("TBTCO");
+    $fc->DELIMITER(";");
+    my $condition = sprintf "ENDDATE >= '%s' AND ENDTIME > '%s'", $fromdate, $fromtime;
+    my @options = ();
+    while ($condition ne "") {
+      $condition =~ /(.{1,70}(\s|$))/ms;
+      push(@options, {'TEXT' => $1});
+      $condition = $';
+    }
+    $fc->OPTIONS(\@options);
+    my @fields = qw(JOBNAME SDLUNAME STRTDATE STRTTIME ENDDATE ENDTIME STATUS SDLSTRTDT SDLSTRTTM);
+    $fc->FIELDS([map { { 'FIELDNAME' => $_ } } @fields]);
+    $fc->invoke;
+    @{$self->{jobs}} = sort {
+      $a->{stop} <=> $b->{stop}
+    } grep {
+      $self->filter_name($_->{JOBNAME}) && $self->filter_name2($_->{SDLUNAME});
+    } map {
+      my %hash = ();
+      my @values = split(";", $_->{WA});
+      @hash{@fields} = @values;
+      Job->new(%hash);
+    } @{$fc->DATA};
+    $self->save_state( name => "to", save => {to => $now} );
+  };
+  if ($@) {
+    $self->add_unknown($@);
+  }
+}
+
+sub check {
+  my $self = shift;
+  if (! $self->check_messages()) {
+    if (! @{$self->{jobs}}) {
+      $self->add_unknown("no finished jobs were found");
+    } else {
+      if ($self->mode =~ /server::backgroundjobs::list/) {
+        foreach (@{$self->{jobs}}) {
+          printf "%-12s %-32s %s %4d %4d %s\n", $_->{SDLUNAME}, $_->{JOBNAME},
+              $_->{output_start}, $_->{runtime}, $_->{delay}, $_->{STATUS};
+        }
+      } else {
+        my $jobs = {};
+        map { $jobs->{$_->{JOBNAME}.$_->{SDLUNAME}}++ } @{$self->{jobs}};
+        if ($self->mode =~ /server::backgroundjobs::(failed|runtime)/) {
+          foreach (@{$self->{jobs}}) {
+            $_->check() if (! $self->opts->unique || ($self->opts->unique && ! --$jobs->{$_->{JOBNAME}.$_->{SDLUNAME}}));
+          }
+        }
+        if (! $self->check_messages()) {
+          $self->add_ok("all jobs finished in time with status ok");
+        }
+      }
+    }
+  }
+}
+
+package Job;
+our @ISA = qw(GLPlugin::TableItem);
+use strict;
+use Date::Manip::Date;
+
+sub finish {
+  my $self = shift;
+  # man kann eigentlich davon ausgehen, dass jeder Job STRT* und END* hat,
+  # da die Tabelle TBTCO nur beendete (mit welchem Status auch immer) Eintraege
+  # enthaelt.
+  foreach (keys %{$self}) {
+    $self->{$_} =~ s/^\s+//;
+    $self->{$_} =~ s/\s+$//;
+  }
+  my $date = new Date::Manip::Date;
+  if ($self->{ENDDATE} && $self->{ENDTIME}) {
+    $date->parse_format("%Y%m%d%H%M%S", $self->{ENDDATE}.$self->{ENDTIME});
+    $self->{stop} = $date->printf("%s");
+    $self->{output_stop} = $date->printf("%d.%m.%Y %H:%M:%S");
+  }
+  if ($self->{STRTDATE} && $self->{STRTTIME}) {
+    $date->parse_format("%Y%m%d%H%M%S", $self->{STRTDATE}.$self->{STRTTIME});
+    $self->{start} = $date->printf("%s");
+    $self->{output_start} = $date->printf("%d.%m.%Y %H:%M:%S");
+  }
+  if ($self->{start} && $self->{stop}) {
+    $self->{runtime} = $self->{stop} - $self->{start};
+  }
+  if ($self->{SDLSTRTDT} && $self->{SDLSTRTTM}) {
+    $date->parse_format("%Y%m%d%H%M%S", $self->{SDLSTRTDT}.$self->{SDLSTRTTM});
+    $self->{planned_start} = $date->printf("%s");
+  }
+  if ($self->{start} && $self->{planned_start}) {
+    $self->{delay} = $self->{start} - $self->{planned_start};
+  }
+}
+
+sub check {
+  my $self = shift;
+  if ($self->mode =~ /server::backgroundjobs::(failed|runtime)/) {
+    if ($self->{STATUS} eq "A") {
+      $self->add_critical(sprintf "job %s failed at %s", $self->{JOBNAME}, $self->{output_stop});
+    }
+  }
+  if ($self->mode =~ /server::backgroundjobs::runtime/) {
+    $self->set_thresholds(metric => $self->{SDLUNAME}.'_'.$self->{JOBNAME}.'_runtime',
+       warning => 60, critical => 300);
+    $self->add_info(sprintf "job %s of user %s ran for %ds",
+        $self->{JOBNAME}, $self->{SDLUNAME}, $self->{runtime});
+    if ($self->check_thresholds(metric => $self->{SDLUNAME}.'_'.$self->{JOBNAME}.'_runtime',
+        value => $self->{runtime},)) {
+      my ($warning, $critical) = $self->get_thresholds(
+          metric => $self->{SDLUNAME}.'_'.$self->{JOBNAME}.'_runtime');
+      $self->annotate_info(sprintf "limit: %ds", $self->{runtime} > $critical ?
+          $critical : $warning);
+      $self->add_message($self->check_thresholds(
+          metric => $self->{SDLUNAME}.'_'.$self->{JOBNAME}.'_runtime',
+          value => $self->{runtime},
+      ));
+    }
+    $self->add_perfdata(
+        label => $self->{SDLUNAME}.'_'.$self->{JOBNAME}.'_runtime',
+        value => $self->{runtime},
+        uom => 's',
+    );
+  }
+}
+
 package main;
 # /usr/bin/perl -w
 
@@ -2590,7 +3031,7 @@ my $plugin = Classes::Device->new(
         '--mode <what-to-do> '.
         '--ashost <hostname> --sysnr <system number> '.
         '  ...]',
-    version => '$Revision: 1.3.2 $',
+    version => '$Revision: 1.5.1.2 $',
     blurb => 'This plugin checks sap netweaver ',
     url => 'http://labs.consol.de/nagios/check_sap_health',
     timeout => 60,
@@ -2664,34 +3105,88 @@ $plugin->add_mode(
     help => 'Counts new entries in the VHDR table (since last run or appeared in the interval specified by --lookback)',
 );
 $plugin->add_mode(
+    internal => 'server::backgroundjobs::failed',
+    spec => 'failed-jobs',
+    alias => undef,
+    help => 'Looks for failed jobs in the TBTCO table (since last run or in the interval specified by --lookback)',
+);
+$plugin->add_mode(
+    internal => 'server::backgroundjobs::runtime',
+    spec => 'exceeded-failed-jobs',
+    alias => undef,
+    help => 'Looks for jobs in the TBTCO table which failed or exceeded a certain runtime (since last run or in the interval specified by --lookback)',
+);
+$plugin->add_mode(
     internal => 'server::snap::list',
-    spec => 'shortdumps-list',
+    spec => 'list-shortdumps',
     alias => undef,
     help => 'Read the SNAP table and list the short dumps',
+);
+$plugin->add_mode(
+    internal => 'server::backgroundjobs::list',
+    spec => 'list-jobs',
+    alias => undef,
+    help => 'Read the TBTCO table and list the jobs',
 );
 $plugin->add_arg(
     spec => 'ashost|H=s',
     help => '--ashost
    Hostname or IP-address of the application server',
-    required => 1,
+    required => 0,
 );
 $plugin->add_arg(
     spec => 'sysnr=s',
     help => '--sysnr
    The system number',
-    required => 1,
+    required => 0,
+);
+$plugin->add_arg(
+    spec => 'mshost=s',
+    help => '--mshost
+   Hostname or IP-address of the message server',
+    required => 0,
+);
+$plugin->add_arg(
+    spec => 'msserv=s',
+    help => '--msserv
+   The port for mshost connections',
+    required => 0,
+);
+$plugin->add_arg(
+    spec => 'r3name=s',
+    help => '--r3name
+   The SID for mshost connections',
+    required => 0,
+);
+$plugin->add_arg(
+    spec => 'group=s',
+    help => '--group
+   The logon group for mshost connections',
+    required => 0,
+);
+$plugin->add_arg(
+    spec => 'gwhost=s',
+    help => '--gwhost
+   The gateway host',
+    required => 0,
+);
+$plugin->add_arg(
+    spec => 'gwserv=s',
+    help => '--gwserv
+   The gateway port',
+    required => 0,
 );
 $plugin->add_arg(
     spec => 'username=s',
     help => '--username
    The username',
-    required => 1,
+    required => 0,
 );
 $plugin->add_arg(
     spec => 'password=s',
     help => '--password
    The password',
-    required => 1,
+    required => 0,
 );
 $plugin->add_arg(
     spec => 'client=s',
@@ -2796,6 +3291,12 @@ $plugin->add_arg(
     spec => 'mitigation=s',
     help => "--mitigation
    The parameter allows you to change a critical error to a warning.",
+    required => 0,
+);
+$plugin->add_arg(
+    spec => 'unique',
+    help => "--unique
+   The parameter limits the output to unique (or only the last) items.",
     required => 0,
 );
 $plugin->add_arg(

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash 
 ################################################################################
 # Script:       check_equallogic                                               #
 # Author:       Claudio Kuenzler www.claudiokuenzler.com                       #
@@ -66,6 +66,8 @@
 # 20140626 Bugfix in etherrors check                                           #
 # 20140711 Added snmp connection check function                                #
 # 20150203 Bugfix in vol check in percentage calculation                       #
+# 20151006 Bugfix in vol check if volume not found by Stephane Loeuillet       #
+# 20151126 Bugfix in memberusage and poolusage checks (missing newline)        #
 ################################################################################
 # Usage: ./check_equallogic -H host -C community -t type [-v volume] [-w warning] [-c critical]
 ################################################################################
@@ -140,7 +142,7 @@ getmembernames () {
   if [ ${#membernames[*]} -eq 0 ]
   then echo "EQUALLOGIC ${type} CRITICAL - SNMP Connection failed"
   exit 2
-  else
+  else 
     # Get the OID and Membername and put them into arrays
     i=0
     while read -r line
@@ -194,7 +196,7 @@ for line in ${sensornames[@]}
   if [ ${sensortemp[${c}]} -gt 0 ]
     then
     perfdata=$perfdata" ${sensornames[$c]}=${sensortemp[${c}]};${sensortemp_min[${c}]};${sensortemp_max[${c}]}"
-    #Check if state is CRITICAL. Compare against MIN and MAX
+    #Check if state is CRITICAL. Compare against MIN and MAX               
     if [ ${sensortemp[${c}]} -gt ${sensortemp_max[${c}]} ] || [ ${sensortemp[${c}]} -lt ${sensortemp_min[${c}]} ]
       then
       sensorfinalcrit[${c}]="${sensornames[$c]} => ${sensortemp[${c}]}"
@@ -213,7 +215,7 @@ elif [[ ${#sensorunknown[*]} -gt 0 ]]
   then echo "UNKNOWN Check Sensors, an unknown error occured | $perfdata"; exit ${STATE_UNKNOWN}
 else echo "All Sensors OK | $perfdata"; exit ${STATE_OK}
 fi
-;;
+;; 
 
 # --- diskold (old disk check) --- #
 diskold)
@@ -266,7 +268,7 @@ if [ ${diskstatusfailed:0} -gt  0 ] || [ ${diskstatustoosmall:0} -gt 0 ] || [ ${
   echo "DISK CRITICAL ${disksumcritical} disk(s) in critical state"; exit ${STATE_CRITICAL}
 elif [ ${diskstatusoff} -gt 0 ] || [ ${diskstatusaltsig} -gt 0 ]
   then disksumwarning=$(( ${diskstatusoff} + ${diskstatusaltsig} ))
-  echo "DISK WARNING $disksumwarning disk(s) in warning state"; exit ${STATE_WARNING}
+  echo "DISK WARNING $disksumwarning disk(s) in warning state"; exit ${STATE_WARNING}	
 else echo "DISK OK ${diskstatusok} disks OK ${diskstatusspare} disks spare"; exit ${STATE_OK}
 fi
 ;;
@@ -295,8 +297,8 @@ totalstorage_perfdata=$(($totalstorage*1024*1024))
 usedstorage_perfdata=$(($usedstorage*1024*1024))
 
 # Human readable output in GB
-finalusedstorage=`expr ${usedstorage} / 1024`
-finaltotalstorage=`expr ${totalstorage} / 1024`
+finalusedstorage=`expr ${usedstorage} / 1024` 
+finaltotalstorage=`expr ${totalstorage} / 1024` 
 
 if [ -n "${warning}" ] || [ -n "${critical}" ]
   then
@@ -373,7 +375,7 @@ done
 if [ $s3 -gt 0 ]; then echo "$s3 of $ps_count PSU(s): FAILED"; exit ${STATE_CRITICAL}; fi
 if [ $s2 -gt 0 ]; then echo "$s2 of $ps_count PSU(s): NO AC POWER"; exit ${STATE_CRITICAL}; fi
 if [ $s1 -gt 0 ]
-  then
+  then 
   fanfail=0; psfan_count=0
   for fan in $psfanstate
   do
@@ -486,7 +488,7 @@ for ((i=2; i<=$(($ifcount+1)); i++))
   iface[$i]=$(snmpwalk -v 2c -O vqe -c ${community} ${host} 1.3.6.1.2.1.2.2.1.2.${i})  #IF-MIB::ifDescr.${i}
   inerr[$i]=$(snmpwalk -v 2c -O vqe -c ${community} ${host} 1.3.6.1.2.1.2.2.1.14.${i}) #IF-MIB::ifInErrors.${i}
   outerr[$i]=$(snmpwalk -v 2c -O vqe -c ${community} ${host} 1.3.6.1.2.1.2.2.1.20.${i}) #IF-MIB::ifOutErrors.${i}
-  perfdata=$perfdata" ${iface[$i]}_in=${inerr[$i]};${warning};${critical} ${iface[$i]}_out=${outerr[$i]};${warning};${critical}"
+  perfdata=$perfdata" ${iface[$i]}_in=${inerr[$i]};${warning};${critical} ${iface[$i]}_out=${outerr[$i]};${warning};${critical}"                          
   #...having errors...
   if [ ${inerr[$i]} -ge ${critical} ] || [ ${outerr[$i]} -ge ${critical} ]
     then
@@ -662,29 +664,28 @@ while [ $c2 -lt $c ]
   let poolinuse=poolinuse/1024
   let poolused[$c2]=poolused[$c2]/1024
 
-  result="Pool ${poolname[c2]} Size ${pooltotal[$c2]}GB, Total In Use ${poolinuse}GB (${usedpercent}%) = (Used ${poolused[$c2]}GB + Delegated ${pooldelegated[$c2]}GB + Replication ${poolreplication[$c2]}GB), Free ${freestorage}GB //"
+  result="Pool ${poolname[c2]} Size ${pooltotal[$c2]}GB, Total In Use ${poolinuse}GB (${usedpercent}%) = (Used ${poolused[$c2]}GB + Delegated ${pooldelegated[$c2]}GB + Replication ${poolreplication[$c2]}GB), Free ${freestorage}GB"
 
   if [ -n "${warning}" ] || [ -n "${critical}" ]
     then
     if [ ${usedpercent} -ge ${warning} ] && [ ${usedpercent} -lt ${critical} ]
       then
-      echo -n "WARNING: ${result}"
+      echo "WARNING: ${result}"
       if [ ${exitstate} -ne 2 ]
         then
         exitstate=${STATE_WARNING}
       fi
       elif [ ${usedpercent} -ge ${critical} ]
         then
-        echo -n "CRITICAL: ${result}"
+        echo "CRITICAL: ${result}"
         exitstate=${STATE_CRITICAL}
       else
-        echo -n "OK: ${result}"
+        echo "OK: ${result}"
       fi
     else
-      echo -n "OK: "${result}
+      echo "OK: "${result}
   fi
 
-  echo -n " "
   let c2=c2+1
 done
 
@@ -723,20 +724,20 @@ while [ $c2 -lt $c ]
     then
     if [ ${usedpercent} -ge ${warning} ] && [ ${usedpercent} -lt ${critical} ]
       then
-      echo -n "WARNING: Pool $c2 Total ${pooltotal[$c2]}GB, Used ${poolused[$c2]}GB (${usedpercent}%)|'space used'=${poolused_perfdata}, 'total space'=${pooltotal_perfdata}"
+      echo "WARNING: Pool $c2 Total ${pooltotal[$c2]}GB, Used ${poolused[$c2]}GB (${usedpercent}%)|'space used'=${poolused_perfdata}, 'total space'=${pooltotal_perfdata}"
       if [ $bad -ne 2 ]
         then
         bad=1
       fi
     elif [ ${usedpercent} -ge ${critical} ]
       then
-      echo -n "CRITICAL: Pool $c2 Total ${pooltotal[$c2]}GB, Used ${poolused[$c2]}GB (${usedpercent}%)|'space used'=${poolused_perfdata}, 'total space'=${pooltotal_perfdata}"
+      echo "CRITICAL: Pool $c2 Total ${pooltotal[$c2]}GB, Used ${poolused[$c2]}GB (${usedpercent}%)|'space used'=${poolused_perfdata}, 'total space'=${pooltotal_perfdata}"
       bad=2
     else
-      echo -n "OK: Pool $c2 Total ${pooltotal[$c2]}GB, Used ${poolused[$c2]}GB (${usedpercent}%)|'space used'=${poolused_perfdata}, 'total space'=${pooltotal_perfdata}"
+      echo "OK: Pool $c2 Total ${pooltotal[$c2]}GB, Used ${poolused[$c2]}GB (${usedpercent}%)|'space used'=${poolused_perfdata}, 'total space'=${pooltotal_perfdata}"
     fi
   else
-    echo -n "OK: Pool $c2 Total ${pooltotal[$c2]}GB, Used ${poolused[$c2]}GB (${usedpercent}%)|'space used'=${poolused_perfdata}, 'total space'=${pooltotal_perfdata}"
+    echo "OK: Pool $c2 Total ${pooltotal[$c2]}GB, Used ${poolused[$c2]}GB (${usedpercent}%)|'space used'=${poolused_perfdata}, 'total space'=${pooltotal_perfdata}"
   fi
 
   let c2=c2+1
@@ -834,7 +835,7 @@ fi
 ;;
 
 # --- vol (single volume) --- #
-vol)
+vol)	
 getmembernames
 # Get Array No. for wanted Volume Name: ./check_equallogic -H x.x.x.x -C public -t vol -v-v  V2
 if [ -z "${volume}" ]
@@ -842,6 +843,7 @@ if [ -z "${volume}" ]
   echo "CRITICAL - No volume name given."; exit 2
 fi
 volarray=$(snmpwalk -v 2c -c ${community} ${host} 1.3.6.1.4.1.12740.5.1.7.1.1.4 | grep -n "\"${volume}\"" | sed -n '1p' | cut -d : -f1)
+if [ -z "${volarray}" ]; then echo "UNKNOWN - Volume ${volume} does not exist"; exit 3; fi
 volavailspace=$(snmpwalk -v 2c -O vqe -c ${community} ${host} 1.3.6.1.4.1.12740.5.1.7.1.1.8 | awk "NR==${volarray}")
 humanavailspace=$((${volavailspace} / 1024))
 perfavailspace=$((${volavailspace}*1024*1024))
