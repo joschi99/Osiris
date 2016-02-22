@@ -18,7 +18,7 @@
 # limitations under the License.
 #
 
-package apps::lync::mode::remoteassistance;
+package network::ucopia::wlc::snmp::mode::users;
 
 use base qw(centreon::plugins::mode);
 
@@ -32,11 +32,10 @@ sub new {
     
     $self->{version} = '1.0';
     $options{options}->add_options(arguments =>
-                                { 
-                                  "warning:s"               => { name => 'warning', },
-                                  "critical:s"              => { name => 'critical', },
+                                {
+                                  "warning:s"   => { name => 'warning' },
+                                  "critical:s"   => { name => 'critical' },
                                 });
-
     return $self;
 }
 
@@ -45,8 +44,8 @@ sub check_options {
     $self->SUPER::init(%options);
 
     if (($self->{perfdata}->threshold_validate(label => 'warning', value => $self->{option_results}->{warning})) == 0) {
-       $self->{output}->add_option_msg(short_msg => "Wrong warning threshold '" . $self->{option_results}->{warning} . "'.");
-       $self->{output}->option_exit();
+        $self->{output}->add_option_msg(short_msg => "Wrong warning threshold '" . $self->{option_results}->{warning} . "'.");
+        $self->{output}->option_exit();
     }
     if (($self->{perfdata}->threshold_validate(label => 'critical', value => $self->{option_results}->{critical})) == 0) {
        $self->{output}->add_option_msg(short_msg => "Wrong critical threshold '" . $self->{option_results}->{critical} . "'.");
@@ -56,30 +55,25 @@ sub check_options {
 
 sub run {
     my ($self, %options) = @_;
-    # $options{sql} = sqlmode object
-    $self->{sql} = $options{sql};
+    
+    my $oid_totalConnectedUsers = '.1.3.6.1.4.1.31218.3.1.0';
+    my $oid_licenceUsers = '.1.3.6.1.4.1.31218.3.5.0';
 
-    $self->{sql}->connect();
-    $self->{sql}->query(query => q{SELECT count(*)
-                                   FROM [LcsCDR].[dbo].[SessionDetails] s
-                                    left outer join [LcsCDR].[dbo].[Users] u1 on s.User1Id = u1.UserId  left outer join [LcsCDR].[dbo].[Users] u2 on s.User2Id = u2.UserId
-                                   WHERE (MediaTypes & 1)=4
-                                   AND s.SessionIdTime>=dateadd(minute,-5,getdate())}
-                        );
-    my $remote_assistance_sessions = $self->{sql}->fetchrow_array();
+    my $result = $options{snmp}->get_leef(oids => [$oid_totalConnectedUsers, $oid_licenceUsers], nothing_quit => 1);
+    my $exit = $self->{perfdata}->threshold_check(value => $result->{$oid_totalConnectedUsers}, threshold => [ { label => 'critical', exit_litteral => 'critical' }, { label => 'warning', exit_litteral => 'warning' } ]);
 
-    my $exit_code = $self->{perfdata}->threshold_check(value => $remote_assistance_sessions, threshold => [ { label => 'critical', 'exit_litteral' => 'critical' }, { label => 'warning', exit_litteral => 'warning' } ]);
-
-    $self->{output}->output_add(severity => $exit_code,
-                                  short_msg => sprintf("%i remote assistance sessions running", $remote_assistance_sessions));
-    $self->{output}->perfdata_add(label => 'assistance_sessions', unit => 'sessions',
-                                  value => $remote_assistance_sessions,
+    $result->{$oid_licenceUsers} = undef if ($result->{$oid_licenceUsers} == 0);
+    $self->{output}->output_add(severity => $exit,
+                                short_msg => sprintf("'%d' connected users (Available licence: %s)", 
+                                                $result->{$oid_totalConnectedUsers}),
+                                                defined($result->{$oid_licenceUsers}) ? $result->{$oid_licenceUsers} : '-');
+    $self->{output}->perfdata_add(value => $result->{$oid_totalConnectedUsers}, label => 'users',
                                   warning => $self->{perfdata}->get_perfdata_for_output(label => 'warning'),
                                   critical => $self->{perfdata}->get_perfdata_for_output(label => 'critical'),
-                                  min => 0);
+                                  min => 0, max => $result->{$oid_licenceUsers});
 
-    $self->{output}->display();
-    $self->{output}->exit();
+   $self->{output}->display();
+   $self->{output}->exit();
 }
 
 1;
@@ -88,18 +82,19 @@ __END__
 
 =head1 MODE
 
-Check Lync number of active remote assistance sessions during last five minutes -- use with dyn-mode mssql plugin 
+Check connected users.
 
 =over 8
 
 =item B<--warning>
 
-Threshold warning
+Threshold warning.
 
 =item B<--critical>
 
-Threshold critical
+Threshold critical.
 
 =back
 
 =cut
+    
