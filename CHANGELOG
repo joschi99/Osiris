@@ -5,20 +5,20 @@ Osiris 2.2.0
 		- Upgrade Selenium 2.50
 	Inventory
 		- Upgrade GLPI 0.90.1
-		- Upgrade Fusion Inventory Server for GLPI 0.90+1.1
+		- Upgrade Fusion Inventory Server for GLPI 0.90+1.2
 	Syslog & Logmanagement
 		- Upgrade Rsyslog 8.17.0
 		- Upgrade Kibana 4.1.6
 	Network
 		- Upgrade Elasticsearch 1.7.5
 		- Logstash netflow configuration (Kibana Dashboard not implementet yet)
-		- Upgrade Packetbeat 1.1.2
+		- Upgrade Packetbeat 1.2.0
 		- Upgrade rancid 3.4.1
 	System
 		- Upgrade PHP 5.4.45
 		- Upgrade phpSysInfo 3.2.5
 		- Upgrade phpMyAdmin 4.4.15.4
-		- New Topbeat 1.1.2
+		- New Topbeat 1.2.0
 		- no more Redis Server
 		- Upgrade freetds 0.95.8
 		- Upgrade MariaDB 5.5.48
