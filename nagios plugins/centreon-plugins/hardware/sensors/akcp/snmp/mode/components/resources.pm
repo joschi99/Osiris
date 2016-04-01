@@ -18,32 +18,45 @@
 # limitations under the License.
 #
 
-package apps::protocols::bgp::4::plugin;
+package hardware::sensors::akcp::snmp::mode::components::resources;
 
 use strict;
 use warnings;
-use base qw(centreon::plugins::script_snmp);
+use Exporter;
 
-sub new {
-    my ($class, %options) = @_;
-    my $self = $class->SUPER::new(package => __PACKAGE__, %options);
-    bless $self, $class;
-    # $options->{options} = options object
+our %map_default1_status;
+our %map_default2_status;
+our %map_online;
+our %map_degree_type;
 
-    $self->{version} = '1.0';
-    %{$self->{modes}} = (
-                         'bgppeerstate'             => 'apps::protocols::bgp::4::mode::bgppeerstate',
-                         );
+our @ISA = qw(Exporter);
+our @EXPORT_OK = qw(%map_default1_status %map_default2_status %map_online %map_degree_type);
 
-    return $self;
-}
+%map_default1_status = (
+    1 => 'noStatus',
+    2 => 'normal',
+    3 => 'highWarning',
+    4 => 'highCritical',
+    5 => 'lowWarning',
+    6 => 'lowCritical',
+    7 => 'sensorError',
+);
+
+%map_default2_status = (
+    1 => 'noStatus',
+    2 => 'normal',
+    4 => 'critical',
+    7 => 'sensorError',
+);
+
+%map_online = (
+    1 => 'online',
+    2 => 'offline',
+);
+
+%map_degree_type = (
+    0 => 'F',
+    1 => 'C',
+);
 
 1;
-
-__END__
-
-=head1 PLUGIN DESCRIPTION
-
-Check BGP protocol in SNMP.
-
-=cut

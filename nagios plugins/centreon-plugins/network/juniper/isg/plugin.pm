@@ -18,7 +18,7 @@
 # limitations under the License.
 #
 
-package apps::protocols::bgp::4::plugin;
+package network::juniper::isg::plugin;
 
 use strict;
 use warnings;
@@ -28,11 +28,15 @@ sub new {
     my ($class, %options) = @_;
     my $self = $class->SUPER::new(package => __PACKAGE__, %options);
     bless $self, $class;
-    # $options->{options} = options object
 
     $self->{version} = '1.0';
     %{$self->{modes}} = (
-                         'bgppeerstate'             => 'apps::protocols::bgp::4::mode::bgppeerstate',
+                        'cpu'               => 'network::juniper::common::screenos::mode::cpu',
+                        'memory'            => 'network::juniper::common::screenos::mode::memory',
+                        'sessions'          => 'network::juniper::common::screenos::mode::sessions',
+                        'hardware'          => 'network::juniper::common::screenos::mode::hardware',
+                        'interfaces'        => 'snmp_standard::mode::interfaces', 
+                        'list-interfaces'   => 'snmp_standard::mode::listinterfaces',
                          );
 
     return $self;
@@ -44,6 +48,6 @@ __END__
 
 =head1 PLUGIN DESCRIPTION
 
-Check BGP protocol in SNMP.
+Check Juniper ISG series in SNMP.
 
 =cut

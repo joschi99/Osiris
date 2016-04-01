@@ -18,7 +18,7 @@
 # limitations under the License.
 #
 
-package apps::protocols::bgp::4::plugin;
+package hardware::sensors::akcp::snmp::plugin;
 
 use strict;
 use warnings;
@@ -28,11 +28,10 @@ sub new {
     my ($class, %options) = @_;
     my $self = $class->SUPER::new(package => __PACKAGE__, %options);
     bless $self, $class;
-    # $options->{options} = options object
 
     $self->{version} = '1.0';
     %{$self->{modes}} = (
-                         'bgppeerstate'             => 'apps::protocols::bgp::4::mode::bgppeerstate',
+                         'sensors' => 'hardware::sensors::akcp::snmp::mode::sensors',
                          );
 
     return $self;
@@ -44,6 +43,6 @@ __END__
 
 =head1 PLUGIN DESCRIPTION
 
-Check BGP protocol in SNMP.
+Check AKCP sensors in SNMP.
 
 =cut
