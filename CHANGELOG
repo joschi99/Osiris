@@ -4,7 +4,7 @@ Osiris 2.2.0
 		- Upgrade Centreon Broker 2.11.3
 		- Upgrade Selenium 2.50
 	Inventory
-		- Upgrade GLPI 0.90.1
+		- Upgrade GLPI 0.90.2
 		- Upgrade Fusion Inventory Server for GLPI 0.90+1.2
 	Syslog & Logmanagement
 		- Upgrade Rsyslog 8.17.0
