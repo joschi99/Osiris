@@ -4,7 +4,7 @@ echo -e "
 ##################################
 #
 
-# Osiris 2.2.0 NMS
+# Osiris 2.2.1 NMS
 #
 # All rights reserved
 # (c)2014, BI-S des Jochen Platzgummer
