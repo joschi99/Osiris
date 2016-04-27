@@ -2,8 +2,15 @@ Osiris 2.2.1
 	Monitoring
 		- Upgrade Centreon Broker 2.11.4
 		- Upgrade Tweepy 3.5.0 (Twitter notification)
+		- Selenium 2.53
+	Network
+		- Upgrade Packetbeat 1.2.2
 	Syslog & Logmanagement
 		- Upgrade Rsyslog 8.18.0
+	System
+		- Upgrade MariaDB 5.5.49
+		- Upgrade Firefox 45.1
+		- Upgrade Topbeat 1.2.2
 Osiris 2.2.0
 	Monitoring
 		- Upgrade Centreon Core 2.7.4
