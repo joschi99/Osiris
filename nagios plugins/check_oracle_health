@@ -335,6 +335,7 @@ sub init_shared_pool_free {
     $self->add_nagios_critical("unable to get sga free");
     return undef;
   }
+  $self->protect_value(\%params, 'free_percent', 'free_percent', 'percent');
 }
 
 sub init_shared_pool_parser {
@@ -2250,7 +2251,7 @@ sub init {
           from v$archived_log
           where applied='YES' and registrar='RFS'
         });     
-    if (! defined $self->{last_applied_time}) {
+    if (! defined $self->{last_applied_time} || $self->{last_applied_time} eq "") {
       $self->add_nagios_critical("Unable to get archived log apply time");
     }
   } elsif ($params{mode} =~ /server::database::dataguard::mrp_status/) {
@@ -4284,14 +4285,14 @@ sub init_invalid_objects {
         $self->{handle}->fetchall_array(q{
             SELECT 'dba_registry', namespace||'.'||comp_name||'-'||version||' is '||status
             FROM dba_registry
-            WHERE status <> 'VALID'
+            WHERE status <> 'VALID' AND status <> 'OPTION OFF'
         });
   } else {
     @{$self->{invalidobjects}->{invalid_registry_components_list}} =
         $self->{handle}->fetchall_array(q{
             SELECT 'dba_registry', 'SCHEMA.'||comp_name||'-'||version||' is '||status
             FROM dba_registry
-            WHERE status <> 'VALID'
+            WHERE status <> 'VALID' AND status <> 'OPTION OFF'
         });
   }
   if (! defined $self->{invalidobjects}->{invalid_objects} ||
@@ -4820,6 +4821,7 @@ sub new {
       # Don't even ask me to have a look at it. You'll have to pay for it.
       # And believe me, upgrading to a recent version of Oracle will be
       # much more cheaper.
+      $self->{handle}->{errstr} = ""; # be forgiving this time
       $self->{version} = $self->{handle}->fetchrow_array(
           q{ SELECT version FROM product_component_version 
                WHERE product LIKE '%Server%' OR
@@ -5909,21 +5911,24 @@ sub init {
       }
       alarm($self->{timeout} - 1); # 1 second before the global unknown timeout
       my $dsn = sprintf "DBI:Oracle:%s", $self->{connect};
-      my $connecthash = { RaiseError => 0, AutoCommit => $self->{commit}, PrintError => 0 };
+      my $connecthash = {
+          RaiseError => 0, AutoCommit => $self->{commit}, PrintError => 0,
+      };
+      my $sysdba_connecthash = {
+          RaiseError => 0, AutoCommit => $self->{commit}, PrintError => 0,
+          ora_session_mode => 2, # DBD::Oracle::ORA_SYSDBA
+      };
       my $username = $self->{username};
-      if ($self->{username} eq "sys" || $self->{username} eq "sysdba" || $self->{username} eq "asmsnmp") {
-        $connecthash = { RaiseError => 0, AutoCommit => $self->{commit}, PrintError => 0,
-              ora_session_mode => 2 }; # DBD::Oracle::ORA_SYSDBA
+      if ($self->{username} eq "sysdba" || $self->{username} eq "asmsnmp") {
+        $connecthash = $sysdba_connecthash;
         $dsn = sprintf "DBI:Oracle:";
         $username = '';
-      }
-	  
-      if ($self->{username} =~ /^([\w\-\._]+)@(sysdba)/) {
+      } elsif ($self->{username} eq "sys") {
+        $connecthash = $sysdba_connecthash;
+      } elsif ($self->{username} =~ /^([\w\-\._]+)@(sysdba)/) {
         $username = $1;
-        $connecthash = { RaiseError => 0, AutoCommit => $self->{commit}, PrintError => 0,
-              ora_session_mode => 2 }; # DBD::Oracle::ORA_SYSDBA	  
+        $connecthash = $sysdba_connecthash;
       }
-	  
       if ($self->{handle} = DBI->connect(
           $dsn,
           $username,
@@ -6985,7 +6990,7 @@ use lib dirname($0);
 use vars qw ($PROGNAME $REVISION $CONTACT $TIMEOUT $STATEFILESDIR $needs_restart %commandline);
 
 $PROGNAME = "check_oracle_health";
-$REVISION = '$Revision: 2.1.3.1 $';
+$REVISION = '$Revision: 2.1.3.4 $';
 $CONTACT = 'gerhard.lausser@consol.de';
 $TIMEOUT = 60;
 $STATEFILESDIR = '/var/tmp/check_oracle_health';
