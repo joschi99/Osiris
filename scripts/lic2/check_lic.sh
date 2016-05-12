@@ -3,21 +3,22 @@
 #
 # check_lic.sh - Prüft die Osiris2.2 Lizenz
 #
-# Copyright (c) 2016 Osiris 2.2 (Contact: info@bi-s.it)
+# Copyright (c) 2016 Osiris 2.2.1 (Contact: info@bi-s.it)
 #
 # Development:
 #  Jochen Platzgummer
 #
-# Version 1.1
+# Version 1.2
 #
 # Changelog
+#	12.05.2016:	IP Adresse wird angezeigt
 #	17.01.2016: check_lic.cfg
 #	16.01.2016: Erste Version für Osiris2.2
 ###############################################################################
 
 source /opt/bi-s/software/scripts/lic2/check_lic.cfg
 
-declare -r version="1.1"
+declare -r version="1.2"
 
 declare -r FILE_LIC_TMP="osiris2.lic.tmp"
 declare -r FILE_LIC="osiris2.lic"
@@ -275,12 +276,18 @@ function write_statusfile () {
 	local current_time
 	
 	echo "$(cat /opt/bi-s/software/scripts/lic2/issue)" > /etc/issue
+
+	IP=$(ifconfig |grep "inet addr" |grep -v "127.0.0.1" | awk '{ print $2 }' | awk -F: '{ print $2 }')
+	echo "# IP: $IP" >> /etc/issue
+	echo "#" >> /etc/issue
 	if [ $EXIT_STATUS = 0 ]
 	then
-		echo "Osiris license valid" >> /etc/issue
+		echo "# Osiris license valid" >> /etc/issue
 	else
-		echo "ERROR: Osiris license problem" >> /etc/issue
+		echo "# ERROR: Osiris license problem" >> /etc/issue
 	fi
+	echo "###################################################" >> /etc/issue
+
 	current_time=$(date "+%d.%m.%Y-%H:%M:%S")
 	echo "$LIC_GEN_STATUS_TEXT,$LIC_GEN_STATUS" > $PATH_LICFILE/$FILE_LIC_STATUS
 	echo "$LIC_STATUS_TEXT,$LIC_STATUS" >> $PATH_LICFILE/$FILE_LIC_STATUS
