@@ -11,7 +11,7 @@
 # Version 1.2
 #
 # Changelog
-#	12.05.2016:	IP Adresse wird angezeigt
+#	12.05.2016: IP Adresse wird angezeigt
 #	17.01.2016: check_lic.cfg
 #	16.01.2016: Erste Version für Osiris2.2
 ###############################################################################
@@ -278,7 +278,7 @@ function write_statusfile () {
 	echo "$(cat /opt/bi-s/software/scripts/lic2/issue)" > /etc/issue
 
 	IP=$(ifconfig |grep "inet addr" |grep -v "127.0.0.1" | awk '{ print $2 }' | awk -F: '{ print $2 }')
-	echo "# IP: $IP" >> /etc/issue
+	echo "# Host IP address: $IP" >> /etc/issue
 	echo "#" >> /etc/issue
 	if [ $EXIT_STATUS = 0 ]
 	then
