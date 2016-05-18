@@ -1,27 +1,27 @@
 Osiris 2.2.0
 	Monitoring
-		- Upgrade Centreon Core 2.7.3
-		- Upgrade Centreon Broker 2.11.3
-		- Upgrade Selenium 2.50
+		- Upgrade Centreon Core 2.7.4
+		- Upgrade Centreon Broker 2.11.4
+		- Upgrade Selenium 2.53
 	Inventory
-		- Upgrade GLPI 0.90.2
+		- Upgrade GLPI 0.90.3
 		- Upgrade Fusion Inventory Server for GLPI 0.90+1.2
 	Syslog & Logmanagement
-		- Upgrade Rsyslog 8.17.0
+		- Upgrade Rsyslog 8.18.0
 		- Upgrade Kibana 4.1.6
 	Network
 		- Upgrade Elasticsearch 1.7.5
 		- Logstash netflow configuration (Kibana Dashboard not implementet yet)
-		- Upgrade Packetbeat 1.2.0
+		- Upgrade Packetbeat 1.2.2
 		- Upgrade rancid 3.4.1
 	System
 		- Upgrade PHP 5.4.45
 		- Upgrade phpSysInfo 3.2.5
 		- Upgrade phpMyAdmin 4.4.15.4
-		- New Topbeat 1.2.0
+		- New Topbeat 1.2.2
 		- no more Redis Server
 		- Upgrade freetds 0.95.8
-		- Upgrade MariaDB 5.5.48
+		- Upgrade MariaDB 5.5.49
 		- Upgrade Webmin 1.791
 Osiris 2.1.1
 	Monitoring
