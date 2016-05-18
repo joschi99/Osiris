@@ -3,6 +3,8 @@ Osiris 2.2.1
 		- Upgrade Centreon Broker 2.11.4
 		- Upgrade Tweepy 3.5.0 (Twitter notification)
 		- Selenium 2.53
+	Inventory
+		- Upgrade Fusion Inventory Server for GLPI 0.90+1.3
 	Network
 		- Upgrade Packetbeat 1.2.2
 	Syslog & Logmanagement
