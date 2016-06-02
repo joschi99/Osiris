@@ -2,17 +2,19 @@ Osiris 2.2.1
 	Monitoring
 		- Upgrade Centreon Broker 2.11.4
 		- Upgrade Tweepy 3.5.0 (Twitter notification)
-		- Selenium 2.53
+		- Upgrade Selenium 2.53
+		- New WhatsApp notification channel (yowsup2)
 	Inventory
 		- Upgrade Fusion Inventory Server for GLPI 0.90+1.3
 	Network
-		- Upgrade Packetbeat 1.2.2
+		- Upgrade Packetbeat 1.2.3
 	Syslog & Logmanagement
-		- Upgrade Rsyslog 8.18.0
+		- Upgrade Rsyslog 8.19.0
 	System
 		- Upgrade MariaDB 5.5.49
 		- Upgrade Firefox 45.1
-		- Upgrade Topbeat 1.2.2
+		- Upgrade Topbeat 1.2.3
+		- Upgrade Webmin 1.801
 Osiris 2.2.0
 	Monitoring
 		- Upgrade Centreon Core 2.7.4
