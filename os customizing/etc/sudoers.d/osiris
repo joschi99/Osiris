@@ -1,6 +1,6 @@
-User_Alias OSIRIS=apache,nagios,centreon,centreon-engine,centreon-broker
-Cmnd_Alias DMIDECODE = /usr/sbin/dmidecode
-Cmnd_Alias YOWSUPCLI = /usr/bin/yowsup-cli
+User_Alias	OSIRIS		=	apache,nagios,centreon,centreon-engine,centreon-broker
+Cmnd_Alias 	DMIDECODE	=	/usr/sbin/dmidecode
+Cmnd_Alias 	YOWSUP 		= 	/usr/bin/yowsup-cli
 
-OSIRIS ALL = NOPASSWD: DMIDECODE
-OSIRIS ALL = NOPASSWD: YOWSUPCLI
+OSIRIS ALL 			= NOPASSWD: DMIDECODE
+OSIRIS ALL 			= NOPASSWD: YOWSUP
