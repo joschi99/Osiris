@@ -602,15 +602,52 @@ sub set_thresholds {
     }
     # dann die ganz spezifischen schwellwerte von der kommandozeile
     if ($self->opts->warningx) { # muss nicht auf defined geprueft werden, weils ein hash ist
-      foreach my $key (keys %{$self->opts->warningx}) {
+      # Erst schauen, ob einer * beinhaltet. Von denen wird vom Laengsten
+      # bis zum Kuerzesten probiert, ob die matchen. Der laengste Match
+      # gewinnt.
+      my @keys = keys %{$self->opts->warningx};
+      my @stringkeys = ();
+      my @regexkeys = ();
+      foreach my $key (sort { length($b) > length($a) } @keys) {
+        if ($key =~ /\*/) {
+          push(@regexkeys, $key);
+        } else {
+          push(@stringkeys, $key);
+        }
+      }
+      foreach my $key (@regexkeys) {
+        next if $metric !~ /$key/;
+        $self->{thresholds}->{$metric}->{warning} = $self->opts->warningx->{$key};
+        last;
+      }
+      # Anschliessend nochmal schauen, ob es einen nicht-Regex-Volltreffer gibt
+      foreach my $key (@stringkeys) {
         next if $key ne $metric;
         $self->{thresholds}->{$metric}->{warning} = $self->opts->warningx->{$key};
+        last;
       }
     }
     if ($self->opts->criticalx) {
-      foreach my $key (keys %{$self->opts->criticalx}) {
+      my @keys = keys %{$self->opts->criticalx};
+      my @stringkeys = ();
+      my @regexkeys = ();
+      foreach my $key (sort { length($b) > length($a) } @keys) {
+        if ($key =~ /\*/) {
+          push(@regexkeys, $key);
+        } else {
+          push(@stringkeys, $key);
+        }
+      }
+      foreach my $key (@regexkeys) {
+        next if $metric !~ /$key/;
+        $self->{thresholds}->{$metric}->{critical} = $self->opts->criticalx->{$key};
+        last;
+      }
+      # Anschliessend nochmal schauen, ob es einen nicht-Regex-Volltreffer gibt
+      foreach my $key (@stringkeys) {
         next if $key ne $metric;
         $self->{thresholds}->{$metric}->{critical} = $self->opts->criticalx->{$key};
+        last;
       }
     }
   } else {
@@ -740,7 +777,7 @@ use Digest::MD5 qw(md5_hex);
 use Errno;
 use Data::Dumper;
 our $AUTOLOAD;
-*VERSION = \'2.0.7';
+*VERSION = \'2.1';
 
 use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
 
@@ -1099,13 +1136,25 @@ sub validate_args {
 }
 
 sub set_timeout_alarm {
-  my ($self) = @_;
-  $SIG{'ALRM'} = sub {
+  my ($self, $timeout, $handler) = @_;
+  $timeout ||= $self->opts->timeout;
+  $handler ||= sub {
     printf "UNKNOWN - %s timed out after %d seconds\n",
         $Monitoring::GLPlugin::plugin->{name}, $self->opts->timeout;
     exit 3;
   };
-  alarm($self->opts->timeout);
+  use POSIX ':signal_h';
+  if ($^O =~ /MSWin/) {
+    local $SIG{'ALRM'} = $handler;
+  } else {
+    my $mask = POSIX::SigSet->new( SIGALRM );
+    my $action = POSIX::SigAction->new(
+        $handler, $mask
+    );   
+    my $oldaction = POSIX::SigAction->new();
+    sigaction(SIGALRM ,$action ,$oldaction );
+  }    
+  alarm(int($timeout)); # 1 second before the global unknown timeout
 }
 
 #########################################################
@@ -1509,6 +1558,42 @@ sub add_unknown {
   my ($self, $message) = @_;
   $message ||= $self->{info};
   $self->add_message(UNKNOWN, $message);
+}
+
+sub add_ok_mitigation {
+  my ($self, $message) = @_;
+  if (defined $self->opts->mitigation()) {
+    $self->add_message($self->opts->mitigation(), $message);
+  } else {
+    $self->add_ok($message);
+  }
+}
+
+sub add_warning_mitigation {
+  my ($self, $message) = @_;
+  if (defined $self->opts->mitigation()) {
+    $self->add_message($self->opts->mitigation(), $message);
+  } else {
+    $self->add_warning($message);
+  }
+}
+
+sub add_critical_mitigation {
+  my ($self, $message) = @_;
+  if (defined $self->opts->mitigation()) {
+    $self->add_message($self->opts->mitigation(), $message);
+  } else {
+    $self->add_critical($message);
+  }
+}
+
+sub add_unknown_mitigation {
+  my ($self, $message) = @_;
+  if (defined $self->opts->mitigation()) {
+    $self->add_message($self->opts->mitigation(), $message);
+  } else {
+    $self->add_unknown($message);
+  }
 }
 
 sub add_message {
@@ -1920,7 +2005,15 @@ sub create_statefile {
   $extension =~ s/\*/_/g;
   $extension =~ s/\s/_/g;
   return sprintf "%s/%s%s", $self->statefilesdir(),
-      $self->mode, lc $extension;
+      $self->clean_path($self->mode), $self->clean_path(lc $extension);
+}
+
+sub clean_path {
+  my ($self, $path) = @_;
+  if ($^O =~ /MSWin/) {
+    $path =~ s/:/_/g;
+  }
+  return $path;
 }
 
 sub schimpf {
@@ -3312,8 +3405,9 @@ sub map_oid_to_class {
 sub discover_suitable_class {
   my ($self) = @_;
   my $sysobj = $self->get_snmp_object('MIB-2-MIB', 'sysObjectID', 0);
+  $sysobj =~ s/^\.//g;
   foreach my $oid (keys %{$Monitoring::GLPlugin::SNMP::MibsAndOids::discover_ids}) {
-    if ($sysobj && $Monitoring::GLPlugin::SNMP::MibsAndOids::discover_ids->{$oid} eq $sysobj) {
+    if ($sysobj && $oid eq $sysobj) {
       return $Monitoring::GLPlugin::SNMP::MibsAndOids::discover_ids->{$sysobj};
     }
   }
@@ -4397,8 +4491,14 @@ sub make_symbolic {
             } elsif ($Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{$mib}->{$symoid.'Definition'} =~ /^(.*?)::(.*)/) {
               my $mib = $1;
               my $definition = $2;
-              if  (exists $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib} && exists $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib}->{$definition}
-                  && exists $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib}->{$definition}->{$result->{$oid}}) {
+              if  (exists $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib} &&
+                  exists $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib}->{$definition} &&
+                  ref($Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib}->{$definition}) eq 'CODE') {
+                $mo->{$symoid} = $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib}->{$definition}->($result->{$oid});
+              } elsif  (exists $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib} &&
+                  exists $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib}->{$definition} &&
+                  ref($Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib}->{$definition}) eq 'HASH' &&
+                  exists $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib}->{$definition}->{$result->{$oid}}) {
                 $mo->{$symoid} = $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{$mib}->{$definition}->{$result->{$oid}};
               } else {
                 $mo->{$symoid} = 'unknown_'.$result->{$oid};
@@ -6593,6 +6693,69 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'BGP4-MIB'} = {
 
 
 
+
+package Monitoring::GLPlugin::SNMP::MibsAndOids::MIBRESOURCE;
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'BIANCA-BRICK-MIBRES-MIB'} = {
+  url => '',
+  name => 'BIANCA-BRICK-MIBRES-MIB',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'BIANCA-BRICK-MIBRES-MIB'} =
+    '1.3.6.1.4.1.272.4.17.4';
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'BIANCA-BRICK-MIBRES-MIB'} = {
+  resource => '1.3.6.1.4.1.272.4.17.4.255',
+  cpuTable => '1.3.6.1.4.1.272.4.17.4.1',
+  cpuEntry => '1.3.6.1.4.1.272.4.17.4.1.1',
+  cpuNumber => '1.3.6.1.4.1.272.4.17.4.1.1.1',
+  cpuDescr => '1.3.6.1.4.1.272.4.17.4.1.1.2',
+  cpuTotalUser => '1.3.6.1.4.1.272.4.17.4.1.1.3',
+  cpuTotalSystem => '1.3.6.1.4.1.272.4.17.4.1.1.4',
+  cpuTotalStreams => '1.3.6.1.4.1.272.4.17.4.1.1.5',
+  cpuTotalIdle => '1.3.6.1.4.1.272.4.17.4.1.1.6',
+  cpuLoadUser => '1.3.6.1.4.1.272.4.17.4.1.1.7',
+  cpuLoadSystem => '1.3.6.1.4.1.272.4.17.4.1.1.8',
+  cpuLoadStreams => '1.3.6.1.4.1.272.4.17.4.1.1.9',
+  cpuLoadIdle => '1.3.6.1.4.1.272.4.17.4.1.1.10',
+  cpuLoadUser10s => '1.3.6.1.4.1.272.4.17.4.1.1.11',
+  cpuLoadSystem10s => '1.3.6.1.4.1.272.4.17.4.1.1.12',
+  cpuLoadStreams10s => '1.3.6.1.4.1.272.4.17.4.1.1.13',
+  cpuLoadIdle10s => '1.3.6.1.4.1.272.4.17.4.1.1.14',
+  cpuLoadUser60s => '1.3.6.1.4.1.272.4.17.4.1.1.15',
+  cpuLoadSystem60s => '1.3.6.1.4.1.272.4.17.4.1.1.16',
+  cpuLoadStreams60s => '1.3.6.1.4.1.272.4.17.4.1.1.17',
+  cpuLoadIdle60s => '1.3.6.1.4.1.272.4.17.4.1.1.18',
+  memoryTable => '1.3.6.1.4.1.272.4.17.4.2',
+  memoryEntry => '1.3.6.1.4.1.272.4.17.4.2.1',
+  memoryType => '1.3.6.1.4.1.272.4.17.4.2.1.1',
+  memoryTypeDefinition => 'BIANCA-BRICK-MIBRES-MIB::memoryType',
+  memoryDescr => '1.3.6.1.4.1.272.4.17.4.2.1.2',
+  memoryBlockSize => '1.3.6.1.4.1.272.4.17.4.2.1.3',
+  memoryTotal => '1.3.6.1.4.1.272.4.17.4.2.1.4',
+  memoryInuse => '1.3.6.1.4.1.272.4.17.4.2.1.5',
+  memoryDramUse => '1.3.6.1.4.1.272.4.17.4.2.1.6',
+  memoryNAllocs => '1.3.6.1.4.1.272.4.17.4.2.1.7',
+  memoryNFrees => '1.3.6.1.4.1.272.4.17.4.2.1.8',
+  memoryNFails => '1.3.6.1.4.1.272.4.17.4.2.1.9',
+  dspTable => '1.3.6.1.4.1.272.4.17.4.3',
+  dspEntry => '1.3.6.1.4.1.272.4.17.4.3.1',
+  dspSlot => '1.3.6.1.4.1.272.4.17.4.3.1.1',
+  dspUnit => '1.3.6.1.4.1.272.4.17.4.3.1.2',
+  dspDescr => '1.3.6.1.4.1.272.4.17.4.3.1.3',
+  dspCapabilities => '1.3.6.1.4.1.272.4.17.4.3.1.4',
+  dspTotalChannels => '1.3.6.1.4.1.272.4.17.4.3.1.5',
+  dspUsedChannels => '1.3.6.1.4.1.272.4.17.4.3.1.6',
+  resourceMIB => '1.3.6.1.4.1.272.4.17.4.255',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'BIANCA-BRICK-MIBRES-MIB'} = {
+  memoryType => {
+    '1' => 'flash',
+    '2' => 'dram',
+    '3' => 'dpool',
+  },
+};
 
 package Monitoring::GLPlugin::SNMP::MibsAndOids::BLUECOATAVMIB;
 
@@ -9553,19 +9716,170 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'CISCO-FIREWALL-MIB'} = {
   name => 'CISCO-FIREWALL-MIB',
 };
 
+#$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'CISCO-FIREWALL-MIB'} = 
+
 $Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'CISCO-FIREWALL-MIB'} = {
-  'cfwConnectionStatTable' => '1.3.6.1.4.1.9.9.147.1.2.2.2',
-  'cfwConnectionStatEntry' => '1.3.6.1.4.1.9.9.147.1.2.2.2.1',
-  'cfwConnectionStatService' => '1.3.6.1.4.1.9.9.147.1.2.2.2.1.1',
-  'cfwConnectionStatServiceDefinition' => 'CISCO-FIREWALL-MIB::Services',
-  'cfwConnectionStatType' => '1.3.6.1.4.1.9.9.147.1.2.2.2.1.2',
-  'cfwConnectionStatDescription' => '1.3.6.1.4.1.9.9.147.1.2.2.2.1.3',
-  'cfwConnectionStatCount' => '1.3.6.1.4.1.9.9.147.1.2.2.2.1.4',
-  'cfwConnectionStatValue' => '1.3.6.1.4.1.9.9.147.1.2.2.2.1.5',
+  ciscoFirewallMIB => '1.3.6.1.4.1.9.9.147',
+  ciscoFirewallMIBObjects => '1.3.6.1.4.1.9.9.147.1',
+  cfwEvents => '1.3.6.1.4.1.9.9.147.1.1',
+  cfwBasicEvents => '1.3.6.1.4.1.9.9.147.1.1.1',
+  cfwBasicEventsTableLastRow => '1.3.6.1.4.1.9.9.147.1.1.1.1',
+  cfwBasicEventsTable => '1.3.6.1.4.1.9.9.147.1.1.1.2',
+  cfwBasicEventsEntry => '1.3.6.1.4.1.9.9.147.1.1.1.2.1',
+  cfwBasicEventIndex => '1.3.6.1.4.1.9.9.147.1.1.1.2.1.1',
+  cfwBasicEventTime => '1.3.6.1.4.1.9.9.147.1.1.1.2.1.2',
+  cfwBasicSecurityEventType => '1.3.6.1.4.1.9.9.147.1.1.1.2.1.3',
+  cfwBasicSecurityEventTypeDefinition => 'CISCO-FIREWALL-MIB::SecurityEvent',
+  cfwBasicContentInspEventType => '1.3.6.1.4.1.9.9.147.1.1.1.2.1.4',
+  cfwBasicContentInspEventTypeDefinition => 'CISCO-FIREWALL-MIB::ContentInspectionEvent',
+  cfwBasicConnectionEventType => '1.3.6.1.4.1.9.9.147.1.1.1.2.1.5',
+  cfwBasicConnectionEventTypeDefinition => 'CISCO-FIREWALL-MIB::ConnectionEvent',
+  cfwBasicAccessEventType => '1.3.6.1.4.1.9.9.147.1.1.1.2.1.6',
+  cfwBasicAccessEventTypeDefinition => 'CISCO-FIREWALL-MIB::AccessEvent',
+  cfwBasicAuthenticationEventType => '1.3.6.1.4.1.9.9.147.1.1.1.2.1.7',
+  cfwBasicAuthenticationEventTypeDefinition => 'CISCO-FIREWALL-MIB::AuthenticationEvent',
+  cfwBasicGenericEventType => '1.3.6.1.4.1.9.9.147.1.1.1.2.1.8',
+  cfwBasicGenericEventTypeDefinition => 'CISCO-FIREWALL-MIB::GenericEvent',
+  cfwBasicEventDescription => '1.3.6.1.4.1.9.9.147.1.1.1.2.1.9',
+  cfwBasicEventDetailsTableRow => '1.3.6.1.4.1.9.9.147.1.1.1.2.1.10',
+  cfwNetEvents => '1.3.6.1.4.1.9.9.147.1.1.2',
+  cfwNetEventsTableLastRow => '1.3.6.1.4.1.9.9.147.1.1.2.1',
+  cfwNetEventsTable => '1.3.6.1.4.1.9.9.147.1.1.2.2',
+  cfwNetEventsEntry => '1.3.6.1.4.1.9.9.147.1.1.2.2.1',
+  cfwNetEventIndex => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.1',
+  cfwNetEventInterface => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.2',
+  cfwNetEventSrcIpAddress => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.3',
+  cfwNetEventInsideSrcIpAddress => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.4',
+  cfwNetEventDstIpAddress => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.5',
+  cfwNetEventInsideDstIpAddress => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.6',
+  cfwNetEventSrcIpPort => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.7',
+  cfwNetEventInsideSrcIpPort => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.8',
+  cfwNetEventDstIpPort => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.9',
+  cfwNetEventInsideDstIpPort => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.10',
+  cfwNetEventService => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.11',
+  cfwNetEventServiceDefinition => 'CISCO-FIREWALL-MIB::Services',
+  cfwNetEventServiceInformation => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.12',
+  cfwNetEventIdentity => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.13',
+  cfwNetEventDescription => '1.3.6.1.4.1.9.9.147.1.1.2.2.1.14',
+  cfwSystem => '1.3.6.1.4.1.9.9.147.1.2',
+  cfwStatus => '1.3.6.1.4.1.9.9.147.1.2.1',
+  cfwHardwareStatusTable => '1.3.6.1.4.1.9.9.147.1.2.1.1',
+  cfwHardwareStatusEntry => '1.3.6.1.4.1.9.9.147.1.2.1.1.1',
+  cfwHardwareType => '1.3.6.1.4.1.9.9.147.1.2.1.1.1.1',
+  cfwHardwareTypeDefinition => 'CISCO-FIREWALL-MIB::Hardware',
+  cfwHardwareInformation => '1.3.6.1.4.1.9.9.147.1.2.1.1.1.2',
+  cfwHardwareStatusValue => '1.3.6.1.4.1.9.9.147.1.2.1.1.1.3',
+  cfwHardwareStatusValueDefinition => 'CISCO-FIREWALL-MIB::HardwareStatus',
+  cfwHardwareStatusDetail => '1.3.6.1.4.1.9.9.147.1.2.1.1.1.4',
+  cfwStatistics => '1.3.6.1.4.1.9.9.147.1.2.2',
+  cfwBufferStatsTable => '1.3.6.1.4.1.9.9.147.1.2.2.1',
+  cfwBufferStatsEntry => '1.3.6.1.4.1.9.9.147.1.2.2.1.1',
+  cfwBufferStatSize => '1.3.6.1.4.1.9.9.147.1.2.2.1.1.1',
+  cfwBufferStatType => '1.3.6.1.4.1.9.9.147.1.2.2.1.1.2',
+  cfwBufferStatTypeDefinition => 'CISCO-FIREWALL-MIB::ResourceStatistics',
+  cfwBufferStatInformation => '1.3.6.1.4.1.9.9.147.1.2.2.1.1.3',
+  cfwBufferStatValue => '1.3.6.1.4.1.9.9.147.1.2.2.1.1.4',
+  cfwConnectionStatTable => '1.3.6.1.4.1.9.9.147.1.2.2.2',
+  cfwConnectionStatEntry => '1.3.6.1.4.1.9.9.147.1.2.2.2.1',
+  cfwConnectionStatService => '1.3.6.1.4.1.9.9.147.1.2.2.2.1.1',
+  cfwConnectionStatServiceDefinition => 'CISCO-FIREWALL-MIB::Services',
+  cfwConnectionStatType => '1.3.6.1.4.1.9.9.147.1.2.2.2.1.2',
+  cfwConnectionStatTypeDefinition => 'CISCO-FIREWALL-MIB::ConnectionStat',
+  cfwConnectionStatDescription => '1.3.6.1.4.1.9.9.147.1.2.2.2.1.3',
+  cfwConnectionStatCount => '1.3.6.1.4.1.9.9.147.1.2.2.2.1.4',
+  cfwConnectionStatValue => '1.3.6.1.4.1.9.9.147.1.2.2.2.1.5',
+  ciscoFirewallMIBNotificationPrefix => '1.3.6.1.4.1.9.9.147.2',
+  ciscoFirewallMIBNotifications => '1.3.6.1.4.1.9.9.147.2.0',
+  ciscoFirewallMIBConformance => '1.3.6.1.4.1.9.9.147.3',
+  ciscoFirewallMIBCompliances => '1.3.6.1.4.1.9.9.147.3.1',
+  ciscoFirewallMIBGroups => '1.3.6.1.4.1.9.9.147.3.2',
 };
 
 $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'CISCO-FIREWALL-MIB'} = {
-  'Services' => {
+  AccessEvent => {
+    '1' => 'other',
+    '2' => 'grant',
+    '3' => 'deny',
+    '4' => 'denyMult',
+    '5' => 'error',
+  },
+  GenericEvent => {
+    '1' => 'abnormal',
+    '2' => 'okay',
+    '3' => 'error',
+  },
+  ResourceStatistics => {
+    '1' => 'highUse',
+    '2' => 'highLoad',
+    '3' => 'maximum',
+    '4' => 'minimum',
+    '5' => 'low',
+    '6' => 'high',
+    '7' => 'average',
+    '8' => 'free',
+    '9' => 'inUse',
+  },
+  ConnectionEvent => {
+    '1' => 'other',
+    '2' => 'accept',
+    '3' => 'error',
+    '4' => 'drop',
+    '5' => 'close',
+    '6' => 'timeout',
+    '7' => 'refused',
+    '8' => 'reset',
+    '9' => 'noResp',
+  },
+  AuthenticationEvent => {
+    '1' => 'other',
+    '2' => 'succ',
+    '3' => 'error',
+    '4' => 'fail',
+    '5' => 'succPriv',
+    '6' => 'failPriv',
+    '7' => 'failMult',
+  },
+  ContentInspectionEvent => {
+    '1' => 'other',
+    '2' => 'okay',
+    '3' => 'error',
+    '4' => 'found',
+    '5' => 'clean',
+    '6' => 'reject',
+    '7' => 'saved',
+  },
+  HardwareStatus => {
+    '1' => 'other',
+    '2' => 'up',
+    '3' => 'down',
+    '4' => 'error',
+    '5' => 'overTemp',
+    '6' => 'busy',
+    '7' => 'noMedia',
+    '8' => 'backup',
+    '9' => 'active',
+    '10' => 'standby',
+  },
+  Hardware => {
+    '1' => 'memory',
+    '2' => 'disk',
+    '3' => 'power',
+    '4' => 'netInterface',
+    '5' => 'cpu',
+    '6' => 'primaryUnit',
+    '7' => 'secondaryUnit',
+    '8' => 'other',
+  },
+  ConnectionStat => {
+    '1' => 'other',
+    '2' => 'totalOpen',
+    '3' => 'currentOpen',
+    '4' => 'currentClosing',
+    '5' => 'currentHalfOpen',
+    '6' => 'currentInUse',
+    '7' => 'high',
+  },
+  Services => {
     '1' => 'otherFWService',
     '2' => 'fileXferFtp',
     '3' => 'fileXferTftp',
@@ -9608,10 +9922,21 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'CISCO-FIREWALL-MIB'} = 
     '40' => 'protoIp',
     '41' => 'protoSnmp',
   },
+  SecurityEvent => {
+    '1' => 'other',
+    '2' => 'none',
+    '3' => 'dos',
+    '4' => 'recon',
+    '5' => 'pakFwd',
+    '6' => 'addrSpoof',
+    '7' => 'svcSpoof',
+    '8' => 'thirdParty',
+    '9' => 'complete',
+    '10' => 'invalPak',
+    '11' => 'illegCom',
+    '12' => 'policy',
+  },
 };
-
-
-
 package Monitoring::GLPlugin::SNMP::MibsAndOids::CISCOHSRPMIB;
 
 $Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'CISCO-HSRP-MIB'} = {
@@ -13148,6 +13473,122 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'CISCO-STACK-MIB'} = {
     '2' => 'no',
   },
 };
+package Monitoring::GLPlugin::SNMP::MibsAndOids::CISCOSTACKWISEMIB;
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'CISCO-STACKWISE-MIB'} = {
+  url => '',
+  name => 'CISCO-STACKWISE-MIB',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'CISCO-STACKWISE-MIB'} =
+    '1.3.6.1.4.1.9.9.500.1';
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'CISCO-STACKWISE-MIB'} = {
+  ciscoStackWiseMIB => '1.3.6.1.4.1.9.9.500',
+  ciscoStackWiseMIBNotifs => '1.3.6.1.4.1.9.9.500.0',
+  cswMIBNotifications => '1.3.6.1.4.1.9.9.500.0.0',
+  ciscoStackWiseMIBObjects => '1.3.6.1.4.1.9.9.500.1',
+  cswGlobals => '1.3.6.1.4.1.9.9.500.1.1',
+  cswMaxSwitchNum => '1.3.6.1.4.1.9.9.500.1.1.1',
+  cswMaxSwitchConfigPriority => '1.3.6.1.4.1.9.9.500.1.1.2',
+  cswRingRedundant => '1.3.6.1.4.1.9.9.500.1.1.3',
+  cswRingRedundantDefinition => 'SNMPv2-TC-v1-MIB::TruthValue',
+  cswEnableStackNotifications => '1.3.6.1.4.1.9.9.500.1.1.4',
+  cswEnableIndividualStackNotifications => '1.3.6.1.4.1.9.9.500.1.1.5',
+  cswStackInfo => '1.3.6.1.4.1.9.9.500.1.2',
+  cswSwitchInfoTable => '1.3.6.1.4.1.9.9.500.1.2.1',
+  cswSwitchInfoEntry => '1.3.6.1.4.1.9.9.500.1.2.1.1',
+  cswSwitchNumCurrent => '1.3.6.1.4.1.9.9.500.1.2.1.1.1',
+  cswSwitchNumNextReload => '1.3.6.1.4.1.9.9.500.1.2.1.1.2',
+  cswSwitchRole => '1.3.6.1.4.1.9.9.500.1.2.1.1.3',
+  cswSwitchRoleDefinition => 'CISCO-STACKWISE-MIB::cswSwitchRole',
+  cswSwitchSwPriority => '1.3.6.1.4.1.9.9.500.1.2.1.1.4',
+  cswSwitchHwPriority => '1.3.6.1.4.1.9.9.500.1.2.1.1.5',
+  cswSwitchState => '1.3.6.1.4.1.9.9.500.1.2.1.1.6',
+  cswSwitchStateDefinition => 'CISCO-STACKWISE-MIB::cswSwitchState',
+  cswSwitchMacAddress => '1.3.6.1.4.1.9.9.500.1.2.1.1.7',
+  cswSwitchSoftwareImage => '1.3.6.1.4.1.9.9.500.1.2.1.1.8',
+  cswSwitchPowerBudget => '1.3.6.1.4.1.9.9.500.1.2.1.1.9',
+  cswSwitchPowerCommited => '1.3.6.1.4.1.9.9.500.1.2.1.1.10',
+  cswSwitchSystemPowerPriority => '1.3.6.1.4.1.9.9.500.1.2.1.1.11',
+  cswSwitchPoeDevicesLowPriority => '1.3.6.1.4.1.9.9.500.1.2.1.1.12',
+  cswSwitchPoeDevicesHighPriority => '1.3.6.1.4.1.9.9.500.1.2.1.1.13',
+  cswStackPortInfoTable => '1.3.6.1.4.1.9.9.500.1.2.2',
+  cswStackPortInfoEntry => '1.3.6.1.4.1.9.9.500.1.2.2.1',
+  cswStackPortOperStatus => '1.3.6.1.4.1.9.9.500.1.2.2.1.1',
+  cswStackPortOperStatusDefinition => 'CISCO-STACKWISE-MIB::cswStackPortOperStatus',
+  cswStackPortNeighbor => '1.3.6.1.4.1.9.9.500.1.2.2.1.2',
+  cswStackPowerInfo => '1.3.6.1.4.1.9.9.500.1.3',
+  cswStackPowerInfoTable => '1.3.6.1.4.1.9.9.500.1.3.1',
+  cswStackPowerInfoEntry => '1.3.6.1.4.1.9.9.500.1.3.1.1',
+  cswStackPowerStackNumber => '1.3.6.1.4.1.9.9.500.1.3.1.1.1',
+  cswStackPowerMode => '1.3.6.1.4.1.9.9.500.1.3.1.1.2',
+  cswStackPowerModeDefinition => 'CISCO-STACKWISE-MIB::CswPowerStackMode',
+  cswStackPowerMasterMacAddress => '1.3.6.1.4.1.9.9.500.1.3.1.1.3',
+  cswStackPowerMasterSwitchNum => '1.3.6.1.4.1.9.9.500.1.3.1.1.4',
+  cswStackPowerNumMembers => '1.3.6.1.4.1.9.9.500.1.3.1.1.5',
+  cswStackPowerType => '1.3.6.1.4.1.9.9.500.1.3.1.1.6',
+  cswStackPowerTypeDefinition => 'CISCO-STACKWISE-MIB::CswPowerStackType',
+  cswStackPowerName => '1.3.6.1.4.1.9.9.500.1.3.1.1.7',
+  cswStackPowerPortInfoTable => '1.3.6.1.4.1.9.9.500.1.3.2',
+  cswStackPowerPortInfoEntry => '1.3.6.1.4.1.9.9.500.1.3.2.1',
+  cswStackPowerPortIndex => '1.3.6.1.4.1.9.9.500.1.3.2.1.1',
+  cswStackPowerPortOperStatus => '1.3.6.1.4.1.9.9.500.1.3.2.1.2',
+  cswStackPowerPortOperStatusDefinition => 'CISCO-STACKWISE-MIB::cswStackPowerPortOperStatus',
+  cswStackPowerPortNeighborMacAddress => '1.3.6.1.4.1.9.9.500.1.3.2.1.3',
+  cswStackPowerPortNeighborSwitchNum => '1.3.6.1.4.1.9.9.500.1.3.2.1.4',
+  cswStackPowerPortLinkStatus => '1.3.6.1.4.1.9.9.500.1.3.2.1.5',
+  cswStackPowerPortLinkStatusDefinition => 'CISCO-STACKWISE-MIB::cswStackPowerPortLinkStatus',
+  cswStackPowerPortOverCurrentThreshold => '1.3.6.1.4.1.9.9.500.1.3.2.1.6',
+  cswStackPowerPortName => '1.3.6.1.4.1.9.9.500.1.3.2.1.7',
+  ciscoStackWiseMIBConform => '1.3.6.1.4.1.9.9.500.2',
+  cswStackWiseMIBCompliances => '1.3.6.1.4.1.9.9.500.2.1',
+  cswStackWiseMIBGroups => '1.3.6.1.4.1.9.9.500.2.2',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'CISCO-STACKWISE-MIB'} = {
+  cswStackPortOperStatus => {
+    '1' => 'up',
+    '2' => 'down',
+    '3' => 'forcedDown',
+  },
+  CswPowerStackMode => {
+    '1' => 'powerSharing',
+    '2' => 'redundant',
+    '3' => 'powerSharingStrict',
+    '4' => 'redundantStrict',
+  },
+  CswPowerStackType => {
+    '1' => 'ring',
+    '2' => 'star',
+  },
+  cswStackPowerPortOperStatus => {
+    '1' => 'enabled',
+    '2' => 'disabled',
+  },
+  cswSwitchState => {
+    '1' => 'waiting',
+    '2' => 'progressing',
+    '3' => 'added',
+    '4' => 'ready',
+    '5' => 'sdmMismatch',
+    '6' => 'verMismatch',
+    '7' => 'featureMismatch',
+    '8' => 'newMasterInit',
+    '9' => 'provisioned',
+    '10' => 'invalid',
+    '11' => 'removed',
+  },
+  cswSwitchRole => {
+    '1' => 'master',
+    '2' => 'member',
+    '3' => 'notMember',
+  },
+  cswStackPowerPortLinkStatus => {
+    '1' => 'up',
+    '2' => 'down',
+  },
+};
 package Monitoring::GLPlugin::SNMP::MibsAndOids::CISCOSYSTEMEXTMIB;
 
 $Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'CISCO-SYSTEM-EXT-MIB'} = {
@@ -15669,6 +16110,9 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'JUNIPER-IVE-MIB'} = {
   name => 'JUNIPER-IVE-MIB',
 };
 
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'JUNIPER-IVE-MIB'} =
+    '1.3.6.1.4.1.12532';
+
 $Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'JUNIPER-IVE-MIB'} = {
   'logFullPercent' => '1.3.6.1.4.1.12532.1.0',
   'signedInWebUsers' => '1.3.6.1.4.1.12532.2.0',
@@ -17228,60 +17672,203 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'SYSTEM-RESOURCES-MIB'
 package Monitoring::GLPlugin::SNMP::MibsAndOids::UCDSNMPMIB;
 
 $Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'UCD-SNMP-MIB'} = {
-  url => '',
+  url => 'http://www.net-snmp.org/docs/mibs/UCD-SNMP-MIB.txt',
   name => 'UCD-SNMP-MIB',
 };
 
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'UCD-SNMP-MIB'} =
+    '1.3.6.1.4.1.2021';
+
 $Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'UCD-SNMP-MIB'} = {
-  'memoryGroup' => '1.3.6.1.4.1.2021.4',
-  'memIndex' => '1.3.6.1.4.1.2021.4.1',
-  'memErrorName' => '1.3.6.1.4.1.2021.4.2',
-  'memTotalSwap' => '1.3.6.1.4.1.2021.4.3',
-  'memAvailSwap' => '1.3.6.1.4.1.2021.4.4',
-  'memTotalReal' => '1.3.6.1.4.1.2021.4.5',
-  'memAvailReal' => '1.3.6.1.4.1.2021.4.6',
-  'memTotalSwapTXT' => '1.3.6.1.4.1.2021.4.7',
-  'memAvailSwapTXT' => '1.3.6.1.4.1.2021.4.8',
-  'memTotalRealTXT' => '1.3.6.1.4.1.2021.4.9',
-  'memAvailRealTXT' => '1.3.6.1.4.1.2021.4.10',
-  'memTotalFree' => '1.3.6.1.4.1.2021.4.11',
-  'memMinimumSwap' => '1.3.6.1.4.1.2021.4.12',
-  'memShared' => '1.3.6.1.4.1.2021.4.13',
-  'memBuffer' => '1.3.6.1.4.1.2021.4.14',
-  'memCached' => '1.3.6.1.4.1.2021.4.15',
-  'memSwapError' => '1.3.6.1.4.1.2021.4.100',
-  'memSwapErrorMsg' => '1.3.6.1.4.1.2021.4.101',
-  'laTable' => '1.3.6.1.4.1.2021.10',
-  'laEntry' => '1.3.6.1.4.1.2021.10.1',
-  'laIndex' => '1.3.6.1.4.1.2021.10.1.1',
-  'laNames' => '1.3.6.1.4.1.2021.10.1.2',
-  'laLoad' => '1.3.6.1.4.1.2021.10.1.3',
-  'laConfig' => '1.3.6.1.4.1.2021.10.1.4',
-  'laLoadInt' => '1.3.6.1.4.1.2021.10.1.5',
-  'laLoadFloat' => '1.3.6.1.4.1.2021.10.1.6',
-  'laErrorFlag' => '1.3.6.1.4.1.2021.10.1.100',
-  'laErrMessage' => '1.3.6.1.4.1.2021.10.1.101',
-  'systemStatsGroup' => '1.3.6.1.4.1.2021.11',
-  'ssIndex' => '1.3.6.1.4.1.2021.11.1',
-  'ssErrorName' => '1.3.6.1.4.1.2021.11.2',
-  'ssSwapIn' => '1.3.6.1.4.1.2021.11.3',
-  'ssSwapOut' => '1.3.6.1.4.1.2021.11.4',
-  'ssIOSent' => '1.3.6.1.4.1.2021.11.5',
-  'ssIOReceive' => '1.3.6.1.4.1.2021.11.6',
-  'ssSysInterrupts' => '1.3.6.1.4.1.2021.11.7',
-  'ssSysContext' => '1.3.6.1.4.1.2021.11.8',
-  'ssCpuUser' => '1.3.6.1.4.1.2021.11.9',
-  'ssCpuSystem' => '1.3.6.1.4.1.2021.11.10',
-  'ssCpuIdle' => '1.3.6.1.4.1.2021.11.11',
-  'ssCpuRawUser' => '1.3.6.1.4.1.2021.11.50',
-  'ssCpuRawNice' => '1.3.6.1.4.1.2021.11.51',
-  'ssCpuRawSystem' => '1.3.6.1.4.1.2021.11.52',
-  'ssCpuRawIdle' => '1.3.6.1.4.1.2021.11.53',
+  ucdavis => '1.3.6.1.4.1.2021',
+  prTable => '1.3.6.1.4.1.2021.2',
+  prEntry => '1.3.6.1.4.1.2021.2.1',
+  prIndex => '1.3.6.1.4.1.2021.2.1.1',
+  prNames => '1.3.6.1.4.1.2021.2.1.2',
+  prMin => '1.3.6.1.4.1.2021.2.1.3',
+  prMax => '1.3.6.1.4.1.2021.2.1.4',
+  prCount => '1.3.6.1.4.1.2021.2.1.5',
+  prErrorFlag => '1.3.6.1.4.1.2021.2.1.100',
+  prErrorFlagDefinition => 'UCD-SNMP-MIB::UCDErrorFlag',
+  prErrMessage => '1.3.6.1.4.1.2021.2.1.101',
+  prErrFix => '1.3.6.1.4.1.2021.2.1.102',
+  prErrFixDefinition => 'UCD-SNMP-MIB::UCDErrorFix',
+  prErrFixCmd => '1.3.6.1.4.1.2021.2.1.103',
+  memory => '1.3.6.1.4.1.2021.4',
+  memIndex => '1.3.6.1.4.1.2021.4.1',
+  memErrorName => '1.3.6.1.4.1.2021.4.2',
+  memTotalSwap => '1.3.6.1.4.1.2021.4.3',
+  memAvailSwap => '1.3.6.1.4.1.2021.4.4',
+  memTotalReal => '1.3.6.1.4.1.2021.4.5',
+  memAvailReal => '1.3.6.1.4.1.2021.4.6',
+  memTotalSwapTXT => '1.3.6.1.4.1.2021.4.7',
+  memAvailSwapTXT => '1.3.6.1.4.1.2021.4.8',
+  memTotalRealTXT => '1.3.6.1.4.1.2021.4.9',
+  memAvailRealTXT => '1.3.6.1.4.1.2021.4.10',
+  memTotalFree => '1.3.6.1.4.1.2021.4.11',
+  memMinimumSwap => '1.3.6.1.4.1.2021.4.12',
+  memShared => '1.3.6.1.4.1.2021.4.13',
+  memBuffer => '1.3.6.1.4.1.2021.4.14',
+  memCached => '1.3.6.1.4.1.2021.4.15',
+  memUsedSwapTXT => '1.3.6.1.4.1.2021.4.16',
+  memUsedRealTXT => '1.3.6.1.4.1.2021.4.17',
+  memSwapError => '1.3.6.1.4.1.2021.4.100',
+  memSwapErrorDefinition => 'UCD-SNMP-MIB::UCDErrorFlag',
+  memSwapErrorMsg => '1.3.6.1.4.1.2021.4.101',
+  extTable => '1.3.6.1.4.1.2021.8',
+  extEntry => '1.3.6.1.4.1.2021.8.1',
+  extIndex => '1.3.6.1.4.1.2021.8.1.1',
+  extNames => '1.3.6.1.4.1.2021.8.1.2',
+  extCommand => '1.3.6.1.4.1.2021.8.1.3',
+  extResult => '1.3.6.1.4.1.2021.8.1.100',
+  extOutput => '1.3.6.1.4.1.2021.8.1.101',
+  extErrFix => '1.3.6.1.4.1.2021.8.1.102',
+  extErrFixDefinition => 'UCD-SNMP-MIB::UCDErrorFix',
+  extErrFixCmd => '1.3.6.1.4.1.2021.8.1.103',
+  dskTable => '1.3.6.1.4.1.2021.9',
+  dskEntry => '1.3.6.1.4.1.2021.9.1',
+  dskIndex => '1.3.6.1.4.1.2021.9.1.1',
+  dskPath => '1.3.6.1.4.1.2021.9.1.2',
+  dskDevice => '1.3.6.1.4.1.2021.9.1.3',
+  dskMinimum => '1.3.6.1.4.1.2021.9.1.4',
+  dskMinPercent => '1.3.6.1.4.1.2021.9.1.5',
+  dskTotal => '1.3.6.1.4.1.2021.9.1.6',
+  dskAvail => '1.3.6.1.4.1.2021.9.1.7',
+  dskUsed => '1.3.6.1.4.1.2021.9.1.8',
+  dskPercent => '1.3.6.1.4.1.2021.9.1.9',
+  dskPercentNode => '1.3.6.1.4.1.2021.9.1.10',
+  dskTotalLow => '1.3.6.1.4.1.2021.9.1.11',
+  dskTotalHigh => '1.3.6.1.4.1.2021.9.1.12',
+  dskAvailLow => '1.3.6.1.4.1.2021.9.1.13',
+  dskAvailHigh => '1.3.6.1.4.1.2021.9.1.14',
+  dskUsedLow => '1.3.6.1.4.1.2021.9.1.15',
+  dskUsedHigh => '1.3.6.1.4.1.2021.9.1.16',
+  dskErrorFlag => '1.3.6.1.4.1.2021.9.1.100',
+  dskErrorFlagDefinition => 'UCD-SNMP-MIB::UCDErrorFlag',
+  dskErrorMsg => '1.3.6.1.4.1.2021.9.1.101',
+  laTable => '1.3.6.1.4.1.2021.10',
+  laEntry => '1.3.6.1.4.1.2021.10.1',
+  laIndex => '1.3.6.1.4.1.2021.10.1.1',
+  laNames => '1.3.6.1.4.1.2021.10.1.2',
+  laLoad => '1.3.6.1.4.1.2021.10.1.3',
+  laConfig => '1.3.6.1.4.1.2021.10.1.4',
+  laLoadInt => '1.3.6.1.4.1.2021.10.1.5',
+  laLoadFloat => '1.3.6.1.4.1.2021.10.1.6',
+  laErrorFlag => '1.3.6.1.4.1.2021.10.1.100',
+  laErrorFlagDefinition => 'UCD-SNMP-MIB::UCDErrorFlag',
+  laErrMessage => '1.3.6.1.4.1.2021.10.1.101',
+  systemStats => '1.3.6.1.4.1.2021.11',
+  ssIndex => '1.3.6.1.4.1.2021.11.1',
+  ssErrorName => '1.3.6.1.4.1.2021.11.2',
+  ssSwapIn => '1.3.6.1.4.1.2021.11.3',
+  ssSwapOut => '1.3.6.1.4.1.2021.11.4',
+  ssIOSent => '1.3.6.1.4.1.2021.11.5',
+  ssIOReceive => '1.3.6.1.4.1.2021.11.6',
+  ssSysInterrupts => '1.3.6.1.4.1.2021.11.7',
+  ssSysContext => '1.3.6.1.4.1.2021.11.8',
+  ssCpuUser => '1.3.6.1.4.1.2021.11.9',
+  ssCpuSystem => '1.3.6.1.4.1.2021.11.10',
+  ssCpuIdle => '1.3.6.1.4.1.2021.11.11',
+  ssCpuRawUser => '1.3.6.1.4.1.2021.11.50',
+  ssCpuRawNice => '1.3.6.1.4.1.2021.11.51',
+  ssCpuRawSystem => '1.3.6.1.4.1.2021.11.52',
+  ssCpuRawIdle => '1.3.6.1.4.1.2021.11.53',
+  ssCpuRawWait => '1.3.6.1.4.1.2021.11.54',
+  ssCpuRawKernel => '1.3.6.1.4.1.2021.11.55',
+  ssCpuRawInterrupt => '1.3.6.1.4.1.2021.11.56',
+  ssIORawSent => '1.3.6.1.4.1.2021.11.57',
+  ssIORawReceived => '1.3.6.1.4.1.2021.11.58',
+  ssRawInterrupts => '1.3.6.1.4.1.2021.11.59',
+  ssRawContexts => '1.3.6.1.4.1.2021.11.60',
+  ssCpuRawSoftIRQ => '1.3.6.1.4.1.2021.11.61',
+  ssRawSwapIn => '1.3.6.1.4.1.2021.11.62',
+  ssRawSwapOut => '1.3.6.1.4.1.2021.11.63',
+  ssCpuRawSteal => '1.3.6.1.4.1.2021.11.64',
+  ssCpuRawGuest => '1.3.6.1.4.1.2021.11.65',
+  ssCpuRawGuestNice => '1.3.6.1.4.1.2021.11.66',
+  ucdInternal => '1.3.6.1.4.1.2021.12',
+  ucdExperimental => '1.3.6.1.4.1.2021.13',
+  fileTable => '1.3.6.1.4.1.2021.15',
+  fileEntry => '1.3.6.1.4.1.2021.15.1',
+  fileIndex => '1.3.6.1.4.1.2021.15.1.1',
+  fileName => '1.3.6.1.4.1.2021.15.1.2',
+  fileSize => '1.3.6.1.4.1.2021.15.1.3',
+  fileMax => '1.3.6.1.4.1.2021.15.1.4',
+  fileErrorFlag => '1.3.6.1.4.1.2021.15.1.100',
+  fileErrorFlagDefinition => 'UCD-SNMP-MIB::UCDErrorFlag',
+  fileErrorMsg => '1.3.6.1.4.1.2021.15.1.101',
+  logMatch => '1.3.6.1.4.1.2021.16',
+  logMatchMaxEntries => '1.3.6.1.4.1.2021.16.1',
+  logMatchTable => '1.3.6.1.4.1.2021.16.2',
+  logMatchEntry => '1.3.6.1.4.1.2021.16.2.1',
+  logMatchIndex => '1.3.6.1.4.1.2021.16.2.1.1',
+  logMatchName => '1.3.6.1.4.1.2021.16.2.1.2',
+  logMatchFilename => '1.3.6.1.4.1.2021.16.2.1.3',
+  logMatchRegEx => '1.3.6.1.4.1.2021.16.2.1.4',
+  logMatchGlobalCounter => '1.3.6.1.4.1.2021.16.2.1.5',
+  logMatchGlobalCount => '1.3.6.1.4.1.2021.16.2.1.6',
+  logMatchCurrentCounter => '1.3.6.1.4.1.2021.16.2.1.7',
+  logMatchCurrentCount => '1.3.6.1.4.1.2021.16.2.1.8',
+  logMatchCounter => '1.3.6.1.4.1.2021.16.2.1.9',
+  logMatchCount => '1.3.6.1.4.1.2021.16.2.1.10',
+  logMatchCycle => '1.3.6.1.4.1.2021.16.2.1.11',
+  logMatchErrorFlag => '1.3.6.1.4.1.2021.16.2.1.100',
+  logMatchErrorFlagDefinition => 'UCD-SNMP-MIB::UCDErrorFlag',
+  logMatchRegExCompilation => '1.3.6.1.4.1.2021.16.2.1.101',
+  version => '1.3.6.1.4.1.2021.100',
+  versionIndex => '1.3.6.1.4.1.2021.100.1',
+  versionTag => '1.3.6.1.4.1.2021.100.2',
+  versionDate => '1.3.6.1.4.1.2021.100.3',
+  versionCDate => '1.3.6.1.4.1.2021.100.4',
+  versionIdent => '1.3.6.1.4.1.2021.100.5',
+  versionConfigureOptions => '1.3.6.1.4.1.2021.100.6',
+  versionClearCache => '1.3.6.1.4.1.2021.100.10',
+  versionUpdateConfig => '1.3.6.1.4.1.2021.100.11',
+  versionRestartAgent => '1.3.6.1.4.1.2021.100.12',
+  versionSavePersistentData => '1.3.6.1.4.1.2021.100.13',
+  versionDoDebugging => '1.3.6.1.4.1.2021.100.20',
+  snmperrs => '1.3.6.1.4.1.2021.101',
+  snmperrIndex => '1.3.6.1.4.1.2021.101.1',
+  snmperrNames => '1.3.6.1.4.1.2021.101.2',
+  snmperrErrorFlag => '1.3.6.1.4.1.2021.101.100',
+  snmperrErrorFlagDefinition => 'UCD-SNMP-MIB::UCDErrorFlag',
+  snmperrErrMessage => '1.3.6.1.4.1.2021.101.101',
+  mrTable => '1.3.6.1.4.1.2021.102',
+  mrEntry => '1.3.6.1.4.1.2021.102.1',
+  mrIndex => '1.3.6.1.4.1.2021.102.1.1',
+  mrModuleName => '1.3.6.1.4.1.2021.102.1.2',
+  ucdSnmpAgent => '1.3.6.1.4.1.2021.250',
+  hpux9 => '1.3.6.1.4.1.2021.250.1',
+  sunos4 => '1.3.6.1.4.1.2021.250.2',
+  solaris => '1.3.6.1.4.1.2021.250.3',
+  osf => '1.3.6.1.4.1.2021.250.4',
+  ultrix => '1.3.6.1.4.1.2021.250.5',
+  hpux10 => '1.3.6.1.4.1.2021.250.6',
+  netbsd1 => '1.3.6.1.4.1.2021.250.7',
+  freebsd => '1.3.6.1.4.1.2021.250.8',
+  irix => '1.3.6.1.4.1.2021.250.9',
+  linux => '1.3.6.1.4.1.2021.250.10',
+  bsdi => '1.3.6.1.4.1.2021.250.11',
+  openbsd => '1.3.6.1.4.1.2021.250.12',
+  win32 => '1.3.6.1.4.1.2021.250.13',
+  hpux11 => '1.3.6.1.4.1.2021.250.14',
+  aix => '1.3.6.1.4.1.2021.250.15',
+  macosx => '1.3.6.1.4.1.2021.250.16',
+  dragonfly => '1.3.6.1.4.1.2021.250.17',
+  unknown => '1.3.6.1.4.1.2021.250.255',
+  ucdTraps => '1.3.6.1.4.1.2021.251',
 };
 
-
-
-
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'UCD-SNMP-MIB'} = {
+  UCDErrorFix => {
+    '0' => 'noError',
+    '1' => 'runFix',
+  },
+  UCDErrorFlag => {
+    '0' => 'noError',
+    '1' => 'error',
+  },
+};
 package Monitoring::GLPlugin::SNMP::MibsAndOids::USAGEMIB;
 
 $Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'USAGE-MIB'} = {
@@ -17306,6 +17893,112 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'USAGE-MIB'} = {
 };
 
 
+
+
+package Monitoring::GLPlugin::SNMP::MibsAndOids::VRRPMIB;
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'VRRP-MIB'} = {
+  url => 'ftp://ftp.cisco.com/pub/mibs/v2/VRRP-MIB.my',
+  name => 'VRRP-MIB'
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::requirements->{'VRRP-MIB'} = [
+  'SNMPv2-TC-v1-MIB',
+];
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'VRRP-MIB'} = {
+  vrrpMIB => '.1.3.6.1.2.1.68',
+  vrrpNotifications => '.1.3.6.1.2.1.68.0',
+  vrrpTrapNewMaster => '.1.3.6.1.2.1.68.0.1',
+  vrrpTrapAuthFailure => '.1.3.6.1.2.1.68.0.2',
+  vrrpOperations => '.1.3.6.1.2.1.68.1',
+  vrrpNodeVersion => '.1.3.6.1.2.1.68.1.1',
+  vrrpNotificationCntl => '.1.3.6.1.2.1.68.1.2',
+  vrrpOperTable => '.1.3.6.1.2.1.68.1.3',
+  vrrpOperEntry => '.1.3.6.1.2.1.68.1.3.1',
+  vrrpOperVrId => '.1.3.6.1.2.1.68.1.3.1.1',
+  vrrpOperAuthKey => '.1.3.6.1.2.1.68.1.3.1.10',
+  vrrpOperAdvertisementInterval => '.1.3.6.1.2.1.68.1.3.1.11',
+  vrrpOperPreemptMode => '.1.3.6.1.2.1.68.1.3.1.12',
+  vrrpOperVirtualRouterUpTime => '.1.3.6.1.2.1.68.1.3.1.13',
+  vrrpOperProtocol => '.1.3.6.1.2.1.68.1.3.1.14',
+  vrrpOperProtocolDefinition => 'VRRP-MIB::vrrpOperProtocol',
+  vrrpOperRowStatus => '.1.3.6.1.2.1.68.1.3.1.15',
+  vrrpOperRowStatusDefinition => 'SNMPv2-TC-v1-MIB::RowStatus',
+  vrrpOperVirtualMacAddr => '.1.3.6.1.2.1.68.1.3.1.2',
+  vrrpOperState => '.1.3.6.1.2.1.68.1.3.1.3',
+  vrrpOperStateDefinition => 'VRRP-MIB::vrrpOperState',
+  vrrpOperAdminState => '.1.3.6.1.2.1.68.1.3.1.4',
+  vrrpOperAdminStateDefinition => 'VRRP-MIB::vrrpOperAdminState',
+  vrrpOperPriority => '.1.3.6.1.2.1.68.1.3.1.5',
+  vrrpOperIpAddrCount => '.1.3.6.1.2.1.68.1.3.1.6',
+  vrrpOperMasterIpAddr => '.1.3.6.1.2.1.68.1.3.1.7',
+  vrrpOperPrimaryIpAddr => '.1.3.6.1.2.1.68.1.3.1.8',
+  vrrpOperAuthType => '.1.3.6.1.2.1.68.1.3.1.9',
+  vrrpOperAuthTypeDefinition => 'VRRP-MIB::vrrpOperAuthType',
+  vrrpAssoIpAddrTable => '.1.3.6.1.2.1.68.1.4',
+  vrrpAssoIpAddrEntry => '.1.3.6.1.2.1.68.1.4.1',
+  vrrpAssoIpAddr => '.1.3.6.1.2.1.68.1.4.1.1',
+  vrrpAssoIpAddrRowStatus => '.1.3.6.1.2.1.68.1.4.1.2',
+  vrrpAssoIpAddrRowStatusDefinition => 'SNMPv2-TC-v1-MIB::RowStatus',
+  vrrpTrapPacketSrc => '.1.3.6.1.2.1.68.1.5',
+  vrrpTrapAuthErrorType => '.1.3.6.1.2.1.68.1.6',
+  vrrpTrapAuthErrorTypeDefinition => 'VRRP-MIB::vrrpTrapAuthErrorType',
+  vrrpStatistics => '.1.3.6.1.2.1.68.2',
+  vrrpRouterChecksumErrors => '.1.3.6.1.2.1.68.2.1',
+  vrrpRouterVersionErrors => '.1.3.6.1.2.1.68.2.2',
+  vrrpRouterVrIdErrors => '.1.3.6.1.2.1.68.2.3',
+  vrrpRouterStatsTable => '.1.3.6.1.2.1.68.2.4',
+  vrrpRouterStatsEntry => '.1.3.6.1.2.1.68.2.4.1',
+  vrrpStatsBecomeMaster => '.1.3.6.1.2.1.68.2.4.1.1',
+  vrrpStatsInvalidAuthType => '.1.3.6.1.2.1.68.2.4.1.10',
+  vrrpStatsAuthTypeMismatch => '.1.3.6.1.2.1.68.2.4.1.11',
+  vrrpStatsPacketLengthErrors => '.1.3.6.1.2.1.68.2.4.1.12',
+  vrrpStatsAdvertiseRcvd => '.1.3.6.1.2.1.68.2.4.1.2',
+  vrrpStatsAdvertiseIntervalErrors => '.1.3.6.1.2.1.68.2.4.1.3',
+  vrrpStatsAuthFailures => '.1.3.6.1.2.1.68.2.4.1.4',
+  vrrpStatsIpTtlErrors => '.1.3.6.1.2.1.68.2.4.1.5',
+  vrrpStatsPriorityZeroPktsRcvd => '.1.3.6.1.2.1.68.2.4.1.6',
+  vrrpStatsPriorityZeroPktsSent => '.1.3.6.1.2.1.68.2.4.1.7',
+  vrrpStatsInvalidTypePktsRcvd => '.1.3.6.1.2.1.68.2.4.1.8',
+  vrrpStatsAddressListErrors => '.1.3.6.1.2.1.68.2.4.1.9',
+  vrrpConformance => '.1.3.6.1.2.1.68.3',
+  vrrpMIBCompliances => '.1.3.6.1.2.1.68.3.1',
+  vrrpMIBCompliance => '.1.3.6.1.2.1.68.3.1.1',
+  vrrpMIBGroups => '.1.3.6.1.2.1.68.3.2',
+  vrrpOperGroup => '.1.3.6.1.2.1.68.3.2.1',
+  vrrpStatsGroup => '.1.3.6.1.2.1.68.3.2.2',
+  vrrpTrapGroup => '.1.3.6.1.2.1.68.3.2.3',
+  vrrpNotificationGroup => '.1.3.6.1.2.1.68.3.2.4'
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'VRRP-MIB'} = {
+  vrrpOperAdminState => {
+    '1' => 'up',
+    '2' => 'down'
+  },
+  vrrpOperAuthType => {
+    '1' => 'noAuthentication',
+    '2' => 'simpleTextPassword',
+    '3' => 'ipAuthenticationHeader'
+  },
+  vrrpOperProtocol => {
+    '1' => 'ip',
+    '2' => 'bridge',
+    '3' => 'decnet',
+    '4' => 'other'
+  },
+  vrrpOperState => {
+    '1' => 'initialize',
+    '2' => 'backup',
+    '3' => 'master'
+  },
+  vrrpTrapAuthErrorType => {
+    '1' => 'invalidAuthType',
+    '2' => 'authTypeMismatch',
+    '3' => 'authFailure'
+  }
+};
 
 
 package Monitoring::GLPlugin::SNMP::MibsAndOids::WLSXSYSTEMEXTMIB;
@@ -17798,14 +18491,15 @@ sub create_statefile {
   if ($self->opts->snmpwalk && ! $self->opts->hostname) {
     return sprintf "%s/%s_%s%s", $self->statefilesdir(),
         'snmpwalk.file'.md5_hex($self->opts->snmpwalk),
-        $self->opts->mode, lc $extension;
+        $self->clean_path($self->mode), $self->clean_path(lc $extension);
   } elsif ($self->opts->snmpwalk && $self->opts->hostname eq "walkhost") {
     return sprintf "%s/%s_%s%s", $self->statefilesdir(),
         'snmpwalk.file'.md5_hex($self->opts->snmpwalk),
-        $self->mode, lc $extension;
+        $self->clean_path($self->mode), $self->clean_path(lc $extension);
   } else {
     return sprintf "%s/%s_%s%s", $self->statefilesdir(),
-        $self->opts->hostname, $self->mode, lc $extension;
+        $self->opts->hostname,
+        $self->clean_path($self->mode), $self->clean_path(lc $extension);
   }
 }
 
@@ -17854,6 +18548,20 @@ sub unhex_mac {
     $value = join(":", unpack "C*", pack "H*", $value);
   } elsif ($value && unpack("H12", $value) =~ /(\w{2})(\w{2})(\w{2})(\w{2})(\w{2})(\w{2})/) {
     $value = join(":", map { hex($_) } ($1, $2, $3, $4, $5, $6));
+  }
+  return $value;
+}
+
+sub unhex_octet_string {
+  my ($self, $value) = @_;
+  my $original = $value;
+  $value =~ s/ //g;
+  if ($value && $value =~ /^0x([0-9a-zA-Z]+)$/) {
+    $value = join("", unpack "A*", pack "H*", $1);
+  } elsif ($value && $value =~ /^([0-9a-zA-Z]+)$/) {
+    $value = join("", unpack "A*", pack "H*", $1);
+  } else {
+    $value = $original;
   }
   return $value;
 }
@@ -17977,6 +18685,9 @@ sub create_statefile {
   $extension =~ s/\)/_/g;
   $extension =~ s/\*/_/g;
   $extension =~ s/\s/_/g;
+  if ($^O =~ /MSWin/) {
+    $extension =~ s/:/_/g;
+  }
   return sprintf "%s/%s_%s%s", $self->statefilesdir(),
       $self->opts->hostname, $self->opts->mode, lc $extension;
 }
@@ -18543,7 +19254,7 @@ package Classes::UPNP;
 our @ISA = qw(Classes::Device);
 use strict;
 
-package Server::Linux;
+package Server::LinuxLocal;
 our @ISA = qw(Classes::Device);
 use strict;
 
@@ -18551,12 +19262,12 @@ use strict;
 sub init {
   my $self = shift;
   if ($self->mode =~ /device::interfaces/) {
-    $self->analyze_and_check_interface_subsystem('Server::Linux::Component::InterfaceSubsystem');
+    $self->analyze_and_check_interface_subsystem('Server::LinuxLocal::Component::InterfaceSubsystem');
   }
 }
 
 
-package Server::Linux::Component::InterfaceSubsystem;
+package Server::LinuxLocal::Component::InterfaceSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
 
@@ -18572,7 +19283,7 @@ sub init {
         ifDescr => $name,
       };
       push(@{$self->{interfaces}},
-        Server::Linux::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
+        Server::LinuxLocal::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
     }
   } else {
     foreach (glob "/sys/class/net/*") {
@@ -18593,26 +19304,33 @@ sub init {
       *STDERR = *ERR;
       my $tmpif = {
         ifDescr => $name,
-        ifSpeed => (-f "/sys/class/net/$name/speed" ? do { local (@ARGV, $/) = "/sys/class/net/$name/speed"; my $x = <>; close ARGV; $x} * 1024*1024 : undef),
-        ifInOctets => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/rx_bytes"; my $x = <>; close ARGV; $x},
-        ifInDiscards => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/rx_dropped"; my $x = <>; close ARGV; $x},
-        ifInErrors => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/rx_errors"; my $x = <>; close ARGV; $x},
-        ifOutOctets => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/tx_bytes"; my $x = <>; close ARGV; $x},
-        ifOutDiscards => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/tx_dropped"; my $x = <>; close ARGV; $x},
-        ifOutErrors => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/tx_errors"; my $x = <>; close ARGV; $x},
+        ifIndex => $name,
+        ifSpeed => (-f "/sys/class/net/$name/speed" ? do { local (@ARGV, $/) = "/sys/class/net/$name/speed"; my $x = <>; close ARGV; $x; } : undef),
+        ifInOctets => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/rx_bytes"; my $x = <>; close ARGV; $x; },
+        ifInDiscards => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/rx_dropped"; my $x = <>; close ARGV; $x; },
+        ifInErrors => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/rx_errors"; my $x = <>; close ARGV; $x; },
+        ifOutOctets => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/tx_bytes"; my $x = <>; close ARGV; $x; },
+        ifOutDiscards => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/tx_dropped"; my $x = <>; close ARGV; $x; },
+        ifOutErrors => do { local (@ARGV, $/) = "/sys/class/net/$name/statistics/tx_errors"; my $x = <>; close ARGV; $x; },
+        ifOperStatus => do { local (@ARGV, $/) = "/sys/class/net/$name/operstate"; my $x = <>; close ARGV; $x; },
       };
       *STDERR = *SAVEERR;
-      foreach (keys %{$tmpif}) {
-        chomp($tmpif->{$_}) if defined $tmpif->{$_};
-      }
+      map {
+          chomp $tmpif->{$_} if defined $tmpif->{$_}; 
+          $tmpif->{$_} =~ s/\s*$//g if defined $tmpif->{$_};
+      } keys %{$tmpif};
+      $tmpif->{ifOperStatus} = 'down' if $tmpif->{ifOperStatus} ne 'up';
+      $tmpif->{ifAdminStatus} = $tmpif->{ifOperStatus};
       if (defined $self->opts->ifspeed) {
         $tmpif->{ifSpeed} = $self->opts->ifspeed * 1024*1024;
+      } else {
+        $tmpif->{ifSpeed} *= 1024*1024 if defined $tmpif->{ifSpeed};
       }
       if (! defined $tmpif->{ifSpeed}) {
         $self->add_unknown(sprintf "There is no /sys/class/net/%s/speed. Use --ifspeed", $name);
       } else {
         push(@{$self->{interfaces}},
-          Server::Linux::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
+          Server::LinuxLocal::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
       }
     }
   }
@@ -18637,218 +19355,12 @@ sub check {
 }
 
 
-package Server::Linux::Component::InterfaceSubsystem::Interface;
-our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+package Server::LinuxLocal::Component::InterfaceSubsystem::Interface;
+our @ISA = qw(Classes::IFMIB::Component::InterfaceSubsystem::Interface);
 use strict;
 
-sub finish {
-  my $self = shift;
-  foreach (qw(ifSpeed ifInOctets ifInDiscards ifInErrors ifOutOctets ifOutDiscards ifOutErrors)) {
-    $self->{$_} = 0 if ! defined $self->{$_};
-  }
-  if ($self->mode =~ /device::interfaces::complete/) {
-    # uglatto, but $self->mode is an lvalue
-    $Monitoring::GLPlugin::mode = "device::interfaces::operstatus";
-    $self->init();
-    #if ($self->{ifOperStatus} eq "up") {
-      foreach my $mode (qw(device::interfaces::usage
-          device::interfaces::errors device::interfaces::discards)) {
-        $Monitoring::GLPlugin::mode = $mode;
-        $self->init();
-      }
-    #}
-    $Monitoring::GLPlugin::mode = "device::interfaces::complete";
-  } elsif ($self->mode =~ /device::interfaces::usage/) {
-    $self->valdiff({name => $self->{ifDescr}}, qw(ifInOctets ifOutOctets));
-    $self->{delta_ifInBits} = $self->{delta_ifInOctets} * 8;
-    $self->{delta_ifOutBits} = $self->{delta_ifOutOctets} * 8;
-    if ($self->{ifSpeed} == 0) {
-      # vlan graffl
-      $self->{inputUtilization} = 0;
-      $self->{outputUtilization} = 0;
-      $self->{maxInputRate} = 0;
-      $self->{maxOutputRate} = 0;
-    } else {
-      $self->{inputUtilization} = 100 * $self->{delta_ifInBits} /
-          ($self->{delta_timestamp} * $self->{ifSpeed});
-      $self->{outputUtilization} = 100 * $self->{delta_ifOutBits} /
-          ($self->{delta_timestamp} * $self->{ifSpeed});
-      $self->{maxInputRate} = $self->{ifSpeed};
-      $self->{maxOutputRate} = $self->{ifSpeed};
-    }
-    if (defined $self->opts->ifspeed) {
-      $self->override_opt('ifspeedin', $self->opts->ifspeed);
-      $self->override_opt('ifspeedout', $self->opts->ifspeed);
-    }
-    if (defined $self->opts->ifspeedin) {
-      $self->{inputUtilization} = 100 * $self->{delta_ifInBits} /
-          ($self->{delta_timestamp} * $self->opts->ifspeedin);
-      $self->{maxInputRate} = $self->opts->ifspeedin;
-    }
-    if (defined $self->opts->ifspeedout) {
-      $self->{outputUtilization} = 100 * $self->{delta_ifOutBits} /
-          ($self->{delta_timestamp} * $self->opts->ifspeedout);
-      $self->{maxOutputRate} = $self->opts->ifspeedout;
-    }
-    $self->{inputRate} = $self->{delta_ifInBits} / $self->{delta_timestamp};
-    $self->{outputRate} = $self->{delta_ifOutBits} / $self->{delta_timestamp};
-    $self->override_opt("units", "bit") if ! $self->opts->units;
-    $self->{inputRate} /= $self->number_of_bits($self->opts->units);
-    $self->{outputRate} /= $self->number_of_bits($self->opts->units);
-    $self->{maxInputRate} /= $self->number_of_bits($self->opts->units);
-    $self->{maxOutputRate} /= $self->number_of_bits($self->opts->units);
-    if ($self->{ifOperStatus} eq 'down') {
-      $self->{inputUtilization} = 0;
-      $self->{outputUtilization} = 0;
-      $self->{inputRate} = 0;
-      $self->{outputRate} = 0;
-      $self->{maxInputRate} = 0;
-      $self->{maxOutputRate} = 0;
-    }
-  } elsif ($self->mode =~ /device::interfaces::errors/) {
-    $self->valdiff({name => $self->{ifDescr}}, qw(ifInErrors ifOutErrors));
-    $self->{inputErrorRate} = $self->{delta_ifInErrors}
-        / $self->{delta_timestamp};
-    $self->{outputErrorRate} = $self->{delta_ifOutErrors}
-        / $self->{delta_timestamp};
-  } elsif ($self->mode =~ /device::interfaces::discards/) {
-    $self->valdiff({name => $self->{ifDescr}}, qw(ifInDiscards ifOutDiscards));
-    $self->{inputDiscardRate} = $self->{delta_ifInDiscards}
-        / $self->{delta_timestamp};
-    $self->{outputDiscardRate} = $self->{delta_ifOutDiscards}
-        / $self->{delta_timestamp};
-  } elsif ($self->mode =~ /device::interfaces::operstatus/) {
-  }
-  return $self;
-}
 
-sub check {
-  my $self = shift;
-  if ($self->mode =~ /device::interfaces::complete/) {
-    # uglatto, but $self->mode is an lvalue
-    $Monitoring::GLPlugin::mode = "device::interfaces::operstatus";
-    $self->check();
-    #if ($self->{ifOperStatus} eq "up") {
-      foreach my $mode (qw(device::interfaces::usage
-          device::interfaces::errors device::interfaces::discards)) {
-        $Monitoring::GLPlugin::mode = $mode;
-        $self->check();
-      }
-    #}
-    $Monitoring::GLPlugin::mode = "device::interfaces::complete";
-  } elsif ($self->mode =~ /device::interfaces::usage/) {
-    $self->add_info(sprintf 'interface %s usage is in:%.2f%% (%s) out:%.2f%% (%s)',
-        $self->{ifDescr},
-        $self->{inputUtilization},
-        sprintf("%.2f%s/s", $self->{inputRate}, $self->opts->units),
-        $self->{outputUtilization},
-        sprintf("%.2f%s/s", $self->{outputRate}, $self->opts->units));
-    $self->set_thresholds(
-        metric => $self->{ifDescr}.'_usage_in',
-        warning => 80,
-        critical => 90
-    );
-    my $in = $self->check_thresholds(
-        metric => $self->{ifDescr}.'_usage_in',
-        value => $self->{inputUtilization}
-    );
-    $self->set_thresholds(
-        metric => $self->{ifDescr}.'_usage_out',
-        warning => 80,
-        critical => 90
-    );
-    my $out = $self->check_thresholds(
-        metric => $self->{ifDescr}.'_usage_out',
-        value => $self->{outputUtilization}
-    );
-    my $level = ($in > $out) ? $in : ($out > $in) ? $out : $in;
-    $self->add_message($level);
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_usage_in',
-        value => $self->{inputUtilization},
-        uom => '%',
-    );
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_usage_out',
-        value => $self->{outputUtilization},
-        uom => '%',
-    );
-
-    my ($inwarning, $incritical) = $self->get_thresholds(
-        metric => $self->{ifDescr}.'_usage_in',
-    );
-    $self->set_thresholds(
-        metric => $self->{ifDescr}.'_traffic_in',
-        warning => $self->{maxInputRate} / 100 * $inwarning,
-        critical => $self->{maxInputRate} / 100 * $incritical
-    );
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_traffic_in',
-        value => $self->{inputRate},
-        uom => $self->opts->units =~ /^(B|KB|MB|GB|TB)$/ ? $self->opts->units : undef,
-        places => 2,
-        min => 0,
-        max => $self->{maxInputRate},
-    );
-    my ($outwarning, $outcritical) = $self->get_thresholds(
-        metric => $self->{ifDescr}.'_usage_out',
-    );
-    $self->set_thresholds(
-        metric => $self->{ifDescr}.'_traffic_out',
-        warning => $self->{maxOutputRate} / 100 * $outwarning,
-        critical => $self->{maxOutputRate} / 100 * $outcritical,
-    );
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_traffic_out',
-        value => $self->{outputRate},
-        uom => $self->opts->units =~ /^(B|KB|MB|GB|TB)$/ ? $self->opts->units : undef,
-        places => 2,
-        min => 0,
-        max => $self->{maxOutputRate},
-    );
-  } elsif ($self->mode =~ /device::interfaces::errors/) {
-    $self->add_info(sprintf 'interface %s errors in:%.2f/s out:%.2f/s ',
-        $self->{ifDescr},
-        $self->{inputErrorRate} , $self->{outputErrorRate});
-    $self->set_thresholds(warning => 1, critical => 10);
-    my $in = $self->check_thresholds($self->{inputErrorRate});
-    my $out = $self->check_thresholds($self->{outputErrorRate});
-    my $level = ($in > $out) ? $in : ($out > $in) ? $out : $in;
-    $self->add_message($level);
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_errors_in',
-        value => $self->{inputErrorRate},
-    );
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_errors_out',
-        value => $self->{outputErrorRate},
-    );
-  } elsif ($self->mode =~ /device::interfaces::discards/) {
-    $self->add_info(sprintf 'interface %s discards in:%.2f/s out:%.2f/s ',
-        $self->{ifDescr},
-        $self->{inputDiscardRate} , $self->{outputDiscardRate});
-    $self->set_thresholds(warning => 1, critical => 10);
-    my $in = $self->check_thresholds($self->{inputDiscardRate});
-    my $out = $self->check_thresholds($self->{outputDiscardRate});
-    my $level = ($in > $out) ? $in : ($out > $in) ? $out : $in;
-    $self->add_message($level);
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_discards_in',
-        value => $self->{inputDiscardRate},
-    );
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_discards_out',
-        value => $self->{outputDiscardRate},
-    );
-  }
-}
-
-sub list {
-  my $self = shift;
-  printf "%s\n", $self->{ifDescr};
-}
-
-package Server::Windows;
+package Server::WindowsLocal;
 our @ISA = qw(Classes::Device);
 use strict;
 
@@ -18856,31 +19368,96 @@ use strict;
 sub init {
   my $self = shift;
   if ($self->mode =~ /device::interfaces/) {
-    $self->analyze_and_check_interface_subsystem('Server::Windows::Component::InterfaceSubsystem');
+    $self->analyze_and_check_interface_subsystem('Server::WindowsLocal::Component::InterfaceSubsystem');
   }
 }
 
 
-package Server::Windows::Component::InterfaceSubsystem;
+package Server::WindowsLocal::Component::InterfaceSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
+
+sub merge_by_canonical {
+  my ($self, $tmpif, $network_adapters, $network_adapter_configs) = @_;
+  $tmpif->{CanonicalName} = $tmpif->{ifDescr};
+  $tmpif->{CanonicalName} =~ s/[^0-9a-zA-Z]/_/g;
+  $self->debug(sprintf "found interface %s", $tmpif->{CanonicalName});
+  if (! exists $network_adapter_configs->{$tmpif->{CanonicalName}}) {
+    foreach (keys %{$network_adapters}) {
+printf "= %s\n  %s\n", substr($tmpif->{CanonicalName}, 0, length($_)), $_;
+      if (substr($tmpif->{CanonicalName}, 0, length($_)) eq $_) {
+        $tmpif->{CanonicalName} = $_;
+printf "dong\n";
+        last;
+      }
+    }
+  }
+  if (exists $network_adapters->{$tmpif->{CanonicalName}}) {
+    map {
+      $tmpif->{$_} = $network_adapters->{$tmpif->{CanonicalName}}->{$_}
+    } (qw(Index NetConnectionStatus NetEnabled));
+    if (exists $network_adapter_configs->{$tmpif->{Index}}) {
+      map {
+        $tmpif->{$_} = $network_adapter_configs->{$tmpif->{Index}}->{$_}
+      } (qw(InterfaceIndex));
+    }
+  }
+}
 
 sub init {
   my $self = shift;
   $self->{interfaces} = [];
 # bits per second
   if ($self->mode =~ /device::interfaces::list/) {
+    my $network_adapter_configs = {};
+    my $network_adapters = {};
     my $dbh = DBI->connect('dbi:WMI:');
-    my $sth = $dbh->prepare("select * from Win32_PerfRawData_Tcpip_NetworkInterface");
+    my $sth = $dbh->prepare("select * from Win32_NetworkAdapter");
+    # AdapterType, DeviceID, MACAddress, MaxSpeed, NetConnectionStatus, StatusInfo
+    $self->debug("select Description, DeviceID, Index, MACAddress, MaxSpeed, NetConnectionID, NetConnectionStatus, NetEnabled, Speed, Status, StatusInfo from Win32_NetworkAdapter");
     $sth->execute();
+    map {
+      my $copy = {};
+      my $orig = $_;
+      map { $copy->{$_} = $orig->{$_} } (qw(Description DeviceID Index MACAddress MaxSpeed Name NetConnectionID NetConnectionStatus NetEnabled Speed Status StatusInfo));
+      $copy->{CanonicalName} = unpack("Z*", $_->{Name});
+      $copy->{CanonicalName} =~ s/[^0-9a-zA-Z]/_/g;
+      $network_adapters->{$copy->{CanonicalName}} = $copy;
+printf "network_adapters %s\n", Data::Dumper::Dumper($copy);
+printf "network_adapters %s     %d\n", $copy->{CanonicalName}, $copy->{Index};
+    } map {
+      $_->[0];
+    } @{$sth->fetchall_arrayref()};
+    $sth->finish();
+    $sth = $dbh->prepare("select * from Win32_NetworkAdapterConfiguration");
+    # Description, InterfaceIndex, IPAddress, IPEndbled, IPSubnet, MTU
+    $self->debug("select * from Win32_NetworkAdapterConfiguration");
+    $sth->execute();
+    map {
+      my $copy = {};
+      my $orig = $_;
+      map { $copy->{$_} = $orig->{$_} } (qw(Description Index InterfaceIndex MACAddress MTU));
+      $network_adapter_configs->{$copy->{Index}} = $copy;
+    } map {
+      $_->[0];
+    } @{$sth->fetchall_arrayref()};
+$self->debug("finish");
+    $sth->finish();
+    $sth = $dbh->prepare("select * from Win32_PerfRawData_Tcpip_NetworkInterface");
+    $self->debug("select * from Win32_PerfRawData_Tcpip_NetworkInterface");
+    $sth->execute();
+    my $index = 0;
     while (my $member_arr = $sth->fetchrow_arrayref()) {
       my $member = $member_arr->[0];
       my $tmpif = {
-        ifDescr => $member->{Name},
+        ifDescr => unpack("Z*", $member->{Name}),
+        ifIndex => $index++,
       };
+      $self->merge_by_canonical($tmpif, $network_adapters, $network_adapter_configs);
       push(@{$self->{interfaces}},
-        Server::Windows::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
+        Server::WindowsLocal::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
     }
+    $sth->finish();
   } else {
     my $dbh = DBI->connect('dbi:WMI:');
     my $sth = $dbh->prepare("select * from Win32_PerfRawData_Tcpip_NetworkInterface");
@@ -18905,28 +19482,46 @@ sub init {
       *STDERR = *ERR;
       my $tmpif = {
         ifDescr => $name,
-        ifSpeed => $member->{CurrentBandwidth},
+        ifIndex => $name,
+        ifSpeed => $member->{CurrentBandwidth}, # bits per second
         ifInOctets => $member->{BytesReceivedPerSec},
         ifInDiscards => $member->{PacketsReceivedDiscarded},
         ifInErrors => $member->{PacketsReceivedErrors},
         ifOutOctets => $member->{BytesSentPerSec},
         ifOutDiscards => $member->{PacketsOutboundDiscarded},
         ifOutErrors => $member->{PacketsOutboundErrors},
+        ifOperStatus => 'up', # found no way to get interface status
       };
       *STDERR = *SAVEERR;
-      foreach (keys %{$tmpif}) {
-        chomp($tmpif->{$_}) if defined $tmpif->{$_};
-      }
+      map { 
+          chomp $tmpif->{$_} if defined $tmpif->{$_}; 
+          $tmpif->{$_} =~ s/\s*$//g if defined $tmpif->{$_};
+      } keys %{$tmpif};
+      $tmpif->{ifOperStatus} = 'down' if $tmpif->{ifOperStatus} ne 'up';
+      $tmpif->{ifAdminStatus} = $tmpif->{ifOperStatus};
       if (defined $self->opts->ifspeed) {
         $tmpif->{ifSpeed} = $self->opts->ifspeed * 1024*1024;
+      } else {
+        $tmpif->{ifSpeed} *= 1024*1024 if defined $tmpif->{ifSpeed};
       }
       if (! defined $tmpif->{ifSpeed}) {
-        $self->add_unknown(sprintf "There is no /sys/class/net/%s/speed. Use --ifspeed", $name);
+        $self->add_unknown(sprintf "There is no CurrentBandwidth. Use --ifspeed", $name);
       } else {
         push(@{$self->{interfaces}},
-          Server::Windows::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
+          Server::WindowsLocal::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
       }
     }
+    $sth->finish();
+    $sth = $dbh->prepare("select * from Win32_NetworkAdapter");
+    $sth->execute();
+    while (my $member_arr = $sth->fetchrow_arrayref()) {
+    }
+    $sth->finish();
+    $sth = $dbh->prepare("select * from CIM_NetworkAdapter");
+    $sth->execute();
+    while (my $member_arr = $sth->fetchrow_arrayref()) {
+    }
+    $sth->finish();
   }
 }
 
@@ -18949,220 +19544,18 @@ sub check {
 }
 
 
-package Server::Windows::Component::InterfaceSubsystem::Interface;
-our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+package Server::WindowsLocal::Component::InterfaceSubsystem::Interface;
+our @ISA = qw(Classes::IFMIB::Component::InterfaceSubsystem::Interface);
 use strict;
-
 
 sub finish {
   my $self = shift;
-  foreach (qw(ifSpeed ifInOctets ifInDiscards ifInErrors ifOutOctets ifOutDiscards ifOutErrors)) {
-    $self->{$_} = 0 if ! defined $self->{$_};
-  }
-  if ($self->mode =~ /device::interfaces::complete/) {
-    # uglatto, but $self->mode is an lvalue
-    $Monitoring::GLPlugin::mode = "device::interfaces::operstatus";
-    $self->init();
-    #if ($self->{ifOperStatus} eq "up") {
-      foreach my $mode (qw(device::interfaces::usage
-          device::interfaces::errors device::interfaces::discards)) {
-        $Monitoring::GLPlugin::mode = $mode;
-        $self->init();
-      }
-    #}
-    $Monitoring::GLPlugin::mode = "device::interfaces::complete";
-  } elsif ($self->mode =~ /device::interfaces::usage/) {
-    $self->valdiff({name => $self->{ifDescr}}, qw(ifInOctets ifOutOctets));
-    $self->{delta_ifInBits} = $self->{delta_ifInOctets} * 8;
-    $self->{delta_ifOutBits} = $self->{delta_ifOutOctets} * 8;
-    if ($self->{ifSpeed} == 0) {
-      # vlan graffl
-      $self->{inputUtilization} = 0;
-      $self->{outputUtilization} = 0;
-      $self->{maxInputRate} = 0;
-      $self->{maxOutputRate} = 0;
-    } else {
-      $self->{inputUtilization} = 100 * $self->{delta_ifInBits} /
-          ($self->{delta_timestamp} * $self->{ifSpeed});
-      $self->{outputUtilization} = 100 * $self->{delta_ifOutBits} /
-          ($self->{delta_timestamp} * $self->{ifSpeed});
-      $self->{maxInputRate} = $self->{ifSpeed};
-      $self->{maxOutputRate} = $self->{ifSpeed};
-    }
-    if (defined $self->opts->ifspeed) {
-      $self->override_opt('ifspeedin', $self->opts->ifspeed);
-      $self->override_opt('ifspeedout', $self->opts->ifspeed);
-    }
-    if (defined $self->opts->ifspeedin) {
-      $self->{inputUtilization} = 100 * $self->{delta_ifInBits} /
-          ($self->{delta_timestamp} * $self->opts->ifspeedin);
-      $self->{maxInputRate} = $self->opts->ifspeedin;
-    }
-    if (defined $self->opts->ifspeedout) {
-      $self->{outputUtilization} = 100 * $self->{delta_ifOutBits} /
-          ($self->{delta_timestamp} * $self->opts->ifspeedout);
-      $self->{maxOutputRate} = $self->opts->ifspeedout;
-    }
-    $self->{inputRate} = $self->{delta_ifInBits} / $self->{delta_timestamp};
-    $self->{outputRate} = $self->{delta_ifOutBits} / $self->{delta_timestamp};
-    $self->override_opt("units", "bit") if ! $self->opts->units;
-    $self->{inputRate} /= $self->number_of_bits($self->opts->units);
-    $self->{outputRate} /= $self->number_of_bits($self->opts->units);
-    $self->{maxInputRate} /= $self->number_of_bits($self->opts->units);
-    $self->{maxOutputRate} /= $self->number_of_bits($self->opts->units);
-    if ($self->{ifOperStatus} eq 'down') {
-      $self->{inputUtilization} = 0;
-      $self->{outputUtilization} = 0;
-      $self->{inputRate} = 0;
-      $self->{outputRate} = 0;
-      $self->{maxInputRate} = 0;
-      $self->{maxOutputRate} = 0;
-    }
-  } elsif ($self->mode =~ /device::interfaces::errors/) {
-    $self->valdiff({name => $self->{ifDescr}}, qw(ifInErrors ifOutErrors));
-    $self->{inputErrorRate} = $self->{delta_ifInErrors} 
-        / $self->{delta_timestamp};
-    $self->{outputErrorRate} = $self->{delta_ifOutErrors} 
-        / $self->{delta_timestamp};
-  } elsif ($self->mode =~ /device::interfaces::discards/) {
-    $self->valdiff({name => $self->{ifDescr}}, qw(ifInDiscards ifOutDiscards));
-    $self->{inputDiscardRate} = $self->{delta_ifInDiscards} 
-        / $self->{delta_timestamp};
-    $self->{outputDiscardRate} = $self->{delta_ifOutDiscards} 
-        / $self->{delta_timestamp};
-  } elsif ($self->mode =~ /device::interfaces::operstatus/) {
-  }
-  return $self;
+  # NetEnabled 1=admin up
+  # NetConnectionStatus Disconnected (0)Connecting (1)Connected (2)Disconnecting (3)Hardware Not Present (4)Hardware Disabled (5)Hardware Malfunction (6)Media Disconnected (7)Authenticating (8)Authentication Succeeded (9)Authentication Failed (10)Invalid Address (11)Credentials Required (12)Other (13–65535)
+  $self->SUPER::finish();
 }
 
-
-sub check {
-  my $self = shift;
-  if ($self->mode =~ /device::interfaces::complete/) {
-    # uglatto, but $self->mode is an lvalue
-    $Monitoring::GLPlugin::mode = "device::interfaces::operstatus";
-    $self->check();
-    #if ($self->{ifOperStatus} eq "up") {
-      foreach my $mode (qw(device::interfaces::usage
-          device::interfaces::errors device::interfaces::discards)) {
-        $Monitoring::GLPlugin::mode = $mode;
-        $self->check();
-      }
-    #}
-    $Monitoring::GLPlugin::mode = "device::interfaces::complete";
-  } elsif ($self->mode =~ /device::interfaces::usage/) {
-    $self->add_info(sprintf 'interface %s usage is in:%.2f%% (%s) out:%.2f%% (%s)',
-        $self->{ifDescr}, 
-        $self->{inputUtilization}, 
-        sprintf("%.2f%s/s", $self->{inputRate}, $self->opts->units),
-        $self->{outputUtilization},
-        sprintf("%.2f%s/s", $self->{outputRate}, $self->opts->units));
-    $self->set_thresholds(
-        metric => $self->{ifDescr}.'_usage_in',
-        warning => 80,
-        critical => 90
-    );
-    my $in = $self->check_thresholds(
-        metric => $self->{ifDescr}.'_usage_in',
-        value => $self->{inputUtilization}
-    );
-    $self->set_thresholds(
-        metric => $self->{ifDescr}.'_usage_out',
-        warning => 80,
-        critical => 90
-    );
-    my $out = $self->check_thresholds(
-        metric => $self->{ifDescr}.'_usage_out',
-        value => $self->{outputUtilization}
-    );
-    my $level = ($in > $out) ? $in : ($out > $in) ? $out : $in;
-    $self->add_message($level);
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_usage_in',
-        value => $self->{inputUtilization},
-        uom => '%',
-    );
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_usage_out',
-        value => $self->{outputUtilization},
-        uom => '%',
-    );
-
-    my ($inwarning, $incritical) = $self->get_thresholds(
-        metric => $self->{ifDescr}.'_usage_in',
-    );
-    $self->set_thresholds(
-        metric => $self->{ifDescr}.'_traffic_in',
-        warning => $self->{maxInputRate} / 100 * $inwarning,
-        critical => $self->{maxInputRate} / 100 * $incritical
-    );
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_traffic_in',
-        value => $self->{inputRate},
-        uom => $self->opts->units =~ /^(B|KB|MB|GB|TB)$/ ? $self->opts->units : undef,
-        places => 2,
-        min => 0,
-        max => $self->{maxInputRate},
-    );
-    my ($outwarning, $outcritical) = $self->get_thresholds(
-        metric => $self->{ifDescr}.'_usage_out',
-    );
-    $self->set_thresholds(
-        metric => $self->{ifDescr}.'_traffic_out',
-        warning => $self->{maxOutputRate} / 100 * $outwarning,
-        critical => $self->{maxOutputRate} / 100 * $outcritical,
-    );
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_traffic_out',
-        value => $self->{outputRate},
-        uom => $self->opts->units =~ /^(B|KB|MB|GB|TB)$/ ? $self->opts->units : undef,
-        places => 2,
-        min => 0,
-        max => $self->{maxOutputRate},
-    );
-  } elsif ($self->mode =~ /device::interfaces::errors/) {
-    $self->add_info(sprintf 'interface %s errors in:%.2f/s out:%.2f/s ',
-        $self->{ifDescr},
-        $self->{inputErrorRate} , $self->{outputErrorRate});
-    $self->set_thresholds(warning => 1, critical => 10);
-    my $in = $self->check_thresholds($self->{inputErrorRate});
-    my $out = $self->check_thresholds($self->{outputErrorRate});
-    my $level = ($in > $out) ? $in : ($out > $in) ? $out : $in;
-    $self->add_message($level);
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_errors_in',
-        value => $self->{inputErrorRate},
-    );
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_errors_out',
-        value => $self->{outputErrorRate},
-    );
-  } elsif ($self->mode =~ /device::interfaces::discards/) {
-    $self->add_info(sprintf 'interface %s discards in:%.2f/s out:%.2f/s ',
-        $self->{ifDescr},
-        $self->{inputDiscardRate} , $self->{outputDiscardRate});
-    $self->set_thresholds(warning => 1, critical => 10);
-    my $in = $self->check_thresholds($self->{inputDiscardRate});
-    my $out = $self->check_thresholds($self->{outputDiscardRate});
-    my $level = ($in > $out) ? $in : ($out > $in) ? $out : $in;
-    $self->add_message($level);
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_discards_in',
-        value => $self->{inputDiscardRate},
-    );
-    $self->add_perfdata(
-        label => $self->{ifDescr}.'_discards_out',
-        value => $self->{outputDiscardRate},
-    );
-  }
-}
-
-sub list {
-  my $self = shift;
-  printf "%s\n", $self->{ifDescr};
-}
-
-package Server::Solaris;
+package Server::SolarisLocal;
 our @ISA = qw(Classes::Device);
 use strict;
 
@@ -19170,12 +19563,12 @@ use strict;
 sub init {
   my $self = shift;
   if ($self->mode =~ /device::interfaces/) {
-    $self->analyze_and_check_interface_subsystem('Server::Solaris::Component::InterfaceSubsystem');
+    $self->analyze_and_check_interface_subsystem('Server::SolarisLocal::Component::InterfaceSubsystem');
   }
 }
 
 
-package Server::Solaris::Component::InterfaceSubsystem;
+package Server::SolarisLocal::Component::InterfaceSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
 
@@ -19225,7 +19618,7 @@ sub init {
         ifDescr => $name,
       };
       push(@{$self->{interfaces}},
-        Server::Solaris::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
+        Server::SolarisLocal::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
     }
   } else {
     foreach my $name (keys %{$self->{kstat_interfaces}}) {
@@ -19268,7 +19661,7 @@ sub init {
         $self->add_unknown(sprintf "There is no /sys/class/net/%s/speed. Use --ifspeed", $name);
       } else {
         push(@{$self->{interfaces}},
-          Server::Solaris::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
+          Server::SolarisLocal::Component::InterfaceSubsystem::Interface->new(%{$tmpif}));
       }
     }
   }
@@ -19292,7 +19685,7 @@ sub check {
   }
 }
 
-package Server::Solaris::Component::InterfaceSubsystem::Interface;
+package Server::SolarisLocal::Component::InterfaceSubsystem::Interface;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
 use strict;
 
@@ -19505,6 +19898,294 @@ sub list {
   printf "%s\n", $self->{ifDescr};
 }
 
+package Classes::Server::Linux;
+our @ISA = qw(Classes::Device);
+use strict;
+
+sub init {
+  my $self = shift;
+  if ($self->mode =~ /device::hardware::health/) {
+    $self->analyze_and_check_environmental_subsystem("Classes::Server::Linux::Component::EnvironmentalSubsystem")
+  } elsif ($self->mode =~ /device::hardware::load/) {
+    $self->analyze_and_check_cpu_subsystem("Classes::Server::Linux::Component::CpuSubsystem");
+  } elsif ($self->mode =~ /device::disk::usage/) {
+    $self->analyze_and_check_disk_subsystem("Classes::UCDMIB::Component::DiskSubsystem");
+  } elsif ($self->mode =~ /device::hardware::memory/) {
+    $self->analyze_and_check_mem_subsystem("Classes::Server::Linux::Component::MemSubsystem");
+  } elsif ($self->mode =~ /device::process::status/) {
+    $self->analyze_and_check_process_subsystem("Classes::UCDMIB::Component::ProcessSubsystem");
+  } elsif ($self->mode =~ /device::uptime/) {
+    $self->analyze_and_check_uptime_subsystem("Classes::HOSTRESOURCESMIB::Component::UptimeSubsystem");
+  } else {
+    $self->no_such_mode();
+  }
+}
+
+package Classes::Server::Linux::Component::CpuSubsystem;
+our @ISA = qw(Classes::Server::Linux);
+use strict;
+
+sub new {
+  my $class = shift;
+  my $self = {};
+  bless $self, $class;
+  $self->init();
+  return $self;
+}
+
+sub init {
+  my $self = shift;
+  $self->{cpu_subsystem} =
+      Classes::UCDMIB::Component::CpuSubsystem->new();
+  $self->{load_subsystem} =
+      Classes::UCDMIB::Component::LoadSubsystem->new();
+}
+
+sub check {
+  my $self = shift;
+  $self->{cpu_subsystem}->check();
+  $self->{load_subsystem}->check();
+}
+
+sub dump {
+  my $self = shift;
+  $self->{cpu_subsystem}->dump();
+  $self->{load_subsystem}->dump();
+}
+
+
+
+package Classes::Server::Linux::Component::EnvironmentalSubsystem;
+our @ISA = qw(Classes::Server::Linux);
+use strict;
+
+sub new {
+  my $class = shift;
+  my $self = {};
+  bless $self, $class;
+  $self->init();
+  return $self;
+}
+
+sub init {
+  my $self = shift;
+  $self->{fan_subsystem} =
+      Classes::LMSENSORSMIB::Component::FanSubsystem->new();
+  $self->{temperature_subsystem} =
+      Classes::LMSENSORSMIB::Component::TemperatureSubsystem->new();
+}
+
+sub check {
+  my $self = shift;
+  $self->{fan_subsystem}->check();
+  $self->{temperature_subsystem}->check();
+  if (! $self->check_messages()) {
+    $self->add_ok("environmental hardware working fine");
+  }
+}
+
+sub dump {
+  my $self = shift;
+  $self->{fan_subsystem}->dump();
+  $self->{temperature_subsystem}->dump();
+}
+
+
+package Classes::Server::Linux::Component::MemSubsystem;
+our @ISA = qw(Classes::Server::Linux);
+use strict;
+
+sub new {
+  my $class = shift;
+  my $self = {};
+  bless $self, $class;
+  $self->init();
+  return $self;
+}
+
+sub init {
+  my $self = shift;
+  $self->{mem_subsystem} =
+      Classes::UCDMIB::Component::MemSubsystem->new();
+  $self->{swap_subsystem} =
+      Classes::UCDMIB::Component::SwapSubsystem->new();
+}
+
+sub check {
+  my $self = shift;
+  $self->{mem_subsystem}->check();
+  $self->{swap_subsystem}->check();
+}
+
+sub dump {
+  my $self = shift;
+  $self->{mem_subsystem}->dump();
+  $self->{swap_subsystem}->dump();
+}
+
+
+
+package Classes::Bintec::Bibo::Component::EnvironmentalSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  # there is temperature/sensor information in these mibs
+  # mib-sensor.mib mib-box.mib mib-sysped.mib mib-sysiny.mib mibsysx8.mib
+  # but i don't have a device which implements them
+  $self->add_ok('hardware working fine. at least i hope so, because no checks are implemented');
+}
+
+
+package Classes::Bintec::Bibo::Component::MemSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('BIANCA-BRICK-MIBRES-MIB', [
+      ['mem', 'memoryTable', 'Classes::Bintec::Bibo::Component::MemSubsystem::Memory'],
+  ]);
+}
+
+
+package Classes::Bintec::Bibo::Component::MemSubsystem::Memory;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish  {
+  my $self = shift;
+  $self->{usage} = $self->{memoryInuse} /
+      $self->{memoryTotal} * 100;
+  bless $self, "Classes::Bintec::Bibo::Component::MemSubsystem::Memory::Flash"
+      if $self->{memoryType} eq "flash";
+  bless $self, "Classes::Bintec::Bibo::Component::MemSubsystem::Memory::Dram"
+      if $self->{memoryType} eq "dram";
+  bless $self, "Classes::Bintec::Bibo::Component::MemSubsystem::Memory::Dpool"
+      if $self->{memoryType} eq "dpool";
+}
+
+
+package Classes::Bintec::Bibo::Component::MemSubsystem::Memory::Flash;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  $self->{memoryDescr} = $self->unhex_octet_string($self->{memoryDescr});
+  $self->add_info(sprintf '%s usage is %.2f%%',
+      $self->{memoryDescr}, $self->{usage});
+  my $label = 'memory_'.$self->{memoryDescr}.'_usage';
+  $self->set_thresholds(metric => $label, warning => 90, critical => 95);
+  $self->add_message($self->check_thresholds(metric => $label, value => $self->{usage}));
+  $self->add_perfdata(
+      label => $label,
+      value => $self->{usage},
+      uom => '%',
+  );
+}
+
+
+package Classes::Bintec::Bibo::Component::MemSubsystem::Memory::Dram;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  $self->{memoryDescr} = $self->unhex_octet_string($self->{memoryDescr});
+  $self->add_info(sprintf '%s usage is %.2f%%',
+      $self->{memoryDescr}, $self->{usage});
+  my $label = 'memory_'.$self->{memoryDescr}.'_usage';
+  $self->set_thresholds(metric => $label, warning => 80, critical => 90);
+  $self->add_message($self->check_thresholds(metric => $label, value => $self->{usage}));
+  $self->add_perfdata(
+      label => $label,
+      value => $self->{usage},
+      uom => '%',
+  );
+}
+
+package Classes::Bintec::Bibo::Component::MemSubsystem::Memory::Dpool;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf '%s usage is %.2f%%',
+      $self->{memoryDescr}, $self->{usage});
+  my $label = 'memory_'.$self->{memoryDescr}.'_usage';
+  $self->add_perfdata(
+      label => $label,
+      value => $self->{usage},
+      uom => '%',
+  );
+}
+
+
+package Classes::Bintec::Bibo::Component::CpuSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('BIANCA-BRICK-MIBRES-MIB', [
+      ['cpus', 'cpuTable', 'Classes::Bintec::Bibo::Component::CpuSubsystem::Cpu'],
+  ]);
+}
+
+
+package Classes::Bintec::Bibo::Component::CpuSubsystem::Cpu;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my $self = shift;
+  $self->valdiff({name => 'cpu'}, qw(cpuTotalIdle));
+  $self->{cpuTotalUsage} = 100 - (100 * $self->{delta_cpuTotalIdle} / $self->{delta_timestamp});
+  if ($self->{cpuTotalUsage} < 0 || $self->{cpuTotalUsage} > 100 || ! $self->{delta_cpuTotalIdle}) {
+    # falls irgendein bloedsinn passiert
+    $self->{cpuTotalUsage} = 100 - $self->{cpuLoadIdle60s};
+  }
+}
+
+sub check {
+  my $self = shift;
+  my $label = 'cpu_'.$self->{cpuDescr};
+  $self->add_info(sprintf 'cpu %d (%s) usage is %.2f%%',
+      $self->{cpuNumber},
+      $self->{cpuDescr},
+      $self->{cpuTotalUsage});
+  $self->set_thresholds(metric => $label, warning => '80', critical => '90');
+  $self->add_message($self->check_thresholds(
+      metric => $label, value => $self->{cpuTotalUsage}));
+  $self->add_perfdata(
+      label => $label,
+      value => $self->{cpuTotalUsage},
+      uom => '%',
+  );
+}
+
+package Classes::Bintec::Bibo;
+our @ISA = qw(Classes::Bintec);
+use strict;
+
+sub init {
+  my $self = shift;
+  if ($self->mode =~ /device::hardware::health/) {
+    $self->analyze_and_check_environmental_subsystem("Classes::Bintec::Bibo::Component::EnvironmentalSubsystem");
+  } elsif ($self->mode =~ /device::hardware::load/) {
+    $self->analyze_and_check_cpu_subsystem("Classes::Bintec::Bibo::Component::CpuSubsystem");
+  } elsif ($self->mode =~ /device::hardware::memory/) {
+    $self->analyze_and_check_mem_subsystem("Classes::Bintec::Bibo::Component::MemSubsystem");
+  } else {
+    $self->no_such_mode();
+  }
+}
+package Classes::Bintec;
+our @ISA = qw(Classes::Device);
+use strict;
+
 package Classes::Cisco::CISCOIPSECFLOWMONITOR::Component::VpnSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
@@ -19544,6 +20225,147 @@ sub check {
   } else {
     $self->add_ok();
   }
+}
+
+package Classes::Cisco::CISCOENHANCEDMEMPOOLMIB::Component::MemSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('CISCO-ENHANCED-MEMPOOL-MIB', [
+      ['mems', 'cempMemPoolTable', 'Classes::Cisco::CISCOENHANCEDMEMPOOLMIB::Component::MemSubsystem::EnhMem'],
+  ]);
+}
+
+package Classes::Cisco::CISCOENHANCEDMEMPOOLMIB::Component::MemSubsystem::EnhMem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my $self = shift;
+  if (defined $self->{cempMemPoolHCUsed}) {
+    $self->{usage} = 100 * $self->{cempMemPoolHCUsed} /
+        ($self->{cempMemPoolHCFree} + $self->{cempMemPoolHCUsed});
+  } else {
+    $self->{usage} = 100 * $self->{cempMemPoolUsed} /
+        ($self->{cempMemPoolFree} + $self->{cempMemPoolUsed});
+  }
+  $self->{type} = $self->{cempMemPoolType} ||= 0;
+  $self->{name} = $self->{cempMemPoolName}.'_'.$self->{indices}->[0];
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf 'mempool %s usage is %.2f%%',
+      $self->{name}, $self->{usage});
+  if ($self->{name} =~ /^lsmpi_io/ &&
+      $self->get_snmp_object('MIB-2-MIB', 'sysDescr', 0) =~ /IOS.*(XE|ASR1000)/i) {
+    # https://supportforums.cisco.com/docs/DOC-16425
+    $self->force_thresholds(
+        metric => $self->{name}.'_usage',
+        warning => 100,
+        critical => 100,
+    );
+  } elsif ($self->{name} =~ /^reserved/ &&
+      $self->get_snmp_object('MIB-2-MIB', 'sysDescr', 0) =~ /IOS.*XR/i) {
+    # ASR9K "reserved" and "image" are always at 100%
+    $self->force_thresholds(
+        metric => $self->{name}.'_usage',
+        warning => 100,
+        critical => 100,
+    );
+  } elsif ($self->{name} =~ /^image/ &&
+      $self->get_snmp_object('MIB-2-MIB', 'sysDescr', 0) =~ /IOS.*XR/i) {
+    $self->force_thresholds(
+        metric => $self->{name}.'_usage',
+        warning => 100,
+        critical => 100,
+    );
+  } else {
+    $self->set_thresholds(
+        metric => $self->{name}.'_usage',
+        warning => 80,
+        critical => 90,
+    );
+  }
+  $self->add_message($self->check_thresholds(
+      metric => $self->{name}.'_usage',
+      value => $self->{usage},
+  ));
+  $self->add_perfdata(
+      label => $self->{name}.'_usage',
+      value => $self->{usage},
+      uom => '%',
+  );
+}
+
+package Classes::Cisco::CISCOMEMORYPOOLMIB::Component::MemSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('CISCO-MEMORY-POOL-MIB', [
+      ['mems', 'ciscoMemoryPoolTable', 'Classes::Cisco::CISCOMEMORYPOOLMIB::Component::MemSubsystem::Mem'],
+  ]);
+}
+
+package Classes::Cisco::CISCOMEMORYPOOLMIB::Component::MemSubsystem::Mem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my $self = shift;
+  $self->{usage} = 100 * $self->{ciscoMemoryPoolUsed} /
+      ($self->{ciscoMemoryPoolFree} + $self->{ciscoMemoryPoolUsed});
+  $self->{type} = $self->{ciscoMemoryPoolType} ||= 0;
+  $self->{name} = $self->{ciscoMemoryPoolName};
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf 'mempool %s usage is %.2f%%',
+      $self->{name}, $self->{usage});
+  if ($self->{name} eq 'lsmpi_io' &&
+      $self->get_snmp_object('MIB-2-MIB', 'sysDescr', 0) =~ /IOS.*XE/i) {
+    # https://supportforums.cisco.com/docs/DOC-16425
+    $self->force_thresholds(
+        metric => $self->{name}.'_usage',
+        warning => 100,
+        critical => 100,
+    );
+  } elsif ($self->{name} eq 'reserved' &&
+      $self->get_snmp_object('MIB-2-MIB', 'sysDescr', 0) =~ /IOS.*XR/i) {
+    # ASR9K "reserved" and "image" are always at 100%
+    $self->force_thresholds(
+        metric => $self->{name}.'_usage',
+        warning => 100,
+        critical => 100,
+    );
+  } elsif ($self->{name} eq 'image' &&
+      $self->get_snmp_object('MIB-2-MIB', 'sysDescr', 0) =~ /IOS.*XR/i) {
+    $self->force_thresholds(
+        metric => $self->{name}.'_usage',
+        warning => 100,
+        critical => 100,
+    );
+  } else {
+    $self->set_thresholds(
+        metric => $self->{name}.'_usage',
+        warning => 80,
+        critical => 90,
+    );
+  }
+  $self->add_message($self->check_thresholds(
+      metric => $self->{name}.'_usage',
+      value => $self->{usage},
+  ));
+  $self->add_perfdata(
+      label => $self->{name}.'_usage',
+      value => $self->{usage},
+      uom => '%',
+  );
 }
 
 package Classes::Cisco::CISCOENTITYFRUCONTROLMIB::Component::EnvironmentalSubsystem;
@@ -20342,12 +21164,6 @@ sub init {
 
 sub check {
   my ($self) = @_;
-  if (! $self->implements_mib('CISCO-STACK-MIB')) {
-    $self->add_message(defined $self->opts->mitigation() ?
-        $self->opts->mitigation() : UNKNOWN,
-        'this is not a stacked device');
-    return;
-  }
   if ($self->{chassisSysType} eq 'other' &&
       ! $self->{chassisSerialNumberString} &&
       ! $self->{chassisSerialNumberString}) {
@@ -20452,6 +21268,85 @@ sub check {
   }
 }
 
+package Classes::Cisco::CISCOSTACKWISEMIB::Component::StackSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
+
+
+sub init {
+  my ($self) = @_;
+  $self->get_snmp_objects('CISCO-STACKWISE-MIB', qw(cswMaxSwitchNum
+      cswRingRedundant ciscoStackWiseMIBConform cswStackWiseMIBCompliances
+  ));
+  $self->get_snmp_tables("CISCO-STACKWISE-MIB", [
+      ['switches', 'cswSwitchInfoTable', 'Classes::Cisco::CISCOSTACKWISEMIB::Component::StackSubsystem::Switch'],
+      ['ports', 'cswStackPortInfoTable', 'Classes::Cisco::CISCOSTACKWISEMIB::Component::StackSubsystem::Port'],
+      #['powers', 'cswStackPowerInfoTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+      #['powerports', 'cswStackPowerPortInfoTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+  ]);
+  $self->{numSwitches} = scalar(@{$self->{switches}});
+  $self->{switchSerialList} = [map { $_->{flat_indices} } @{$self->{switches}}];
+  $self->{numPorts} = scalar(@{$self->{ports}});
+}
+
+sub check {
+  my ($self) = @_;
+  foreach (@{$self->{switches}}) {
+    $_->check();
+  }
+  $self->add_info(sprintf 'ring is %sredundant',
+      $self->{cswRingRedundant} ne 'true' ? 'not ' : '');
+  if ($self->{cswRingRedundant} ne 'true') {
+      $self->add_warning();
+  }
+  $self->opts->override_opt('lookback', 1800) if ! $self->opts->lookback;
+  $self->valdiff({name => 'stackwise', lastarray => 1},
+      qw(switchSerialList numSwitches));
+  if (scalar(@{$self->{delta_found_switchSerialList}}) > 0) {
+    $self->add_warning(sprintf '%d new switch(s) (%s)',
+        scalar(@{$self->{delta_found_switchSerialList}}),
+        join(", ", @{$self->{delta_found_switchSerialList}}));
+  }
+  if (scalar(@{$self->{delta_lost_switchSerialList}}) > 0) {
+    $self->add_critical(sprintf '%d switch(s) missing (%s)',
+        scalar(@{$self->{delta_lost_switchSerialList}}),
+        join(", ", @{$self->{delta_lost_switchSerialList}}));
+  }
+  if ($self->{delta_numPorts} > 0) {
+    $self->add_warning(sprintf '%d new ports', $self->{delta_numPorts});
+  } elsif ($self->{delta_numPorts} < 0) {
+    $self->add_critical(sprintf '%d missing ports', abs($self->{delta_numPorts}));
+  }
+  if (! $self->check_messages()) {
+    $self->add_ok('chassis is ok');
+  }
+  $self->add_info(sprintf 'found %d switches with %d ports',
+      $self->{numSwitches}, $self->{numPorts});
+  $self->add_ok();
+}
+
+package Classes::Cisco::CISCOSTACKWISEMIB::Component::StackSubsystem::Port;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+
+sub check {
+  my ($self) = @_;
+  $self->add_info(sprintf 'link to neighbor %s is %s',
+      $self->{cswStackPortNeighbor}, $self->{cswStackPortOperStatus}
+  );
+}
+
+package Classes::Cisco::CISCOSTACKWISEMIB::Component::StackSubsystem::Switch;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+
+sub check {
+  my ($self) = @_;
+  $self->add_info(sprintf '%s switch %s is %s',
+      $self->{cswSwitchRole}, $self->{flat_indices}, $self->{cswSwitchState}
+  );
+  $self->add_warning() if $self->{cswSwitchState} ne 'ready';
+}
+
 package Classes::Cisco::ASA;
 our @ISA = qw(Classes::Cisco);
 use strict;
@@ -20478,8 +21373,133 @@ sub init {
     $self->analyze_and_check_config_subsystem("Classes::Cisco::IOS::Component::NatSubsystem");
   } elsif ($self->mode =~ /device::vpn::status/) {
     $self->analyze_and_check_config_subsystem("Classes::Cisco::CISCOIPSECFLOWMONITOR::Component::VpnSubsystem");
+  } elsif ($self->mode =~ /device::ha::role/) {
+    $self->analyze_and_check_config_subsystem("Classes::Cisco::IOS::Component::HaSubsystem");
   } else {
     $self->no_such_mode();
+  }
+}
+
+
+package Classes::Cisco::IOS::Component::HaSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
+
+sub init {
+  my ($self) = @_;
+  if ($self->mode =~ /device::ha::role/) {
+    $self->get_snmp_tables("CISCO-FIREWALL-MIB", [
+      ['resources', 'cfwHardwareStatusTable', 'Classes::Cisco::IOS::Component::HaSubsystem::Resource'],
+    ]);
+    if (! $self->opts->role()) {
+      $self->opts->override_opt('role', 'active'); # active/standby
+    }
+  }
+}
+
+
+package Classes::Cisco::IOS::Component::HaSubsystem::Resource;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
+
+sub finish {
+  my ($self) = @_;
+  ($self->{cfwHardwareInformationShort} = $self->{cfwHardwareInformation}) =~ s/\s*\(this device\).*//g;
+  if ($self->{cfwHardwareInformation} =~ /Failover LAN Interface/) {
+    bless $self, "Classes::Cisco::IOS::Component::HaSubsystem::Resource::LAN";
+  } elsif ($self->{cfwHardwareInformation} =~ /Primary/) {
+    bless $self, "Classes::Cisco::IOS::Component::HaSubsystem::Resource::Primary";
+  } elsif ($self->{cfwHardwareInformation} =~ /Secondary/) {
+    bless $self, "Classes::Cisco::IOS::Component::HaSubsystem::Resource::Secondary";
+  }
+}
+
+package Classes::Cisco::IOS::Component::HaSubsystem::Resource::Primary;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my ($self) = @_;
+  my @roles = split ',', $self->opts->role(); # active,standby for checking the cluster status
+  $self->add_info(sprintf "resource %s has status %s (%s)", 
+      $self->{cfwHardwareInformationShort},
+      $self->{cfwHardwareStatusValue},
+      $self->{cfwHardwareStatusDetail});
+  if ($self->{cfwHardwareStatusDetail} eq "Failover Off") {
+    $self->add_ok();
+  } elsif ($self->{cfwHardwareInformation} =~ /this device/) {
+    if (grep { "active" eq $_ } @roles) {
+      $self->add_ok();
+    } else {
+      $self->add_critical();
+      $self->add_info("this device should be ".$self->opts->role());
+      $self->add_critical();
+    }
+  } else {
+    # as seen from Secondary. check the cluster status, not the role
+    if ($self->{cfwHardwareStatusValue} eq "error") {
+      $self->add_critical_mitigation("Primary has failed");
+    } elsif ($self->{cfwHardwareStatusValue} ne "active") {
+      $self->add_warning_mitigation("Primary is not the active node");
+    } else {
+      $self->add_ok("Primary is active");
+    }
+  }
+}
+
+package Classes::Cisco::IOS::Component::HaSubsystem::Resource::Secondary;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my ($self) = @_;
+  my @roles = split ',', $self->opts->role(); # active,standby for checking the cluster status
+  $self->add_info(sprintf "resource %s has status %s (%s)", 
+      $self->{cfwHardwareInformationShort},
+      $self->{cfwHardwareStatusValue},
+      $self->{cfwHardwareStatusDetail});
+  if ($self->{cfwHardwareStatusDetail} eq "Failover Off") {
+    $self->add_ok();
+  } elsif ($self->{cfwHardwareInformation} =~ /this device/) {
+    if (grep { "standby" eq $_ } @roles) {
+      $self->add_ok();
+    } else {
+      $self->add_critical();
+      $self->add_info("this device should be ".$self->opts->role());
+      $self->add_critical();
+    }
+  } else {
+    # as seen from primary
+    if ($self->{cfwHardwareStatusValue} eq "error") {
+      $self->add_critical_mitigation("Secondary has failed");
+    } elsif ($self->{cfwHardwareStatusValue} ne "standby") {
+      $self->add_warning_mitigation("Secondary is not the standby node");
+    } else {
+      $self->add_ok("Secondary is standby");
+    }
+  }
+}
+
+package Classes::Cisco::IOS::Component::HaSubsystem::Resource::LAN;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my ($self) = @_;
+  $self->add_info(sprintf "resource %s has status %s (%s)", 
+      $self->{cfwHardwareInformationShort},
+      $self->{cfwHardwareStatusValue},
+      $self->{cfwHardwareStatusDetail});
+  if ($self->{cfwHardwareStatusDetail} eq "Failover Off") {
+    $self->add_ok();
+  } elsif ($self->{cfwHardwareStatusDetail} =~ /FAILOVER/) {
+    $self->add_warning_mitigation("cluster has switched");
+  } elsif ($self->{cfwHardwareStatusValue} eq "error") {
+    $self->add_warning_mitigation("cluster has lost redundancy");
+  } elsif ($self->{cfwHardwareStatusValue} ne "up") {
+    $self->add_warning_mitigation("LAN interface has a problem");
   }
 }
 
@@ -20674,88 +21694,10 @@ use strict;
 sub init {
   my $self = shift;
   if ($self->implements_mib('CISCO-ENHANCED-MEMPOOL-MIB')) {
-    $self->get_snmp_tables('CISCO-ENHANCED-MEMPOOL-MIB', [
-        ['mems', 'cempMemPoolTable', 'Classes::Cisco::IOS::Component::MemSubsystem::EnhMem'],
-    ]);
+    $self->analyze_and_check_mem_subsystem("Classes::Cisco::CISCOENHANCEDMEMPOOLMIB::Component::MemSubsystem");
   } else {
-    $self->get_snmp_tables('CISCO-MEMORY-POOL-MIB', [
-        ['mems', 'ciscoMemoryPoolTable', 'Classes::Cisco::IOS::Component::MemSubsystem::Mem'],
-    ]);
+    $self->analyze_and_check_mem_subsystem("Classes::Cisco::CISCOMEMORYPOOLMIB::Component::MemSubsystem");
   }
-}
-
-package Classes::Cisco::IOS::Component::MemSubsystem::Mem;
-our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
-use strict;
-
-sub finish {
-  my $self = shift;
-  $self->{usage} = 100 * $self->{ciscoMemoryPoolUsed} /
-      ($self->{ciscoMemoryPoolFree} + $self->{ciscoMemoryPoolUsed});
-  $self->{type} = $self->{ciscoMemoryPoolType} ||= 0;
-  $self->{name} = $self->{ciscoMemoryPoolName};
-}
-
-sub check {
-  my $self = shift;
-  $self->add_info(sprintf 'mempool %s usage is %.2f%%',
-      $self->{name}, $self->{usage});
-  if ($self->{name} eq 'lsmpi_io' &&
-      $self->get_snmp_object('MIB-2-MIB', 'sysDescr', 0) =~ /IOS.*XE/i) {
-    # https://supportforums.cisco.com/docs/DOC-16425
-    $self->force_thresholds(
-        metric => $self->{name}.'_usage',
-        warning => 100,
-        critical => 100,
-    );
-  } elsif ($self->{name} eq 'reserved' &&
-      $self->get_snmp_object('MIB-2-MIB', 'sysDescr', 0) =~ /IOS.*XR/i) {
-    # ASR9K "reserved" and "image" are always at 100%
-    $self->force_thresholds(
-        metric => $self->{name}.'_usage',
-        warning => 100,
-        critical => 100,
-    );
-  } elsif ($self->{name} eq 'image' &&
-      $self->get_snmp_object('MIB-2-MIB', 'sysDescr', 0) =~ /IOS.*XR/i) {
-    $self->force_thresholds(
-        metric => $self->{name}.'_usage',
-        warning => 100,
-        critical => 100,
-    );
-  } else {
-    $self->set_thresholds(
-        metric => $self->{name}.'_usage',
-        warning => 80,
-        critical => 90,
-    );
-  }
-  $self->add_message($self->check_thresholds(
-      metric => $self->{name}.'_usage',
-      value => $self->{usage},
-  ));
-  $self->add_perfdata(
-      label => $self->{name}.'_usage',
-      value => $self->{usage},
-      uom => '%',
-  );
-}
-
-package Classes::Cisco::IOS::Component::MemSubsystem::EnhMem;
-our @ISA = qw(Classes::Cisco::IOS::Component::MemSubsystem::Mem);
-use strict;
-
-sub finish {
-  my $self = shift;
-  if (defined $self->{cempMemPoolHCUsed}) {
-    $self->{usage} = 100 * $self->{cempMemPoolHCUsed} /
-        ($self->{cempMemPoolHCFree} + $self->{cempMemPoolHCUsed});
-  } else {
-    $self->{usage} = 100 * $self->{cempMemPoolUsed} /
-        ($self->{cempMemPoolFree} + $self->{cempMemPoolUsed});
-  }
-  $self->{type} = $self->{cempMemPoolType} ||= 0;
-  $self->{name} = $self->{cempMemPoolName};
 }
 
 package Classes::Cisco::IOS::Component::EnvironmentalSubsystem;
@@ -20994,7 +21936,19 @@ use strict;
 sub init {
   my $self = shift;
   if ($self->mode =~ /device::hardware::chassis::health/) {
-    $self->analyze_and_check_environmental_subsystem("Classes::Cisco::CISCOSTACKMIB::Component::StackSubsystem");
+    if ($self->implements_mib('CISCO-STACK-MIB')) {
+      $self->analyze_and_check_environmental_subsystem("Classes::Cisco::CISCOSTACKMIB::Component::StackSubsystem");
+    } elsif ($self->implements_mib('CISCO-STACKWISE-MIB')) {
+      $self->analyze_and_check_environmental_subsystem("Classes::Cisco::CISCOSTACKWISEMIB::Component::StackSubsystem");
+    }
+    if (! $self->implements_mib('CISCO-STACKWISE-MIB') &&
+        !  $self->implements_mib('CISCO-STACK-MIB')) {
+      if (defined $self->opts->mitigation()) {
+        $self->add_message($self->opts->mitigation(), 'this is not a stacked device');
+      } else {
+        $self->add_unknown('this is not a stacked device');
+      }
+    }
   } elsif ($self->mode =~ /device::hardware::health/) {
     $self->analyze_and_check_environmental_subsystem("Classes::Cisco::IOS::Component::EnvironmentalSubsystem");
   } elsif ($self->mode =~ /device::hardware::load/) {
@@ -22204,7 +23158,7 @@ sub check {
     $self->add_ok();
   } elsif (grep { $self->{s5ChasComOperState} eq $_ }
       (qw(warning nonFatalErr))) {
-    $self->add_ok();
+    $self->add_warning();
   } elsif (grep { $self->{s5ChasComOperState} eq $_ }
       (qw(fatalErr))) {
     $self->add_critical();
@@ -22349,24 +23303,6 @@ sub check {
       uom => '%',
   );
 }
-
-
-package Classes::Juniper::NetScreen::Component::CpuSubsystem::Load;
-our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
-use strict;
-
-sub check {
-  my $self = shift;
-  $self->add_info(sprintf '%s is %.2f', lc $self->{laNames}, $self->{laLoadFloat});
-  $self->set_thresholds(warning => $self->{laConfig},
-      critical => $self->{laConfig});
-  $self->add_message($self->check_thresholds($self->{laLoadFloat}));
-  $self->add_perfdata(
-      label => lc $self->{laNames},
-      value => $self->{laLoadFloat},
-  );
-}
-
 package Classes::Juniper::NetScreen::Component::MemSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
@@ -22564,48 +23500,6 @@ sub check {
   );
 }
 
-sub unix_init {
-  my $self = shift;
-  my %params = @_;
-  my $type = 0;
-  $self->get_snmp_tables('UCD-SNMP-MIB', [
-      ['loads', 'laTable', 'Classes::Juniper::IVE::Component::CpuSubsystem::Load'],
-  ]);
-}
-
-sub unix_check {
-  my $self = shift;
-  my $errorfound = 0;
-  $self->add_info('checking loads');
-  foreach (@{$self->{loads}}) {
-    $_->check();
-  }
-}
-
-sub unix_dump {
-  my $self = shift;
-  foreach (@{$self->{loads}}) {
-    $_->dump();
-  }
-}
-
-
-package Classes::Juniper::IVE::Component::CpuSubsystem::Load;
-our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
-use strict;
-
-sub check {
-  my $self = shift;
-  $self->add_info(sprintf '%s is %.2f', lc $self->{laNames}, $self->{laLoadFloat});
-  $self->set_thresholds(warning => $self->{laConfig},
-      critical => $self->{laConfig});
-  $self->add_message($self->check_thresholds($self->{laLoadFloat}));
-  $self->add_perfdata(
-      label => lc $self->{laNames},
-      value => $self->{laLoadFloat},
-  );
-}
-
 package Classes::Juniper::IVE::Component::EnvironmentalSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
@@ -22629,7 +23523,7 @@ sub check {
       value => $self->{iveTemperature},
       warning => $self->{warning},
       critical => $self->{critical},
-  );
+  ) if $self->{iveTemperature};
   if ($self->{fanDescription} && $self->{fanDescription} =~ /(failed)|(threshold)/) {
     $self->add_critical($self->{fanDescription});
   }
@@ -24500,12 +25394,21 @@ sub finish {
 sub check {
   my $self = shift;
   if ($self->mode =~ /device::hsrp::state/) {
-    $self->add_info(sprintf 'hsrp group %s (interface %s) state is %s (active router is %s, standby router is %s',
+    $self->add_info(sprintf 'hsrp group %s (interface %s) state is %s (active router is %s, standby router is %s)',
         $self->{cHsrpGrpNumber}, $self->{ifIndex},
         $self->{cHsrpGrpStandbyState},
         $self->{cHsrpGrpActiveRouter}, $self->{cHsrpGrpStandbyRouter});
-    if ($self->opts->role() eq $self->{cHsrpGrpStandbyState}) {
+    my @roles = split ',', $self->opts->role();
+    if (grep $_ eq $self->{cHsrpGrpStandbyState}, @roles) {
+      if ($self->{cHsrpGrpStandbyRouter} eq '0.0.0.0') {
+        $self->add_message(
+          defined $self->opts->mitigation() ? $self->opts->mitigation() : 1,
+          sprintf 'standby hsrp router missing in group %s (interface %s)',
+          $self->{cHsrpGrpNumber}, $self->{ifIndex}
+        );
+      } else {
         $self->add_ok();
+      }
     } else {
       $self->add_critical(
           sprintf 'state in group %s (interface %s) is %s instead of %s',
@@ -24633,6 +25536,7 @@ use strict;
 sub init {
   my $self = shift;
   $self->{interfaces} = [];
+  #$self->session_translate(['-octetstring' => 1]);
   if ($self->mode =~ /device::interfaces::list/) {
     $self->update_interface_cache(1);
     foreach my $ifIndex (keys %{$self->{interface_cache}}) {
@@ -24927,7 +25831,7 @@ package Classes::IFMIB::Component::InterfaceSubsystem::Interface;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
 use strict;
 
-sub new {
+sub new_ {
   my $class = shift;
   my %params = @_;
   my $self = {
@@ -24936,6 +25840,7 @@ sub new {
     ifEntry => $params{ifEntry},
     ifIndex => $params{ifIndex},
     ifDescr => $params{ifDescr},
+    ifAlias => $params{ifAlias},
     ifType => $params{ifType},
     ifMtu => $params{ifMtu},
     ifSpeed => $params{ifSpeed},
@@ -25004,6 +25909,30 @@ sub new {
   }
   $self->init();
   return $self;
+}
+
+sub finish {
+  my $self = shift;
+  $self->{ifDescr} = unpack("Z*", $self->{ifDescr}); # windows has trailing nulls
+  if ($self->opts->name2 && $self->opts->name2 =~ /\(\.\*\?*\)/) {
+    if ($self->{ifDescr} =~ $self->opts->name2) {
+      $self->{ifDescr} = $1;
+    }
+  }
+  # Manche Stinkstiefel haben ifName, ifHighSpeed und z.b. ifInMulticastPkts,
+  # aber keine ifHC*Octets. Gesehen bei Cisco Switch Interface Nul0 o.ae.
+  if ($self->{ifName} && defined $self->{ifHCInOctets} && 
+      defined $self->{ifHCOutOctets} && $self->{ifHCInOctets} ne "noSuchObject") {
+    $self->{ifAlias} ||= $self->{ifName};
+    $self->{ifName} = unpack("Z*", $self->{ifName});
+    $self->{ifAlias} = unpack("Z*", $self->{ifAlias});
+    $self->{ifAlias} =~ s/\|/!/g if $self->{ifAlias};
+    bless $self, 'Classes::IFMIB::Component::InterfaceSubsystem::Interface::64bit';
+  }
+  if ($self->{ifPhysAddress}) {
+    $self->{ifPhysAddress} = join(':', unpack('(H2)*', $self->{ifPhysAddress})); 
+  }
+  $self->init();
 }
 
 sub init {
@@ -25314,7 +26243,7 @@ sub list {
   if ($self->mode =~ /device::interfaces::listdetail/) {
     my $cL2L3IfModeOper = $self->get_snmp_object('CISCO-L2L3-INTERFACE-CONFIG-MIB', 'cL2L3IfModeOper', $self->{ifIndex}) || "unknown";
     my $vlanTrunkPortDynamicStatus = $self->get_snmp_object('CISCO-VTP-MIB', 'vlanTrunkPortDynamicStatus', $self->{ifIndex}) || "unknown";
-    printf "%06d %s %s %s\n", $self->{ifIndex}, $self->{ifDescr},
+    printf "%06d %s %s %s %s\n", $self->{ifIndex}, $self->{ifDescr}, $self->{ifAlias},
         $cL2L3IfModeOper, $vlanTrunkPortDynamicStatus;
   } else {
     printf "%06d %s\n", $self->{ifIndex}, $self->{ifDescr};
@@ -25565,6 +26494,127 @@ package Classes::IPMIB;
 our @ISA = qw(Classes::Device);
 use strict;
 
+package Classes::VRRPMIB::Component::VRRPSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use Data::Dumper;
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->{groups} = [];
+  $self->{assoc} = ();
+  if ($self->mode =~ /device::vrrp/) {
+    foreach ($self->get_snmp_table_objects(
+  'VRRP-MIB', 'vrrpAssoIpAddrTable')) {
+      my %entry = %{$_};
+      my @index = @{$entry{indices}};
+      my $key = shift(@index).'.'.shift(@index);
+      my $ip = join ".", @index;
+      push @{$self->{assoc}{$key}}, $ip;
+    }
+    foreach ($self->get_snmp_table_objects(
+       'VRRP-MIB', 'vrrpOperTable')) {
+      my %entry = %{$_};
+      my $key = $entry{indices}->[0].".".$entry{indices}->[1];
+      $entry{'vrrpAssocIpAddr'} = defined $self->{assoc}{$key} ? $self->{assoc}{$key} : [];
+
+      my $group = Classes::VRRPMIB::Component::VRRPSubsystem::Group->new(%entry);
+      if ($self->filter_name($group->{name}) &&
+          $group->{'vrrpOperAdminState'} eq 'up') {
+        push(@{$self->{groups}}, $group);
+      }
+    }
+  }
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info('checking vrrp groups');
+  if ($self->mode =~ /device::vrrp::list/) {
+    foreach (@{$self->{groups}}) {
+      $_->list();
+    }
+  } elsif ($self->mode =~ /device::vrrp/) {
+    if (scalar (@{$self->{groups}}) == 0) {
+      $self->add_unknown('no vrrp groups');
+    } else {
+      foreach (@{$self->{groups}}) {
+        $_->check();
+      }
+    }
+  }
+}
+
+
+package Classes::VRRPMIB::Component::VRRPSubsystem::Group;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+use Data::Dumper;
+
+sub finish {
+  my $self = shift;
+  my %params = @_;
+  $self->{ifIndex} = $params{indices}->[0];
+  $self->{vrrpGrpNumber} = $params{indices}->[1];
+  $self->{name} = $self->{vrrpGrpNumber}.':'.$self->{ifIndex};
+  if ($self->mode =~ /device::vrrp::state/) {
+    if (! $self->opts->role()) {
+      $self->opts->override_opt('role', 'master');
+    }
+  }
+  return $self;
+}
+
+sub check {
+  my $self = shift;
+  if ($self->mode =~ /device::vrrp::state/) {
+    $self->add_info(sprintf 'vrrp group %s (interface %s) state is %s (active router is %s)',
+        $self->{vrrpGrpNumber}, $self->{ifIndex},
+        $self->{vrrpOperState},
+        $self->{vrrpOperMasterIpAddr});
+    my @roles = split ',', $self->opts->role();
+    if (grep $_ eq $self->{vrrpOperState}, @roles) {
+      $self->add_ok();
+    } else {
+      $self->add_critical(
+          sprintf 'state in group %s (interface %s) is %s instead of %s',
+              $self->{vrrpGrpNumber}, $self->{ifIndex},
+              $self->{vrrpOperState},
+              $self->opts->role());
+    }
+  } elsif ($self->mode =~ /device::vrrp::failover/) {
+    $self->add_info(sprintf 'vrrp group %s/%s: active node is %s',
+        $self->{vrrpGrpNumber}, $self->{ifIndex},
+        $self->{vrrpOperMasterIpAddr});
+    if (my $laststate = $self->load_state( name => $self->{name} )) {
+      if ($laststate->{state} ne $self->{vrrpOperState}) {
+        $self->add_critical(sprintf 'vrrp group %s/%s: switched %s --> %s',
+        $self->{vrrpGrpNumber}, $self->{ifIndex},
+        $laststate->{state}, $self->{vrrpOperState});
+      } elsif ($laststate->{state} !~ /^(master|backup)$/) {
+        $self->add_critical(sprintf 'vrrp group %s/%s: in state %s',
+        $self->{vrrpGrpNumber}, $self->{ifIndex}, $self->{vrrpOperState});
+      } else {
+        $self->add_ok();
+      }
+    } else {
+      $self->add_ok('initializing....');
+    }
+    $self->save_state( name => $self->{name}, save => {
+        state => $self->{vrrpOperState}
+    });
+  }
+}
+sub list {
+  my $self = shift;
+  printf "name(grp:if)=%s state=%s/%s master=%s ips=%s\n",
+      $self->{name}, $self->{vrrpOperState}, $self->{vrrpOperAdminState},
+      $self->{vrrpOperMasterIpAddr},
+      join ",", sort @{$self->{vrrpAssocIpAddr}};
+}
+package Classes::VRRPMIB;
+our @ISA = qw(Classes::Device);
+use strict;
 package Classes::HOSTRESOURCESMIB::Component::DiskSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
@@ -25671,6 +26721,32 @@ sub init {
   ]);
 }
 
+package Classes::HOSTRESOURCESMIB::Component::UptimeSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  my $hrSystemUptime = $self->get_snmp_object('HOST-RESOURCES-MIB', 'hrSystemUptime');
+  $self->{uptime} = $self->timeticks($hrSystemUptime);
+  $self->debug(sprintf 'uptime: %s', $self->{uptime});
+  $self->debug(sprintf 'up since: %s',
+      scalar localtime (time - $self->{uptime}));
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf 'device is up since %s',
+      $self->human_timeticks($self->{uptime}));
+  $self->set_thresholds(warning => '15:', critical => '5:');
+  $self->add_message($self->check_thresholds($self->{uptime} / 60));
+  $self->add_perfdata(
+      label => 'uptime',
+      value => $self->{uptime} / 60,
+      places => 0,
+  );
+}
+
 package Classes::HOSTRESOURCESMIB;
 our @ISA = qw(Classes::Device);
 use strict;
@@ -25698,7 +26774,7 @@ sub dump {
 }
 
 package Classes::LMSENSORSMIB::Component::FanSubsystem;
-our @ISA = qw(GLPlugin::SNMP::Item);
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
 
 sub init {
@@ -25709,7 +26785,7 @@ sub init {
 }
 
 package Classes::LMSENSORSMIB::Component::FanSubsystem::Fan;
-our @ISA = qw(GLPlugin::SNMP::TableItem);
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
 use strict;
 
 sub check {
@@ -25722,7 +26798,7 @@ sub check {
 }
 
 package Classes::LMSENSORSMIB::Component::TemperatureSubsystem;
-our @ISA = qw(GLPlugin::SNMP::Item);
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
 
 sub init {
@@ -25733,7 +26809,7 @@ sub init {
 }
 
 package Classes::LMSENSORSMIB::Component::TemperatureSubsystem::Temperature;
-our @ISA = qw(GLPlugin::SNMP::TableItem);
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
 use strict;
 
 sub finish {
@@ -26414,11 +27490,18 @@ use strict;
 sub init {
   my $self = shift;
   $self->get_snmp_objects('UCD-SNMP-MIB', (qw(
-      memTotalSwap memAvailSwap memTotalReal memAvailReal memTotalFree)));
+      memTotalSwap memAvailSwap memTotalReal memAvailReal memBuffer memCached
+      memMinimumSwap memSwapError memSwapErrorMsg)));
+
+  # basically buffered memory can always be freed up (filesystem cache)
   # https://kc.mcafee.com/corporate/index?page=content&id=KB73175
-  $self->{mem_usage} = ($self->{memTotalReal} - $self->{memTotalFree}) /
-      $self->{memTotalReal} * 100;
-  $self->{mem_usage} = $self->{memAvailReal} * 100 / $self->{memTotalReal};
+  my $mem_available = $self->{memAvailReal};
+  foreach (qw(memBuffer memCached)) {
+    $mem_available += $self->{$_} if defined($self->{$_});
+  }
+
+  # calc memory (no swap)
+  $self->{mem_usage} = 100 - ($mem_available * 100 / $self->{memTotalReal});
 }
 
 sub check {
@@ -26427,9 +27510,13 @@ sub check {
   if (defined $self->{mem_usage}) {
     $self->add_info(sprintf 'memory usage is %.2f%%',
         $self->{mem_usage});
-    $self->set_thresholds(warning => 80,
+    $self->set_thresholds(
+        metric => 'memory_usage',
+        warning => 80,
         critical => 90);
-    $self->add_message($self->check_thresholds($self->{mem_usage}));
+    $self->add_message($self->check_thresholds(
+        metric => 'memory_usage',
+        value => $self->{mem_usage}));
     $self->add_perfdata(
         label => 'memory_usage',
         value => $self->{mem_usage},
@@ -26440,6 +27527,49 @@ sub check {
   }
 }
 
+package Classes::UCDMIB::Component::SwapSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_objects('UCD-SNMP-MIB', (qw(
+      memTotalSwap memAvailSwap memMinimumSwap
+      memSwapError memSwapErrorMsg)));
+
+  # calc swap usage
+  eval {
+    $self->{swap_usage} = 100 - ($self->{memAvailSwap} * 100 / $self->{memTotalSwap});
+  };
+}
+
+sub check {
+  my $self = shift;
+  if (defined $self->{'swap_usage'}) {
+    $self->add_info(sprintf 'swap usage is %.2f%%',
+        $self->{swap_usage});
+    $self->set_thresholds(
+      metric => 'swap_usage',
+      warning => int(100 - ($self->{memMinimumSwap} * 100 / $self->{memTotalSwap})),
+      critical => int(100 - ($self->{memMinimumSwap} * 100 / $self->{memTotalSwap}))
+    );
+    $self->add_message($self->check_thresholds(
+        metric => 'swap_usage',
+        value => $self->{swap_usage}));
+    $self->add_perfdata(
+        label => 'swap_usage',
+        value => $self->{swap_usage},
+        uom => '%',
+    );
+    if ($self->{'memSwapError'} eq 'error') {
+      $self->add_critical('SwapError: ' . $self->{'memSwapErrorMsg'});
+    }
+  } else {
+    # $self->add_unknown('cannot aquire swap usage');
+    # This system does not use swap
+  }
+}
+
 package Classes::UCDMIB::Component::CpuSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
@@ -26447,40 +27577,88 @@ use strict;
 sub init {
   my $self = shift;
   $self->get_snmp_objects('UCD-SNMP-MIB', (qw(
-      ssCpuUser ssCpuSystem ssCpuIdle ssCpuRawUser ssCpuRawSystem ssCpuRawIdle ssCpuRawNice)));
-  $self->valdiff({name => 'cpu'}, qw(ssCpuRawUser ssCpuRawSystem ssCpuRawIdle ssCpuRawNice));
-  my $cpu_total = $self->{delta_ssCpuRawUser} + $self->{delta_ssCpuRawSystem} +
-      $self->{delta_ssCpuRawIdle} + $self->{delta_ssCpuRawNice};
-  if ($cpu_total == 0) {
-    $self->{cpu_usage} = 0;
-  } else {
-    $self->{cpu_usage} = (100 - ($self->{delta_ssCpuRawIdle} / $cpu_total) * 100);
+      ssCpuUser ssCpuSystem ssCpuIdle ssCpuRawUser ssCpuRawSystem ssCpuRawIdle
+      ssCpuRawNice ssCpuRawWait ssCpuRawKernel ssCpuRawInterrupt)));
+  $self->valdiff({name => 'cpu'}, qw(
+      ssCpuRawUser ssCpuRawSystem ssCpuRawIdle ssCpuRawNice ssCpuRawWait
+      ssCpuRawKernel ssCpuRawInterrupt));
+  my $cpu_total = 0;
+  # not every kernel/snmpd supports every counters
+  foreach (qw(delta_ssCpuRawUser delta_ssCpuRawSystem delta_ssCpuRawIdle
+    delta_ssCpuRawNice delta_ssCpuRawWait delta_ssCpuRawKernel
+    delta_ssCpuRawInterrupt)) {
+    $cpu_total += $self->{$_} if defined($self->{$_});
+  }
+
+  # main cpu usage (total - idle)
+  $self->{cpu_usage} =
+      $cpu_total == 0 ? 0 : (100 - ($self->{delta_ssCpuRawIdle} / $cpu_total) * 100);
+
+  # additional metrics (all but idle)
+  if (defined $self->{delta_ssCpuRawUser}) {
+    $self->{user_usage} =
+        $cpu_total == 0 ? 0 : ($self->{delta_ssCpuRawUser} / $cpu_total) * 100;
+  }
+  if (defined $self->{delta_ssCpuRawSystem}) {
+    $self->{system_usage} =
+        $cpu_total == 0 ? 0 : ($self->{delta_ssCpuRawSystem} / $cpu_total) * 100;
+  }
+  if (defined $self->{delta_ssCpuRawNice}) {
+    $self->{nice_usage} =
+        $cpu_total == 0 ? 0 : ($self->{delta_ssCpuRawNice} / $cpu_total) * 100;
+  }
+  if (defined $self->{delta_ssCpuRawWait}) {
+    $self->{wait_usage} =
+        $cpu_total == 0 ? 0 : ($self->{delta_ssCpuRawWait} / $cpu_total) * 100;
+  }
+  if (defined $self->{delta_ssCpuRawKernel}) {
+    $self->{kernel_usage} =
+        $cpu_total == 0 ? 0 : ($self->{delta_ssCpuRawKernel} / $cpu_total) * 100;
+  }
+  if (defined $self->{delta_ssCpuRawInterrupt}) {
+    $self->{interrupt_usage} =
+        $cpu_total == 0 ? 0 : ($self->{delta_ssCpuRawInterrupt} / $cpu_total) * 100;
   }
 }
 
 sub check {
   my $self = shift;
   $self->add_info('checking cpus');
-  $self->add_info(sprintf 'cpu usage is %.2f%%', $self->{cpu_usage});
-  $self->set_thresholds(warning => 50, critical => 90);
-  $self->add_message($self->check_thresholds($self->{cpu_usage}));
-  $self->add_perfdata(
-      label => 'cpu_usage',
-      value => $self->{cpu_usage},
-      uom => '%',
-  );
+  foreach (qw(cpu user system nice wait kernel interrupt)) {
+    my $key = $_ . '_usage';
+    if (defined($self->{$key})) {
+      $self->add_info(sprintf '%s: %.2f%%',
+          $_ . ($_ eq 'cpu' ? ' (total)' : ''),
+	  $self->{$key});
+      $self->set_thresholds(
+          metric => $key,
+          warning => 50,
+          critical => 90);
+      $self->add_message($self->check_thresholds(
+          metric => $key,
+          value => $self->{$key}));
+      $self->add_perfdata(
+          label => $key,
+          value => $self->{$key},
+          uom => '%',
+      );
+    }
+  }
 }
+package Classes::UCDMIB::Component::LoadSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
 
-sub unix_init {
+sub init {
   my $self = shift;
   my %params = @_;
   my $type = 0;
   $self->get_snmp_tables('UCD-SNMP-MIB', [
-      ['loads', 'laTable', 'Classes::UCDMIB::Component::CpuSubsystem::Load'],
+      ['loads', 'laTable', 'Classes::UCDMIB::Component::LoadSubsystem::Load'],
   ]);
 }
 
-sub unix_check {
+sub check {
   my $self = shift;
   $self->add_info('checking loads');
   foreach (@{$self->{loads}}) {
@@ -26488,7 +27666,7 @@ sub unix_check {
   }
 }
 
-sub unix_dump {
+sub dump {
   my $self = shift;
   foreach (@{$self->{loads}}) {
     $_->dump();
@@ -26496,20 +27674,249 @@ sub unix_dump {
 }
 
 
-package Classes::UCDMIB::Component::CpuSubsystem::Load;
+package Classes::UCDMIB::Component::LoadSubsystem::Load;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+use Data::Dumper;
+
+sub check {
+  my $self = shift;
+  my $errorfound = 0;
+  $self->set_thresholds(
+      metric => lc $self->{laNames},
+      warning => $self->{laConfig},
+      critical => $self->{laConfig}
+  );
+  $self->add_info(
+      sprintf '%s is %.2f%s',
+      lc $self->{laNames}, $self->{laLoad},
+      $self->{'laErrorFlag'} eq 'error'
+          ? sprintf ' (%s)', $self->{'laErrMessage'}
+          : ''
+  );
+  if ($self->{'laErrorFlag'} eq 'error') {
+    $self->add_message(Monitoring::GLPlugin::CRITICAL);
+  } else {
+    $self->add_message($self->check_thresholds(
+        metric => lc $self->{laNames},
+        value => $self->{laLoad}));
+  }
+  $self->add_perfdata(
+      label => lc $self->{laNames},
+      value => $self->{laLoad},
+  );
+}
+
+package Classes::UCDMIB::Component::DiskSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('UCD-SNMP-MIB', [
+      ['disks', 'dskTable', 'Classes::UCDMIB::Component::DiskSubsystem::Disk',
+          sub {
+            my $self = shift;
+            # limit disk checks to specific disks. could be improvied by
+            # checking the path first and then request the table by indizes
+            if ($self->opts->name) {
+              if ($self->opts->regexp) {
+                my $pattern = $self->opts->name;
+                return $self->{dskTotal} && $self->{dskPath} =~ /$pattern/i;
+              } else {
+                return $self->{dskTotal} && grep { $_ eq $self->{dskPath} }
+                    split ',', $self->opts->name;
+              }
+            } else {
+              return $self->{dskTotal} &&
+                  $self->{dskDevice} !~ /^(sysfs|proc|udev|devpts|rpc_pipefs|nfsd|devfs)$/;
+            }
+          }
+      ],
+  ]);
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info('checking disks');
+  if (scalar(@{$self->{disks}}) == 0) {
+    $self->add_unknown('no disks');
+    return;
+  }
+  foreach (@{$self->{disks}}) {
+    $_->check();
+  }
+}
+
+package Classes::UCDMIB::Component::DiskSubsystem::Disk;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
 use strict;
 
 sub check {
   my $self = shift;
-  my $errorfound = 0;
-  $self->add_info(sprintf '%s is %.2f', lc $self->{laNames}, $self->{laLoadFloat});
-  $self->set_thresholds(warning => $self->{laConfig},
-      critical => $self->{laConfig});
-  $self->add_message($self->check_thresholds($self->{laLoadFloat}));
+
+  # use 32bit counter first
+  my $avail = $self->{dskAvail};
+  my $total = $self->{dskTotal};
+  my $used = $self->{dskUsed};
+
+  # support large disks if 64bit counter are present
+  if (defined $self->{dskAvailHigh} && defined $self->{dskAvailLow}
+      && $self->{dskAvailHigh} > 0) {
+    $avail = $self->{dskAvailHigh} * 2**32 + $self->{dskAvailLow};
+  }
+  if (defined $self->{dskTotalHigh} && defined $self->{dskTotalLow}
+      && $self->{dskTotalHigh} > 0) {
+    $total = $self->{dskTotalHigh} * 2**32 + $self->{dskTotalLow};
+  }
+  if (defined $self->{dskUsedHigh} && defined $self->{dskUsedLow}
+      && $self->{dskUsedHigh} > 0) {
+    $used = $self->{dskUsedHigh} * 2**32 + $self->{dskUsedLow};
+  }
+
+  # calc free space left
+  my $free = 100 * $avail / $total;
+
+  # define + set threshold
+  my $warn = '10:';
+  my $crit = '5:';
+  my $warn_used = int($total * 0.9);
+  my $crit_used = int($total * 0.95);
+
+  # set threshold based on snmp response
+  if ($self->{dskMinPercent} >= 0) {
+    $warn = sprintf '%d:', $self->{dskMinPercent};
+    $crit = $warn;
+    $warn_used = int($total * (1 - $self->{dskMinPercent}/100));
+    $crit_used = $warn_used;
+  } elsif ($self->{dskMinimum} >= 0) {
+    $warn = sprintf '%f:', $self->{dskMinimum} / $total;
+    $crit = $warn;
+    $warn_used = $total - $self->{dskMinimum};
+    $crit_used = $warn_used;
+  }
+
+  # now set the thresholds
+  $self->set_thresholds(metric => sprintf('%s_free_pct', $self->{dskPath}),
+      warning => $warn, critical => $crit);
+
+  # display human readable free space message
+  my $spaceleft = int($avail/1024);
+  $spaceleft =~ s/(?<=\d)(?=(?:\d\d\d)+\b)/,/g;
+  $self->add_info(sprintf '%s has %s MB left (%.2f%%)%s',
+      $self->{dskPath}, $spaceleft, $free,
+      $self->{dskErrorFlag} eq 'error'
+          ? sprintf ' - %s', $self->{dskErrorMsg}
+          : '');
+
+  # raise critical error if errorflag is set
+  if ($self->{dskErrorFlag} eq 'error') {
+    $self->add_message(Monitoring::GLPlugin::CRITICAL);
+
+  # otherwise check thresholds
+  } else {
+    $self->add_message($self->check_thresholds(
+        metric => sprintf('%s_free_pct', $self->{dskPath}),
+        value => $free));
+  }
+
+  # add performance data
   $self->add_perfdata(
-      label => lc $self->{laNames},
-      value => $self->{laLoadFloat},
+      label => sprintf('%s_free_pct', $self->{dskPath}),
+      value => $free,
+      uom => '%',
+  );
+
+  # add additional perfdata and map thresholds if they have been changed
+  # via commandline arguments (just for perfdata display
+  my @thresholds = $self->get_thresholds(
+      metric => sprintf('%s_free_pct', $self->{dskPath}));
+  if ($warn ne $thresholds[0] && $thresholds[0] =~ m/^(\d+):$/) {
+    $warn_used = int($total * (1 - $1/100));
+  }
+  if ($crit ne $thresholds[1] && $thresholds[1] =~ m/^(\d+):$/) {
+    $crit_used = int($total * (1 - $1/100));
+  }
+  $self->add_perfdata(
+      label => sprintf('%s_used_kb', $self->{dskPath}),
+      value => $used,
+      uom => 'kb',
+      min => 0,
+      max => $total,
+      warning => $warn_used,
+      critical => $crit_used
+  );
+}
+
+package Classes::UCDMIB::Component::ProcessSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('UCD-SNMP-MIB', [
+      ['processes', 'prTable', 'Classes::UCDMIB::Component::ProcessSubsystem::Process',
+        sub {
+          my $self = shift;
+          # limit process checks to specific names. could be improvied by
+          # checking the names first and then request the table by indizes
+          if ($self->opts->name) {
+            if ($self->opts->regexp) {
+              my $pattern = $self->opts->name;
+              return $self->{prNames} =~ /$pattern/i;
+            } else {
+              return grep { $_ eq $self->{prNames} }
+                  split ',', $self->opts->name;
+            }
+          } else {
+            return 1;
+          }
+        }
+      ]
+  ]);
+}
+
+sub check {
+  my $self = shift;
+  $self->add_info('checking processes');
+  if (scalar(@{$self->{processes}}) == 0) {
+    $self->add_unknown('no processes');
+    return;
+  }
+  foreach (@{$self->{processes}}) {
+    $_->check();
+  }
+}
+
+package Classes::UCDMIB::Component::ProcessSubsystem::Process;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf '%s: %d%s',
+      $self->{prNames},
+      $self->{prCount},
+      $self->{prErrorFlag} eq 'error'
+          ? sprintf ' (%s)', $self->{prErrMessage}
+          : '');
+  my $threshold = sprintf '%u:%s',
+      !$self->{prMin} && !$self->{prMax} ? 1 : $self->{prMin},
+      $self->{prMax} && $self->{prMax} >= $self->{prMin} ? $self->{prMax} : '';
+  $self->set_thresholds(
+      metric => $self->{prNames},
+      warning => $threshold,
+      critical => $threshold);
+  if ($self->{prErrorFlag} eq 'error') {
+    $self->add_message(Monitoring::GLPlugin::CRITICAL);
+  } else {
+    $self->add_message($self->check_thresholds(
+        metric => $self->{prNames},
+        value => $self->{prCount}));
+  }
+  $self->add_perfdata(
+      label => $self->{prNames},
+      value => $self->{prCount}
   );
 }
 
@@ -27996,6 +29403,9 @@ sub init {
     $self->debug('using Classes::CheckPoint::VSX');
   #} elsif ($self->get_snmp_object('CHECKPOINT-MIB', 'fwProduct') || $self->{productname} =~ /(FireWall\-1\s)|(cpx86_64)|(Linux.*\dcp )/i) {
   } elsif ($self->get_snmp_object('CHECKPOINT-MIB', 'fwProduct')) {
+    bless $self, 'Classes::CheckPoint::Firewall1';
+    $self->debug('using Classes::CheckPoint::Firewall1');
+  } elsif ($self->get_snmp_object('CHECKPOINT-MIB', 'mgProdName')) {
     bless $self, 'Classes::CheckPoint::Firewall1';
     $self->debug('using Classes::CheckPoint::Firewall1');
   } else {
@@ -29627,32 +31037,6 @@ sub overall_dump {
   printf "\n";
 }
 
-sub unix_init {
-  my $self = shift;
-  my %params = @_;
-  my $type = 0;
-  $self->get_snmp_tables('UCD-SNMP-MIB', [
-      ['loads', 'laTable', 'Classes::Foundry::Component::CpuSubsystem::Load'],
-  ]);
-}
-
-sub unix_check {
-  my $self = shift;
-  my $errorfound = 0;
-  $self->add_info('checking loads');
-  foreach (@{$self->{loads}}) {
-    $_->check();
-  }
-}
-
-sub unix_dump {
-  my $self = shift;
-  foreach (@{$self->{loads}}) {
-    $_->dump();
-  }
-}
-
-
 package Classes::Foundry::Component::CpuSubsystem::Cpu;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
 use strict;
@@ -29674,24 +31058,6 @@ sub check {
       label => 'cpu_'.$self->{snAgentCpuUtilSlotNum},
       value => $self->{snAgentCpuUtilValue},
       uom => '%',
-  );
-}
-
-
-package Classes::Foundry::Component::CpuSubsystem::Load;
-our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
-use strict;
-
-sub check {
-  my $self = shift;
-  my $errorfound = 0;
-  $self->add_info(sprintf '%s is %.2f', lc $self->{laNames}, $self->{laLoadFloat});
-  $self->set_thresholds(warning => $self->{laConfig},
-      critical => $self->{laConfig});
-  $self->add_message($self->check_thresholds($self->{laLoadFloat}));
-  $self->add_perfdata(
-      label => lc $self->{laNames},
-      value => $self->{laLoadFloat},
   );
 }
 
@@ -30006,24 +31372,6 @@ sub check {
       uom => '%',
   );
 }
-
-
-package Classes::PaloALto::Component::CpuSubsystem::Load;
-our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
-use strict;
-
-sub check {
-  my $self = shift;
-  $self->add_info(sprintf '%s is %.2f', lc $self->{laNames}, $self->{laLoadFloat});
-  $self->set_thresholds(warning => $self->{laConfig},
-      critical => $self->{laConfig});
-  $self->add_message($self->check_thresholds($self->{laLoadFloat}));
-  $self->add_perfdata(
-      label => lc $self->{laNames},
-      value => $self->{laLoadFloat},
-  );
-}
-
 package Classes::PaloAlto::Component::EnvironmentalSubsystem;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
@@ -30322,14 +31670,14 @@ sub classify {
         bless $self, 'Classes::UPNP::AVM';
         $self->debug('using Classes::UPNP::AVM');
       } elsif ($self->{productname} =~ /linuxlocal/i) {
-        bless $self, 'Server::Linux';
-        $self->debug('using Server::Linux');
+        bless $self, 'Server::LinuxLocal';
+        $self->debug('using Server::LinuxLocal');
       } elsif ($self->{productname} =~ /windowslocal/i) {
-        bless $self, 'Server::Windows';
-        $self->debug('using Server::Windows');
+        bless $self, 'Server::WindowsLocal';
+        $self->debug('using Server::WindowsLocal');
       } elsif ($self->{productname} =~ /solarislocal/i) {
-        bless $self, 'Server::Solaris';
-        $self->debug('using Server::Solaris');
+        bless $self, 'Server::SolarisLocal';
+        $self->debug('using Server::SolarisLocal');
       } elsif ($self->{productname} =~ /Cisco/i) {
         bless $self, 'Classes::Cisco';
         $self->debug('using Classes::Cisco');
@@ -30451,6 +31799,12 @@ sub classify {
       } elsif ($self->{sysobjectid} =~ /1\.3\.6\.1\.4\.1\.9\./) {
         bless $self, 'Classes::Cisco';
         $self->debug('using Classes::Cisco');
+      } elsif ($self->{sysobjectid} =~ /1\.3\.6\.1\.4\.1\.272\./) {
+        bless $self, 'Classes::Bintec::Bibo';
+        $self->debug('using Classes::Cisco');
+      } elsif ($self->{productname} =~ /^Linux/i) {
+        bless $self, 'Classes::Server::Linux';
+        $self->debug('using Classes::Server::Linux');
       } else {
         $self->map_oid_to_class('1.3.6.1.4.1.12532.252.5.1',
             'Classes::Juniper::IVE');
@@ -30497,6 +31851,8 @@ sub init {
     bless $self, "Classes::OSPF";
     #$self->analyze_and_check_ospf_subsystem("Classes::OSPF");
     $self->init();
+  } elsif ($self->mode =~ /device::vrrp/) {
+    $self->analyze_and_check_vrrp_subsystem("Classes::VRRPMIB::Component::VRRPSubsystem");
   } else {
     bless $self, 'Monitoring::GLPlugin::SNMP';
     $self->no_such_mode();
@@ -30528,7 +31884,7 @@ my $plugin = Classes::Device->new(
         '--mode <what-to-do> '.
         '--hostname <network-component> --community <snmp-community>'.
         '  ...]',
-    version => '$Revision: 5.3.2 $',
+    version => '$Revision: 5.7.1 $',
     blurb => 'This plugin checks various parameters of network components ',
     url => 'http://labs.consol.de/nagios/check_nwc_health',
     timeout => 60,
@@ -30551,6 +31907,12 @@ $plugin->add_mode(
     spec => 'memory-usage',
     alias => undef,
     help => 'Check the memory usage of the device',
+);
+$plugin->add_mode(
+    internal => 'device::disk::usage',
+    spec => 'disk-usage',
+    alias => undef,
+    help => 'Check the disk usage of the device',
 );
 $plugin->add_mode(
     internal => 'device::interfaces::usage',
@@ -30668,6 +32030,24 @@ $plugin->add_mode(
     help => 'Show the HSRP groups configured on this device',
 );
 $plugin->add_mode(
+    internal => 'device::vrrp::state',
+    spec => 'vrrp-state',
+    alias => undef,
+    help => 'Check the state in a VRRP group',
+);
+$plugin->add_mode(
+    internal => 'device::vrrp::failover',
+    spec => 'vrrp-failover',
+    alias => undef,
+    help => 'Check if a VRRP group\'s nodes have changed their roles',
+);
+$plugin->add_mode(
+    internal => 'device::vrrp::list',
+    spec => 'list-vrrp-groups',
+    alias => undef,
+    help => 'Show the VRRP groups configured on this device',
+);
+$plugin->add_mode(
     internal => 'device::bgp::peer::status',
     spec => 'bgp-peer-status',
     alias => undef,
@@ -30726,6 +32106,12 @@ $plugin->add_mode(
     spec => 'mngmt-status',
     alias => undef,
     help => 'Check the status of the management subsystem',
+);
+$plugin->add_mode(
+    internal => 'device::process::status',
+    spec => 'process-status',
+    alias => undef,
+    help => 'Check the status of the running processes'
 );
 $plugin->add_mode(
     internal => 'device::fw::policy::installed',

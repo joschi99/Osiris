@@ -30,7 +30,7 @@ use Pod::Find qw(pod_where);
 
 my %handlers = (DIE => {});
 
-my $global_version = 20160324;
+my $global_version = 20160524;
 my $alternative_fatpacker = 0;
 
 sub new {
@@ -273,8 +273,9 @@ sub run {
 
     $self->check_relaunch();
     
-    centreon::plugins::misc::mymodule_load(output => $self->{output}, module => $self->{plugin}, 
-                                           error_msg => "Cannot load module --plugin.");
+    (undef, $self->{plugin}) = 
+        centreon::plugins::misc::mymodule_load(output => $self->{output}, module => $self->{plugin}, 
+                                               error_msg => "Cannot load module --plugin.");
     my $plugin = $self->{plugin}->new(options => $self->{options}, output => $self->{output});
     $plugin->init(help => $self->{help},
                   version => $self->{version});
