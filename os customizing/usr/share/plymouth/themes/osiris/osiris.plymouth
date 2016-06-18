@@ -1,0 +1,12 @@
+[Plymouth Theme]
+Name=Osiris
+Description=Osiris Network Management System 2 Theme
+ModuleName=osiris2
+
+[two-step]
+ImageDir=/usr/share/plymouth/themes/osiris
+HorizontalAlignment=.5
+VerticalAlignment=.5
+BackgroundStartColor=0x080808
+BackgroundEndColor=0x080808
+ProgressFunction=linear
