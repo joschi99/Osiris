@@ -1,4 +1,6 @@
 Osiris 2.3.0
+	Monitoring
+		- Upgrade Centreon Broker 2.11.5
 	Inventory
 		- Upgrade Fusion Inventory Agent 2.3.18
 	Syslog & Logmanagement
