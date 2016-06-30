@@ -1,8 +1,2 @@
-# 01:00 alle Daten > 15 Tage
-00 01 * * * root curator delete indices --older-than 15 --time-unit days --timestring '\%Y.\%m.\%d' >> /var/log/curator.log 2>&1
-
-# 01:10 max 20GB Daten
-10 01 * * * root curator delete --disk-space 20 indices --all-indices >> /var/log/curator.log 2>&1
-
-# 01:20 Optimize indexes older than 2 days to 1 segment per shard and delay 120 seconds between indices
-20 01 * * * root curator optimize --max_num_segments 1 --delay 120 indices --all-indices >> /var/log/curator.log 2>&1
+# 01:00 delete indices older then 15 days or space is > 20GB
+00 01 * * * root curator --config /etc/curator/curator.yml /etc/curator/del_index.yml >> /var/log/curator.log 2>&1

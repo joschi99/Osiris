@@ -1,6 +1,11 @@
 Osiris 2.3.0
 	Inventory
 		- Upgrade Fusion Inventory Agent 2.3.18
+	Syslog & Logmanagement
+		- Upgrade Elasticsearch 2.3.3
+		- Upgrade Logstash 2.3.3
+		- Upgrade Kibana 4.5.1
+		- Upgrade Curator 4.0.0
 Osiris 2.2.1
 	Monitoring
 		- Upgrade Centreon Broker 2.11.4

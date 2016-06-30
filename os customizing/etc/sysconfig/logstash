@@ -12,7 +12,7 @@
 #LS_OPTS=""
 
 # Arguments to pass to java
-#LS_HEAP_SIZE="500m"
+#LS_HEAP_SIZE="1g"
 #LS_JAVA_OPTS="-Djava.io.tmpdir=$HOME"
 
 # pidfiles aren't used for upstart; this is for sysv users.
@@ -20,11 +20,11 @@
 
 # user id to be invoked as; for upstart: edit /etc/init/logstash.conf
 #LS_USER=logstash
-LS_USER=root
 
 # logstash logging
-LS_LOG_FILE=/var/log/logstash/logstash.log
-LS_USE_GC_LOGGING="true"
+#LS_LOG_FILE=/var/log/logstash/logstash.log
+#LS_USE_GC_LOGGING="true"
+#LS_GC_LOG_FILE=/var/log/logstash/gc.log
 
 # logstash configuration directory
 #LS_CONF_DIR=/etc/logstash/conf.d
@@ -38,4 +38,4 @@ LS_USE_GC_LOGGING="true"
 # If this is set to 1, then when `stop` is called, if the process has
 # not exited within a reasonable time, SIGKILL will be sent next.
 # The default behavior is to simply log a message "program stop failed; still running"
-KILL_ON_STOP_TIMEOUT=0
+#KILL_ON_STOP_TIMEOUT=0

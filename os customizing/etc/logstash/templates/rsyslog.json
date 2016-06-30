@@ -20,7 +20,6 @@ curl -XPUT localhost:9200/_template/rsyslog -d '
             }], 
             "properties" : { 
                 "@timestamp" : { "type" : "date", "format" : "dateOptionalTime" }, 
-                "timegenerated" : { "type" : "date", "format" : "dateOptionalTime" }, 
                 "facility-id" : { "type" : "integer", "norms" : { "enabled" : false } }, 
                 "fromhost-ip" : { "type" : "ip", "norms" : { "enabled" : false } },
                 "fromhost" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true }, 
@@ -32,3 +31,4 @@ curl -XPUT localhost:9200/_template/rsyslog -d '
     } 
 }
 '
+
