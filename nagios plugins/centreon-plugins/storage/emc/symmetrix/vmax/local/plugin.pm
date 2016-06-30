@@ -18,7 +18,7 @@
 # limitations under the License.
 #
 
-package storage::dell::compellent::local::plugin;
+package storage::emc::symmetrix::vmax::local::plugin;
 
 use strict;
 use warnings;
@@ -31,8 +31,7 @@ sub new {
 
     $self->{version} = '0.1';
     %{$self->{modes}} = (
-                         'hba-usage'    => 'storage::dell::compellent::local::mode::hbausage',
-                         'volume-usage' => 'storage::dell::compellent::local::mode::volumeusage',
+                         'hardware'	=> 'storage::emc::symmetrix::vmax::local::mode::hardware',
                          );
 
     return $self;
@@ -44,6 +43,6 @@ __END__
 
 =head1 PLUGIN DESCRIPTION
 
-Check Dell Compellent Storage. Need Dell Storage PowerShell SDK.
+Check vmax storage. The plugin needs to be installed on Windows Management.
 
 =cut

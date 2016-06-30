@@ -18,21 +18,22 @@
 # limitations under the License.
 #
 
-package storage::dell::compellent::local::plugin;
+package storage::lenovo::sseries::snmp::plugin;
 
 use strict;
 use warnings;
-use base qw(centreon::plugins::script_simple);
+use base qw(centreon::plugins::script_snmp);
 
 sub new {
     my ($class, %options) = @_;
     my $self = $class->SUPER::new(package => __PACKAGE__, %options);
     bless $self, $class;
 
-    $self->{version} = '0.1';
+    $self->{version} = '1.0';
     %{$self->{modes}} = (
-                         'hba-usage'    => 'storage::dell::compellent::local::mode::hbausage',
-                         'volume-usage' => 'storage::dell::compellent::local::mode::volumeusage',
+                         'hardware'         => 'snmp_standard::mode::hardwarefibrealliance',
+                         'interfaces'       => 'snmp_standard::mode::interfaces',
+                         'list-interfaces'  => 'snmp_standard::mode::listinterfaces',
                          );
 
     return $self;
@@ -44,6 +45,6 @@ __END__
 
 =head1 PLUGIN DESCRIPTION
 
-Check Dell Compellent Storage. Need Dell Storage PowerShell SDK.
+Check Lenovo Storage S Series (S2200 and S3200) in SNMP.
 
 =cut

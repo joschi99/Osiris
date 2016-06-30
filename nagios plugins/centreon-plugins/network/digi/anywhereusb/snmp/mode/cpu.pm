@@ -18,7 +18,7 @@
 # limitations under the License.
 #
 
-package network::netasq::snmp::mode::hastatus;
+package network::digi::anywhereusb::snmp::mode::cpu;
 
 use base qw(centreon::plugins::mode);
 
@@ -32,11 +32,11 @@ sub new {
     
     $self->{version} = '1.0';
     $options{options}->add_options(arguments =>
-                                { 
-                                  "warning:s"      => { name => 'warning' },
-                                  "critical:s"     => { name => 'critical' },
+                                {
+                                  "warning:s"   => { name => 'warning' },
+                                  "critical:s"  => { name => 'critical' },
                                 });
-                                
+
     return $self;
 }
 
@@ -56,27 +56,20 @@ sub check_options {
 
 sub run {
     my ($self, %options) = @_;
-    # $options{snmp} = snmp object
     $self->{snmp} = $options{snmp};
     
-    my $oid_ntqNbNode = '.1.3.6.1.4.1.11256.1.11.1.0';
-    my $oid_ntqNbDeadNode = '.1.3.6.1.4.1.11256.1.11.2.0';
-    my $result = $self->{snmp}->get_leef(oids => [$oid_ntqNbNode, $oid_ntqNbDeadNode], nothing_quit => 1);
+    my $oid_diCpuUtilization = '.1.3.6.1.4.1.332.11.6.1.6.0';
+    my $result = $self->{snmp}->get_leef(oids => [$oid_diCpuUtilization], nothing_quit => 1);
     
-    if ($result->{$oid_ntqNbNode} == 1) {
-        $self->{output}->output_add(severity => 'OK',
-                                    short_msg => "Only one node. No ha.");
-    } else {
-        my $exit = $self->{perfdata}->threshold_check(value => $result->{$oid_ntqNbDeadNode}, threshold => [ { label => 'critical', exit_litteral => 'critical' }, { label => 'warning', exit_litteral => 'warning' } ]);
-        $self->{output}->output_add(severity => $exit,
-                                    short_msg => sprintf("%d dead nodes on %d nodes", 
-                                                        $result->{$oid_ntqNbDeadNode}, $result->{$oid_ntqNbNode}));
-        $self->{output}->perfdata_add(label => 'dead_nodes',
-                                      value => $result->{$oid_ntqNbDeadNode},
-                                      warning => $self->{perfdata}->get_perfdata_for_output(label => 'warning'),
-                                      critical => $self->{perfdata}->get_perfdata_for_output(label => 'critical'),
-                                      min => 0, max => $result->{$oid_ntqNbNode});
-    }
+    my $exit = $self->{perfdata}->threshold_check(value => $result->{$oid_diCpuUtilization}, 
+                                                  threshold => [ { label => 'critical', exit_litteral => 'critical' }, { label => 'warning', exit_litteral => 'warning' } ]);
+    $self->{output}->output_add(severity => $exit,
+                                short_msg => sprintf("CPU Usage : %.2f", $result->{$oid_diCpuUtilization}));
+    $self->{output}->perfdata_add(label => "cpu",
+                                  value => $result->{$oid_diCpuUtilization},
+                                  warning => $self->{perfdata}->get_perfdata_for_output(label => 'warning'),
+                                  critical => $self->{perfdata}->get_perfdata_for_output(label => 'critical'),
+                                  min => 0);
     
     $self->{output}->display();
     $self->{output}->exit();
@@ -88,18 +81,19 @@ __END__
 
 =head1 MODE
 
-Check ha status.
+Check current processor usage.
 
 =over 8
 
 =item B<--warning>
 
-Threshold warning (number of dead nodes).
+Threshold warning.
 
 =item B<--critical>
 
-Threshold critical (number of dead nodes).
+Threshold critical.
 
 =back
 
 =cut
+    
