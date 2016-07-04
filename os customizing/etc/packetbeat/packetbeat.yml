@@ -95,12 +95,12 @@ protocols:
   pgsql:
     # Configure the ports where to listen for Pgsql traffic. You can disable
     # the Pgsql protocol by commenting out the list of ports.
-    ports: [5432]
+#    ports: [5432]
 
   redis:
     # Configure the ports where to listen for Redis traffic. You can disable
     # the Redis protocol by commenting out the list of ports.
-    ports: [6379]
+#    ports: [6379]
 
   thrift:
     # Configure the ports where to listen for Thrift-RPC traffic. You can disable
@@ -110,12 +110,12 @@ protocols:
   mongodb:
     # Configure the ports where to listen for MongoDB traffic. You can disable
     # the MongoDB protocol by commenting out the list of ports.
-    ports: [27017]
+#    ports: [27017]
 
 ############################# Processes #######################################
 
 # Configure the processes to be monitored and how to find them. If a process is
-# monitored than Packetbeat attempts to use it's name to fill in the `proc` and
+# monitored then Packetbeat attempts to use it's name to fill in the `proc` and
 # `client_proc` fields.
 # The processes can be found by searching their command line by a given string.
 #
@@ -155,7 +155,7 @@ output:
     # IPv6 addresses should always be defined as: https://[2001:db8::1]:9200
     hosts: ["localhost:9200"]
 
-    # Optional protocol and basic auth credentials. These are deprecated.
+    # Optional protocol and basic auth credentials.
     #protocol: "https"
     #username: "admin"
     #password: "s3cr3t"
@@ -165,10 +165,27 @@ output:
 
     # Optional index name. The default is "packetbeat" and generates
     # [packetbeat-]YYYY.MM.DD keys.
-    #index: "packetbeat"
+    index: "packetbeat"
+
+    # A template is used to set the mapping in Elasticsearch
+    # By default template loading is disabled and no template is loaded.
+    # These settings can be adjusted to load your own template or overwrite existing ones
+    template:
+
+      # Template name. By default the template name is packetbeat.
+      name: "packetbeat"
+
+      # Path to template file
+      path: "/etc/packetbeat/packetbeat.template.json"
+
+      # Overwrite existing template
+      overwrite: true
 
     # Optional HTTP Path
     #path: "/elasticsearch"
+
+    # Proxy server url
+    #proxy_url: http://proxy:3128
 
     # The number of times a particular Elasticsearch index operation is attempted. If
     # the indexing operation doesn't succeed after this many retries, the events are
@@ -232,6 +249,9 @@ output:
 
     # Number of workers per Logstash host.
     #worker: 1
+
+    # Set gzip compression level.
+    #compression_level: 3
 
     # Optional load balance the events between the Logstash hosts
     #loadbalance: true
@@ -315,6 +335,9 @@ shipper:
   # All the IPs will be deleted afterwards. Note, that the value must be higher than
   # refresh_topology_freq. The default is 15 seconds.
   #topology_expire: 15
+
+  # Internal queue size for single events in processing pipeline
+  #queue_size: 1000
 
   # Configure local GeoIP database support.
   # If no paths are not configured geoip is disabled.
