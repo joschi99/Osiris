@@ -1,0 +1,110 @@
+[
+  {
+    "_id": "centreon-logs-all-events",
+    "_type": "search",
+    "_source": {
+      "title": "centreon-logs all events",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "log_id",
+        "instance_name",
+        "host_name",
+        "service_description",
+        "status_description",
+        "typ_description",
+        "output",
+        "msg_description"
+      ],
+      "sort": [
+        "log_id",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"centreon-logs-*\",\"filter\":[],\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"require_field_match\":false,\"fragment_size\":2147483647},\"query\":{\"query_string\":{\"analyze_wildcard\":true,\"query\":\"*\"}}}"
+      }
+    }
+  },
+  {
+    "_id": "centreon-logs-all-host-events",
+    "_type": "search",
+    "_source": {
+      "title": "centreon-logs all host events",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "log_id",
+        "instance_name",
+        "host_name",
+        "service_description",
+        "status_description",
+        "typ_description",
+        "output",
+        "msg_description"
+      ],
+      "sort": [
+        "log_id",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"centreon-logs-*\",\"filter\":[],\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"require_field_match\":false,\"fragment_size\":2147483647},\"query\":{\"query_string\":{\"query\":\"msg_type: 1\",\"analyze_wildcard\":true}}}"
+      }
+    }
+  },
+  {
+    "_id": "centreon-logs-all-service-events",
+    "_type": "search",
+    "_source": {
+      "title": "centreon-logs all service events",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "log_id",
+        "instance_name",
+        "host_name",
+        "service_description",
+        "status_description",
+        "typ_description",
+        "output",
+        "msg_description"
+      ],
+      "sort": [
+        "log_id",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"centreon-logs-*\",\"filter\":[],\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"require_field_match\":false,\"fragment_size\":2147483647},\"query\":{\"query_string\":{\"query\":\"msg_type: 0\",\"analyze_wildcard\":true}}}"
+      }
+    }
+  },
+  {
+    "_id": "centreon-logs-hard-service-events",
+    "_type": "search",
+    "_source": {
+      "title": "centreon-logs hard service events",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "log_id",
+        "instance_name",
+        "host_name",
+        "service_description",
+        "status_description",
+        "typ_description",
+        "output",
+        "msg_description"
+      ],
+      "sort": [
+        "log_id",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"centreon-logs-*\",\"filter\":[],\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"require_field_match\":false,\"fragment_size\":2147483647},\"query\":{\"query_string\":{\"query\":\"msg_type: 0 AND typ: 1\",\"analyze_wildcard\":true}}}"
+      }
+    }
+  }
+]
