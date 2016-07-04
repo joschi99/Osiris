@@ -9,8 +9,11 @@
         "properties" : {
           "@version": { "index": "analyzed", "type": "integer" },
           "@timestamp": { "index": "analyzed", "type": "date" },
-          "src_app": {"index": "not_analyzed", "type": "string" },
-          "dst_app": {"index": "not_analyzed", "type": "string" },
+          "src_port": {"index": "not_analyzed", "type": "string" },
+          "dst_port": {"index": "not_analyzed", "type": "string" },
+          "direction": {"index": "not_analyzed", "type": "string" },
+          "protocol": {"index": "not_analyzed", "type": "string" },
+          "tcp_flags": {"index": "not_analyzed", "type": "string" },
           "geoip_src": {
             "type" : "object",
             "dynamic" : true,
