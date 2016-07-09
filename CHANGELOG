@@ -1,13 +1,17 @@
 Osiris 2.3.0
 	Monitoring
+		- Upgrade Centreon Web 2.7.5
 		- Upgrade Centreon Broker 2.11.5
+		- Upgrade Yowsup2 2.5.0
 	Inventory
 		- Upgrade Fusion Inventory Agent 2.3.18
 	Syslog & Logmanagement
-		- Upgrade Elasticsearch 2.3.3
-		- Upgrade Logstash 2.3.3
-		- Upgrade Kibana 4.5.1
+		- Upgrade Elasticsearch 2.3.4
+		- Upgrade Logstash 2.3.4
+		- Upgrade Kibana 4.5.2
 		- Upgrade Curator 4.0.1
+	System
+		- Upgrade glances 2.6.2
 Osiris 2.2.1
 	Monitoring
 		- Upgrade Centreon Broker 2.11.4
