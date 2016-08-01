@@ -1,0 +1,8 @@
+# If you have problem with session.auto_start on install you need to set this value to 0 on php.ini or uncomment this line
+#php_value session.auto_start 0
+
+#BEGIN https://github.com/joschi99/Osiris/issues/44
+<IfModule mod_php5.c>
+php_value memory_limit 256M
+<IfModule env_module>
+#END https://github.com/joschi99/Osiris/issues/44
