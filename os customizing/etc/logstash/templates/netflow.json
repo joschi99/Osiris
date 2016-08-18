@@ -17,7 +17,6 @@
           "geoip_src": {
             "type" : "object",
             "dynamic" : true,
-            "path" : "full",
             "properties" : {
               "location" : { "type" : "geo_point" },
               "city_name": {"index": "not_analyzed", "type": "string" },
@@ -29,7 +28,6 @@
           "geoip_dst": {
             "type" : "object",
             "dynamic" : true,
-            "path" : "full",
             "properties" : {
               "location" : { "type" : "geo_point" },
               "city_name": {"index": "not_analyzed", "type": "string" },
