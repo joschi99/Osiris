@@ -1,0 +1,93 @@
+#!/bin/sh
+# 
+### BEGIN INIT INFO
+# Provides:          sfcapd
+# Required-Start:    
+# Required-Stop:     
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: sflow capture daemon
+# Description: 	     sflow capture daemon
+# chkconfig: 345 99 01
+# processname: sfcapd
+# File: sfcapd
+### END INIT INFO
+
+#
+# Author : Jochen Platzgummer
+# 
+
+# Source function library.
+. /etc/init.d/functions
+
+# Source an auxiliary options file if we have one, and pick up DAEMON_OPTIONS.
+#[ -r /etc/sysconfig/sfcapd ] && . /etc/sysconfig/sfcapd
+if [ -f /etc/sysconfig/sfcapd ] ; then
+	. /etc/sysconfig/sfcapd
+fi
+
+DAEMON=sfcapd
+LOCK_FILE="/var/lock/subsys/$DAEMON"
+RETVAL=0
+  
+status_sfcapd () {
+	if pidof $DAEMON > /dev/null 2>&1; then
+		return 0
+	else
+	  return 1
+	fi
+}
+
+do_start() {
+	status_sfcapd
+	if [ $? -eq 0 ]; then
+		echo "$DAEMON already started..."
+		return 1
+	fi
+	
+	echo -n $"Starting $DAEMON: "
+	daemon /usr/local/bin/sfcapd -D $DAEMON_OPTIONS
+	RETVAL=$?
+	echo
+	[ $RETVAL -eq 0 ] && touch $LOCK_FILE
+	return $RETVAL
+}
+
+do_stop() {
+    echo -n $"Stopping $DAEMON: "
+    killproc $DAEMON
+    RETVAL=$?
+    [ $RETVAL -eq 0 ] && rm -f $LOCK_FILE
+    echo
+    return $RETVAL
+}
+                
+# See how we were called.
+case "$1" in
+	start)
+    do_start
+		;;
+	
+	stop)
+		do_stop
+    ;;
+    
+  status)
+		status $DAEMON
+    ;;
+
+	restart)
+		$0 do_stop
+		$0 do_start
+		;;
+
+	*)
+		echo "Usage: $0 {start|stop|restart|status}"
+		exit 2
+		;;
+
+esac
+  
+exit $RETVAL
+  
+# End of this script

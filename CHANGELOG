@@ -8,15 +8,17 @@ Osiris 2.3.0
 		- Upgrade GLPI 0.90.5
 		- Upgrade Fusioninventory 0.90+1.40
 		- Upgrade Fusion Inventory Agent 2.3.18
-		- New: GLPI module simcard inventory 1.4.1
-	Syslog & Logmanagement
+		- New GLPI module simcard inventory 1.4.1
+	Syslog, Log- & Datamanagement
+		- New sFlow Analysis - nfdump 1.6.15
 		- Upgrade Elasticsearch 2.3.5
 		- Upgrade Logstash 2.3.4
 		- Upgrade Kibana 4.5.4
 		- Upgrade Curator 4.0.5
-		- RSyslog 8.20.0
+		- Upgrade RSyslog 8.20.0
 	System
 		- SL 6.8
+		- Upgrade MariaDB 5.5.51
 		- Upgrade glances 2.6.2
 Osiris 2.2.1
 	Monitoring

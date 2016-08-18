@@ -1,0 +1,1 @@
+DAEMON_OPTIONS="-w -t 1 -p 6343 -4 -T all -l /var/log/sflowdata/"

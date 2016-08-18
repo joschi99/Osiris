@@ -1,0 +1,2 @@
+# alle 5 Minuten sflow Dtaen konvertieren
+*/5 * * * *  root /opt/bi-s/software/scripts/sflow/sflow2elk.sh > /opt/bi-s/software/scripts/sflow/log/sflow2elk-`date +\%H\%M`.log 2>&1

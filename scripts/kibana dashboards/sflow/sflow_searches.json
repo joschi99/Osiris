@@ -1,0 +1,30 @@
+[
+  {
+    "_id": "sflow-all",
+    "_type": "search",
+    "_source": {
+      "title": "sflow all",
+      "description": "",
+      "hits": 0,
+      "columns": [
+        "sflow.ip_src",
+        "sflow.ip_dst",
+        "port_src",
+        "port_dst",
+        "sflow.bytes_in",
+        "sflow.protocol",
+        "sflow.flags",
+        "sflow.vlan_src",
+        "sflow.host"
+      ],
+      "sort": [
+        "@timestamp",
+        "desc"
+      ],
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"index\":\"sflow-*\",\"query\":{\"query_string\":{\"analyze_wildcard\":true,\"query\":\"*\"}},\"filter\":[],\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"require_field_match\":false,\"fragment_size\":2147483647}}"
+      }
+    }
+  }
+]
