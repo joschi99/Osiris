@@ -286,7 +286,7 @@ function write_statusfile () {
 	else
 		echo "# ERROR: Osiris license problem" >> /etc/issue
 	fi
-	echo "###################################################" >> /etc/issue
+	echo "#########################################" >> /etc/issue
 
 	current_time=$(date "+%d.%m.%Y-%H:%M:%S")
 	echo "$LIC_GEN_STATUS_TEXT,$LIC_GEN_STATUS" > $PATH_LICFILE/$FILE_LIC_STATUS

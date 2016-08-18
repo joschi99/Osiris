@@ -1,15 +1,15 @@
 #!/bin/bash
 #
 echo -e "
-##################################
+#########################################
 #
-
-# Osiris 2.3.0 NMS
+# i-Vertix 2016 Network Management System
+# 2.3.0
 #
 # All rights reserved
 # (c)2016 PGUM GmbH/Srl
-# info@bi-s.it, support@bi-s.it
-# www.bi-s.it
+# info@pgum.eu, support@pgum.eu
+# www.pgum.eu
 # 
 # Welcome to `hostname`
 #
@@ -18,5 +18,5 @@ echo -e "
 #
 # You are logged in as `whoami`
 #
-##################################
+#########################################
 "
