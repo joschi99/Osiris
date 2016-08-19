@@ -1,9 +1,10 @@
-Osiris 2.3.0
+i-Vertix 2016 - 2.3.0
 	Monitoring
 		- Upgrade Centreon Web 2.7.6
 		- Upgrade Centreon Broker 2.11.5
 		- Upgrade Yowsup2 2.5.0
 		- Centreon plugins 20160803
+		- Upgrade Selenium 2.53.1
 	Inventory
 		- Upgrade GLPI 0.90.5
 		- Upgrade Fusioninventory 0.90+1.40
@@ -20,6 +21,7 @@ Osiris 2.3.0
 		- SL 6.8
 		- Upgrade MariaDB 5.5.51
 		- Upgrade glances 2.6.2
+		- Upgrade Webmin 1.810
 Osiris 2.2.1
 	Monitoring
 		- Upgrade Centreon Broker 2.11.4
