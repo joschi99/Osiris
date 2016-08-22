@@ -1,23 +1,24 @@
 #!/bin/bash
 ###############################################################################
 #
-# send_licreq.sh - Schickt eine neue Lizenzanfrage an support@bi-s.it
+# send_licreq.sh - Schickt eine neue Lizenzanfrage
 #
-# Copyright (c) 2016 Osiris 2.2 (Contact: info@bi-s.it)
+# Copyright (c) 2016 i-Vertix NMS (info@pgum.eu)
 #
 # Development:
 #  Jochen Platzgummer
 #
-# Version 1.0
+# Version 1.1
 #
 # Changelog
+#   20.08.2016: Update PGUM GmbH
 #	16.01.2016: Erste Version für Osiris2.2
 ###############################################################################
 
-FROM="osiris-lic@bi-s.it"
+FROM="i-vertix-lic@pgum.local"
 TO="support@bi-s.it"
 
-declare -r FILE_LIC="/tmp/.osiris2.lic.tmp"
+declare -r FILE_LIC="/tmp/.ivertix.lic.tmp"
 
 function send_mail () {
 	local SUBJECT
@@ -34,7 +35,7 @@ function get_UUID () {
 }
 
 function menu () {
-	echo "Osiris2.2 license request"
+	echo "i-Vertix license request"
 	echo "1) Activate Centreon"
 	echo "2) Activate Rancid"
 	echo "3) Activate NeDi"
@@ -186,7 +187,7 @@ function insert_centreon_lic_data () {
 }
 
 function send_license () {
-	echo "Osiris license request" > $FILE_LIC
+	echo "i-Vertix license request" > $FILE_LIC
 	echo "Company: $COMPANY" >> $FILE_LIC
 	echo "EMail: $EMAIL" >> $FILE_LIC
 	get_UUID
@@ -209,7 +210,7 @@ function send_license () {
 	echo "`ifconfig`" >> $FILE_LIC
 	
 	send_mail "License request" "`cat $FILE_LIC`"
-	
+	rm -rf $FILE_LIC
 	exit
 }
 

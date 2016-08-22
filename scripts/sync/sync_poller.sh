@@ -1,4 +1,21 @@
-CENT_USER="admin"
+#!/bin/bash
+###############################################################################
+#
+# send_licreq.sh - sync the plugin directories to active pollers
+#
+# Copyright (c) 2016 i-Vertix NMS (info@pgum.eu)
+#
+# Development:
+#  Jochen Platzgummer
+#
+# Version 1.1
+#
+# Changelog
+#   20.08.2016: Update PGUM GmbH
+#	16.01.2016: Erste Version für Osiris2.2
+###############################################################################
+
+CENT_USER="support"
 CENT_PWD="password"
 
 function find_poller() {
@@ -12,7 +29,6 @@ function find_poller() {
     fi
   done < /tmp/poller.txt
   rm -rf /tmp/poller.txt
-
 }
 
 function sync_poller() {

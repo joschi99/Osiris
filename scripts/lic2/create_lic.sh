@@ -1,21 +1,22 @@
 #!/bin/bash
 ###############################################################################
 #
-# create_lic.sh - Erstellt das Osiris2.2 Lizenzfile
+# create_lic.sh - Erstellt das i-Vertix Lizenzfile
 #
-# Copyright (c) 2016 Osiris 2.2 (Contact: info@bi-s.it)
+# Copyright (c) 2016 i-Vertix NMS (info@pgum.eu)
 #
 # Development:
 #  Jochen Platzgummer
 #
-# Version 1.0
+# Version 1.1
 #
 # Changelog
+#   20.08.2016: Update PGUM GmbH
 #	16.01.2016: Erste Version für Osiris2.2
 ###############################################################################
 
-declare -r FILE_LIC_CSV="osiris2.lic.csv"
-declare -r FILE_LIC="osiris2.lic"
+declare -r FILE_LIC_CSV="ivertix.lic.csv"
+declare -r FILE_LIC="ivertix.lic"
 
 RANCID="not active"
 NEDI="not active"
@@ -23,7 +24,7 @@ SYSLOG="not active"
 GLPI="not active"
 
 function menu () {
-  echo "Osiris2.2 Lizenz generator"
+  echo "i-Vertix Lizenz generator"
   echo "1) General license information"
   echo "2) Activate Centreon"
   echo "3) Activate Rancid"
@@ -179,7 +180,7 @@ function insert_centreon_lic_data () {
 
 function create_license () {
   create_GUID
-  echo "Osiris License File" > $FILE_LIC_CSV
+  echo "i-Vertix License File" > $FILE_LIC_CSV
   echo "Company,$COMPANY" >> $FILE_LIC_CSV
   echo "EMail,$EMAIL" >> $FILE_LIC_CSV
   echo "Create-Date,$CREATE_DATE" >> $FILE_LIC_CSV

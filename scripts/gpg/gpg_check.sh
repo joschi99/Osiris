@@ -1,17 +1,17 @@
 #!/bin/bash
 ###############################################################################
 #
-# check_gpg.sh - Dieses Skript macht einen XML-Export der Syslogtabelle und
-#                signiert das File.
+# check_gpg.sh - check if the gpg key is valid
 #
-# Copyright (c) 2009-2011 Osiris 2.0 NMS (Contact: info@bi-s.it)
+# Copyright (c) 2016 i-Vertix NMS (info@pgum.eu)
 #
 # Development:
 #  Jochen Platzgummer
 #
-# Version 2.1
+# Version 2.2
 #
 # Changelog
+#   20.08.2016: Update PGUM GmbH
 #   03.09.2015: Abbruch, falls Programm bereits läuft (Issue #7)
 #   12.09.2011: Script an Osiris 2.0 angepasst
 #   20.02.2010: check Signatur aller Files sowie check ob die Signatur

@@ -1,16 +1,17 @@
 #!/bin/bash
 ###############################################################################
 #
-# check_lic.sh - Prüft die Osiris2.2 Lizenz
+# check_lic.sh - Prüft die i-Vertix Lizenz
 #
-# Copyright (c) 2016 Osiris 2.2.1 (Contact: info@bi-s.it)
+# Copyright (c) 2016 i-Vertix NMS (info@pgum.eu)
 #
 # Development:
 #  Jochen Platzgummer
 #
-# Version 1.2
+# Version 1.3
 #
 # Changelog
+#   20.08.2016: Update PGUM GmbH
 #	12.05.2016: IP Adresse wird angezeigt
 #	17.01.2016: check_lic.cfg
 #	16.01.2016: Erste Version für Osiris2.2
@@ -18,12 +19,12 @@
 
 source /opt/bi-s/software/scripts/lic2/check_lic.cfg
 
-declare -r version="1.2"
+declare -r version="1.3"
 
-declare -r FILE_LIC_TMP="osiris2.lic.tmp"
-declare -r FILE_LIC="osiris2.lic"
-declare -r FILE_LIC_CSV="osiris2.lic.csv"
-declare -r FILE_LIC_STATUS="osiris2.licstatus.csv"
+declare -r FILE_LIC_TMP="ivertix.lic.tmp"
+declare -r FILE_LIC="ivertix.lic"
+declare -r FILE_LIC_CSV="ivertix.lic.csv"
+declare -r FILE_LIC_STATUS="ivertix.licstatus.csv"
 
 declare -r PATH_LICFILE="/etc"
 declare -r PATH_TMP="/tmp"
@@ -32,7 +33,7 @@ declare -r LIC_STATUS_OK=0
 declare -r LIC_STATUS_ERR=1
 declare -r LIC_STATUS_ERR_LIC=2
 declare -r LIC_STATUS_NO_LIC=3
-declare -r MAIL_LIC_SENDER="osiris-lic@bi-s.it"
+declare -r MAIL_LIC_SENDER="i-vertix-lic@pgum.local"
 declare -r MAIL_LIC_REC="support@bi-s.it"
 
 #CentEngine Status
@@ -282,9 +283,9 @@ function write_statusfile () {
 	echo "#" >> /etc/issue
 	if [ $EXIT_STATUS = 0 ]
 	then
-		echo "# Osiris license valid" >> /etc/issue
+		echo "# i-Vertix license valid" >> /etc/issue
 	else
-		echo "# ERROR: Osiris license problem" >> /etc/issue
+		echo "# ERROR: i-Vertix license error" >> /etc/issue
 	fi
 	echo "#########################################" >> /etc/issue
 
@@ -544,11 +545,11 @@ function get_centreon_active_pollers () {
 function check_licfile_exist () {
 	if [ ! -f $PATH_LICFILE/$FILE_LIC ]; then
 		LIC_GEN_STATUS="$LIC_STATUS_ERR_LIC"
-		LIC_GEN_STATUS_TEXT="No Osiris license file found"
+		LIC_GEN_STATUS_TEXT="No i-Vertix license file found"
 		#update_licstatus $ERR_DESC
 	else
 		LIC_GEN_STATUS="$LIC_STATUS_OK"
-		LIC_GEN_STATUS_TEXT="Osiris license file found"
+		LIC_GEN_STATUS_TEXT="i-Vertix license file found"
 	fi
 }
 

@@ -5,14 +5,15 @@
 #               befinden.
 #               Files vor $RETTIME werden gelöscht
 #
-# Copyright (c) 2009-2011 Osiris 2.2 NMS (Contact: info@bi-s.it)
+# Copyright (c) 2016 i-Vertix NMS (info@pgum.eu)
 #
 # Development:
 #  Jochen Platzgummer
 #
-# Version 2.1
+# Version 2.2
 #
 # Changelog
+#   20.08.2016: Update PGUM GmbH
 #   24.10.2015: Neu gpg.cfg
 #   12.09.2011: Anpassung an Osiris 2.0
 #   04.06.2010: SMB-Berechtigungen angepasst

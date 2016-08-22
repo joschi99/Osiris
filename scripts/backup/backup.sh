@@ -4,14 +4,15 @@
 # backup.sh - Skript, das ein Backup aller wichtigen Komponenten des Servers
 #             macht.
 #
-# Copyright (c) 2011 Osiris 2.1 (Contact: info@bi-s.it)
+# Copyright (c) 2016 i-Vertix NMS (info@pgum.eu)
 #
 # Development:
 #  Jochen Platzgummer
 #
-# Version 2.2
+# Version 2.3
 #
 # Changelog
+#   20.08.2016: Logstash config backup
 #	20.12.2015: Remove backup from centreon_syslog DB
 #   09.04.2014: Osiris 2.1 Anpassungen
 #   23.01.2014: Backup DB LogAnalyser
@@ -89,8 +90,7 @@ tar czfvP $BACKUP_PATH/$DIR/files/std_plugins.tar.gz /usr/lib/nagios/plugins
 tar czfvP $BACKUP_PATH/$DIR/files/smokeping.tar.gz /usr/local/smokeping/etc/
 tar czfvP $BACKUP_PATH/$DIR/files/bis_scripts.tar.gz /opt/bi-s/software/scripts/
 tar czfvP $BACKUP_PATH/$DIR/files/rancid_cvs.tar.gz /usr/local/rancid/var/
-#tar czfvP $BACKUP_PATH/$DIR/files/bis_plugins.tar.gz /opt/bi-s/software/plugins/
-#tar czfvP $BACKUP_PATH/$DIR/files/rsyslog.tar.gz /opt/bi-s/cifs/rsyslog/
+tar czfvP $BACKUP_PATH/$DIR/files/logstash.tar.gz /etc/logstash/
 echo "$(date +%Y.%m.%d-%H:%M:%S) File backup completed"
 #END FILE BACKUP
 
