@@ -1,2 +1,8 @@
-# alle 5 Minuten sflow Dtaen konvertieren
+# every 5 min convert sflow data for logstash
 */5 * * * *  root /opt/bi-s/software/scripts/sflow/sflow2elk.sh > /opt/bi-s/software/scripts/sflow/log/sflow2elk-`date +\%H\%M`.log 2>&1
+
+# 1:00am reorg sflow archive older than 10 days
+0 1 * * * root /usr/local/bin/nfexpire -e /var/log/sflowdata/archive -t 10d
+
+# 1:00am reorg sflow archive bigger then 2GB
+#0 1 * * * root /usr/local/bin/nfexpire -e /var/log/sflowdata/archive -s 2g
