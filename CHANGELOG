@@ -16,7 +16,7 @@ i-Vertix 2016 - 2.3.0
 		- Upgrade Logstash 2.3.4
 		- Upgrade Kibana 4.5.4
 		- Upgrade Curator 4.0.5
-		- Upgrade RSyslog 8.20.0
+		- Upgrade RSyslog 8.21.0
 	System
 		- SL 6.8
 		- Upgrade MariaDB 5.5.51
