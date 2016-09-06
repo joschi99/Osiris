@@ -1,0 +1,75 @@
+#!/bin/sh
+
+# Initscript template from https://fedoraproject.org/wiki/Packaging:SysVInitScript?rd=Packaging/SysVInitScript#Initscript_template
+#
+# nedi-moni     Startup script for the NeDi moni daemon
+#
+# chkconfig:   2345 84 16
+# description: Syslog daemon for NeDi
+
+### BEGIN INIT INFO
+# Provides: nedi-moni
+# Required-Start: $local_fs $network $named $syslog $time mysqld
+# Required-Stop: $local_fs $network $named $syslog $time mysqld
+# Short-Description: start and stop NeDi moni daemon
+# Description:      NeDi moni daemon
+### END INIT INFO
+
+# Daemon parameter default
+OPTIONS="-D"
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+NeDiHome="/usr/local/nedi"
+exec="moni.pl"
+prog="nedi-moni"
+config="$NeDiHome/nedi.conf"
+
+[ -e /etc/sysconfig/$prog ] && . /etc/sysconfig/$prog
+
+lockfile=/var/lock/subsys/$prog
+
+cd $NeDiHome
+
+start() {
+    [ -x $exec ] || exit 5
+    [ -f $config ] || exit 6
+    echo -n $"Starting $prog: "
+    daemon ./$exec $OPTIONS
+    retval=$?
+    echo
+    [ $retval -eq 0 ] && touch $lockfile
+    return $retval
+}
+
+stop() {
+    echo -n $"Stopping $prog: "
+    pkill $exec
+    retval=$?
+    echo
+    [ $retval -eq 0 ] && rm -f $lockfile
+    return $retval
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+case "$1" in
+    start)
+        $1
+        ;;
+    stop)
+        $1
+        ;;
+    restart)
+        $1
+        ;;
+    *)
+        echo $"Usage: $0 {start|stop|restart}"
+        exit 2
+esac
+exit $?
