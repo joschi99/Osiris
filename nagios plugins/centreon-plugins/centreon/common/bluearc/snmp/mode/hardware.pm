@@ -18,7 +18,7 @@
 # limitations under the License.
 #
 
-package centreon::common::adic::tape::snmp::mode::hardware;
+package centreon::common::bluearc::snmp::mode::hardware;
 
 use base qw(centreon::plugins::templates::hardware);
 
@@ -28,47 +28,47 @@ use warnings;
 sub set_system {
     my ($self, %options) = @_;
     
-    $self->{regexp_threshold_overload_check_section_option} = '^(global|physicaldrive|subsystem|component|temperature)$';
+    $self->{regexp_threshold_overload_check_section_option} = '^(temperature|fan|psu|sysdrive)$';
     $self->{regexp_threshold_numeric_check_section_option} = '^(temperature|fan)$';
     
     $self->{cb_hook2} = 'snmp_execute';
     
     $self->{thresholds} = {
-        default => [
-            ['good', 'OK'],
-            ['failed', 'CRITICAL'],
-            ['degraded', 'WARNING'],
-            ['warning', 'WARNING'],
-            ['informational', 'OK'],
-            ['unknown', 'UNKNOWN'],
-            ['invalid', 'CRITICAL'],
-            
-            ['other', 'OK'],
+        psu => [            
             ['ok', 'OK'],
-            ['non-critical', 'WARNING'],
-            ['critical', 'CRITICAL'],
-            ['non-recoverable', 'CRITICAL'],
-        ],
-        component => [
+            ['failed', 'CRITICAL'],
+            ['notFitted', 'WARNING'],
             ['unknown', 'UNKNOWN'],
-            ['unused', 'OK'],
+        ],
+        'fan.speed' => [
             ['ok', 'OK'],
             ['warning', 'WARNING'],
-            ['failed', 'CRITICAL'],
+            ['severe', 'CRITICAL'],
+            ['unknown', 'UNKNOWN'],
+        ],        
+        temperature => [
+            ['ok', 'OK'],
+            ['tempWarning', 'WARNING'],
+            ['tempSevere', 'CRITICAL'],
+            ['tempSensorFailed', 'CRITICAL'],
+            ['tempSensorWarning', 'CRITICAL'],
+            ['unknown', 'UNKNOWN'],
         ],
-        sensor => [
-            ['nominal', 'OK'],
-            ['warningLow', 'WARNING'],
-            ['warningHigh', 'CRITICAL'],
-            ['alarmLow', 'CRITICAL'],
-            ['alarmHigh', 'CRITICAL'],
-            ['notInstalled', 'OK'],
-            ['noData', 'OK'],
+        sysdrive => [
+            ['online', 'OK'],
+            ['corrupt', 'WARNING'],
+            ['failed', 'CRITICAL'],
+            ['notPresent', 'OK'],
+            ['disconnected', 'WARNING'],
+            ['offline', 'OK'],
+            ['initializing', 'OK'],
+            ['formatting', 'OK'],
+            ['unknown', 'UNKNOWN'],
         ],
     };
     
-    $self->{components_path} = 'centreon::common::adic::tape::snmp::mode::components';
-    $self->{components_module} = ['global', 'physicaldrive', 'subsystem', 'component', 'temperature', 'fan'];
+    $self->{components_path} = 'centreon::common::bluearc::snmp::mode::components';
+    $self->{components_module} = ['temperature', 'fan', 'psu', 'sysdrive'];
 }
 
 sub snmp_execute {
@@ -104,12 +104,12 @@ Check Hardware.
 =item B<--component>
 
 Which component to check (Default: '.*').
-Can be: 'global', 'physicaldrive', 'subsystem', 'component', 'temperature', 'fan'.
+Can be: 'temperature', 'fan', 'psu', 'sysdrive'.
 
 =item B<--filter>
 
-Exclude some parts (comma seperated list) (Example: --filter=subsystem)
-Can also exclude specific instance: --filter=physicaldrive,1
+Exclude some parts (comma seperated list) (Example: --filter=sysdrive)
+Can also exclude specific instance: --filter=sysdrive,1
 
 =item B<--no-component>
 
@@ -120,7 +120,7 @@ If total (with skipped) is 0. (Default: 'critical' returns).
 
 Set to overload default threshold values (syntax: section,[instance,]status,regexp)
 It used before default thresholds (order stays).
-Example: --threshold-overload='physicaldrive,OK,invalid'
+Example: --threshold-overload='sysdrive,OK,formatting'
 
 =item B<--warning>
 
