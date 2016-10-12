@@ -24,7 +24,7 @@ i-Vertix 2016 - 2.3.0
 		- SL 6.8
 		- Upgrade MariaDB 5.5.52
 		- Upgrade glances 2.6.2
-		- Upgrade Webmin 1.810
+		- Upgrade Webmin 1.820
 Osiris 2.2.1
 	Monitoring
 		- Upgrade Centreon Broker 2.11.4
