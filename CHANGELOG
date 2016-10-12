@@ -10,6 +10,8 @@ i-Vertix 2016 - 2.3.0
 		- Upgrade Fusioninventory 0.90+1.40
 		- Upgrade Fusion Inventory Agent 2.3.18
 		- New GLPI module simcard inventory 1.4.1
+	Network
+		- Upgrade rancid 3.5.1
 	Syslog, Log- & Datamanagement
 		- New sFlow Analysis - nfdump 1.6.15
 		- Upgrade Elasticsearch 2.3.5
