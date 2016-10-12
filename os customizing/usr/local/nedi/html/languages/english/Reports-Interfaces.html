@@ -1,0 +1,34 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop b">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<a href="gen-Reports.html"><img src="../../img/16/chrt.png" title="General Notes on Report Modules"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Interface Reports</h2>
+
+		Interface reports provide information on the perimeter of your network, but also reveal internal problems or misconfiguration.
+		<p>
+		<table class="content">
+			<tr class="txta"><td>Summary</td><td>Shows Top interface types and respective status</td></tr>
+			<tr class="txta"><td>Traffic, Errors, Discards and Broadcasts</td><td>lists the busiest and most problematic interfaces of your network. Check 'Alternative Sort' to take IF speed into account of the traffic stats and the actual traffic for the errors. 'Optimize' uses absolute errors rather than those seen within the last discovery period</td></tr>
+			<tr class="txta"><td>Port Availability</td><td>Reveals which switches can be replaced by smaller ones or which are getting really full (based on recent ingress traffic). 'Optimize' restricts this statistic to bridges and ethernet interfaces</td></tr>
+			<tr class="txtb"><td>Port Disabled</td><td>Quickly find that interface you disabled a week ago, because some infected notebook tried to attack the rest of your network</td></tr>
+			<tr class="txta"><td>PoE Statistics</td><td>Displays top power delivery per device and interface average, based on per interface PoE information (e.g. from discovery protocol or interface MIBs)</td></tr>
+		</table>
+		<p>
+		<div id="footer">Remo Rickli - 2015 &nbsp;</div>
+	</body>
+</html>

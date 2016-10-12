@@ -1,0 +1,256 @@
+<?PHP
+// German language file  1.0 Remo Rickli
+$charset	= "UTF-8";
+
+//Verbs usually don't precede nouns
+$verb1		= 0;
+
+//Labels
+$acklbl		= "Bestätigen";
+$acslbl		= "Zugriff";
+$actlbl		= "Aktion";
+$addlbl		= "Hinzufügen";
+$adrlbl		= "Adresse";
+$alllbl		= "Alle";
+$alrlbl		= "Bereits";
+$agelbl		= "Alter";
+$altlbl		= "Alternativ";
+$arclbl		= "Bogen";
+$asnlbl		= "Anlagennummer";
+$avalbl		= "Verfuegbarkeit";									# No Umlaut in RRD!
+$avglbl		= "Durchschnitt";
+$buplbl		= "Sichern";
+$bwdlbl		= "Bandbreite";
+$cfglbl		= "Konfiguration";
+$chglbl		= "Änderung";
+$clalbl		= "Klasse";
+$cmblbl		= "Kombination";
+$cmdlbl		= "Ausführen";
+$cmplbl		= "Vergleich";
+$cmtlbl		= "Kommentar";
+$cnclbl		= "Verbindung";
+$cndlbl		= "Bedingung";
+$collbl		= "Spalten";
+$conlbl		= "Kontakt";
+$coplbl		= "Kopieren";
+$corlbl		= "Kern";
+$coslbl		= "Kosten";
+$cuslbl		= "Spezial";
+$datlbl		= "Datum";
+$dcalbl		= "Verwerfen";
+$dellbl		= "Löschen";
+$deplbl		= "Abhängigkeiten";
+$deslbl		= "Beschreibung";
+$dislbl		= "Aufteilung";
+$dsalbl		= "Inaktiviert";
+$dsclbl		= "Entdecken";
+$duplbl		= "Doppelte";
+$durlbl		= "Dauer";
+$drplbl		= "Verwerfen";
+$dstlbl		= "Destination";
+$edilbl		= "Editieren";
+$emplbl		= "Leer";
+$endlbl		= "Ende";
+$errlbl		= "Fehler";
+$explbl		= "Exportieren";
+$faslbl		= "Schnell";
+$fltlbl		= "Filter";
+$fillbl		= "Datei";
+$fislbl		= "Zuerst";
+$frelbl		= "Frei";
+$frmlbl		= "Format";
+$fullbl		= "Voll";
+$fwdlbl		= "Weiterleiten";
+$gralbl		= "Graphen";
+$grdlbl		= "Grad";
+$grplbl		= "Gruppe";
+$hislbl		= "Chronik";
+$icelbl		= "Rechnung";
+$idxlbl		= "Index";
+$imglbl		= "Bild";
+$implbl		= "Importieren";
+$inblbl		= "Eingehend";
+$inclbl		= "Vorfall";
+$inflbl		= "Information";
+$intlbl		= "Anschluss";
+$invlbl		= "Inventar";
+$isolbl		= "Isoliert";
+$laslbl		= "Zuletzt";
+$latlbl		= "Latenz";
+$lenlbl		= "Länge";
+$levlbl		= "Stufe";
+$limlbl		= "Limite";
+$loclbl		= "Lokation";
+$lodlbl		= "Last";
+$loglbl		= "Protokoll";
+$loslbl		= "Verloren";
+$lstlbl		= "Liste";
+$manlbl		= "Haupt";
+$maplbl		= "Karte";
+$maxlbl		= "Maximum";
+$memlbl		= "Speicher";
+$metlbl		= "Metrik";
+$mdllbl		= "Modell";
+$mgtlbl		= "Verwaltung";
+$modlbl		= "Modus";
+$monlbl		= "Überwachen";
+$msglbl		= "Ereignisse";
+$msklbl		= "Maske";
+$mullbl		= "Mehrere";
+$namlbl		= "Name";
+$netlbl		= "Netzwerk";
+$neblbl		= "Nachbar";
+$newlbl		= "Neu";
+$nodlbl		= "Knoten";
+$notlbl		= "Nicht";
+$nomlbl		= "Nomaden";
+$nonlbl		= "Kein/e";
+$numlbl		= "Nummer";
+$onclbl		= "Einmal";
+$opolbl		= "Optionen";
+$optlbl		= "Optimieren";
+$outlbl		= "Veraltet";
+$orilbl		= "Original";
+$oublbl		= "Ausgehend";
+$paslbl		= "Passwort";
+$pktlbl		= "Paket";
+$poplbl		= "Bevölkerung";
+$porlbl		= "Port";
+$prolbl		= "Protokoll";
+$prilbl		= "Priorität";
+$purlbl		= "Kauf";
+$qtylbl		= "Anzahl";
+$qutlbl		= "Leise";
+$rcvlbl		= "Empfangen";
+$realbl		= "Lesen";
+$replbl		= "Reparieren ";
+$reslbl		= "Zurücksetzen";
+$rltlbl		= "Echtzeit";
+$rnglbl		= "Bereich";
+$rotlbl		= "Drehen";
+$rpllbl		= "Ersetzen";
+$rptlbl		= "Wiederholen";
+$rpylbl		= "Antwort";
+$seclbl		= "Sicherheit";
+$sellbl		= "Auswahl";
+$serlbl		= "Serien#";
+$sholbl		= "Zeigen";
+$shplbl		= "Form";
+$sizlbl		= "Grösse";
+$slolbl		= "Langsam";
+$sndlbl		= "Senden";
+$skplbl		= "Aussetzen";
+$spdlbl		= "Geschwindigkeit";
+$srclbl		= "Quelle";
+$srtlbl		= "Sortieren";
+$srvlbl		= "Dienste";
+$stalbl		= "Zustand";
+$strlbl		= "Gerade";
+$stslbl		= "Statistik";
+$sttlbl		= "Start";
+$sumlbl		= "Uebersicht";										# No Umlaut in RRD!
+$tgtlbl		= "Ziel";
+$timlbl		= "Zeit";
+$titlbl		= "Titel";
+$tmplbl		= "Temperatur";
+$toplbl		= "Top";
+$totlbl		= "Total";
+$trflbl		= "Verkehr";
+$trslbl		= "Schwellwert";
+$tstlbl		= "Test";
+$typlbl		= "Typ";
+$undlbl		= "Unentdeckt";
+$updlbl		= "Aktualisieren";
+$upllbl		= "Hochladen";
+$uptlbl		= "Betriebszeit";
+$usrlbl		= "Benutzer";
+$vallbl		= "Werte";
+$venlbl		= "Hersteller";
+$verlbl		= "Version";
+$woulbl		= "Ohne";
+$wrtlbl		= "Schreiben";
+$wtylbl		= "Garantie";
+
+// Meldungen
+$cfmmsg		= "sind sie sicher?";
+$delmsg		= "wird ersetzt!";
+$lopmsg		= "existiert bereits im Pfad (könnte ein Routing Loop sein)!\n";
+$nokmsg		= "<h4>Sie sind dafür nicht berechtigt!</h4>\n";
+$toumsg		= "<h4>Zeitlimite erreicht oder kein Resultat!</h4>\n";
+
+// Maintenance States
+$mast['0']  	= "-";
+$mast['10']	= "Erneuern";
+$mast['20']	= "Nicht Erneuern";
+
+// Zeit
+$tim['a']	= "Nach";
+$tim['b']	= "Vor";
+$tim['n']	= "Jetzt";
+$tim['t']	= "Heute";
+$tim['s']	= "Sekunden";
+$tim['i']	= "Minuten";
+$tim['h']	= "Stunden";
+$tim['d']	= "Tage";
+$tim['w']	= "Wochen";
+$tim['m']	= "Monate";
+$tim['y']	= "Jahre";
+
+// Groessen
+$siz['t']	= "Winzig";
+$siz['s']	= "Klein";
+$siz['m']	= "Mittel";
+$siz['l']	= "Gross";
+$siz['x']	= "Extra";
+
+// Places
+$place['r']	= "Region";
+$place['c']	= "Stadt";
+$place['b']	= "Gebäude";
+$place['f']	= "Etage";
+$place['o']	= "Raum";
+$place['a']	= "Rack";
+
+// Meldungsklassen
+$mlvl['30']	= "Andere";
+$mlvl['50']	= "Info";
+$mlvl['100']	= "Notiz";
+$mlvl['150']	= "Warnung";
+$mlvl['200']	= "Alarm";
+$mlvl['250']	= "Notfall";
+
+// Konditionsstufen
+$stco['0']  	= "-";
+$stco['10']	= "Neu";
+$stco['100']	= "Aktiv";
+$stco['120']	= "Inaktiv";
+$stco['150']	= "Gebraucht";
+$stco['160']	= "Ersetzt";
+$stco['170'] 	= "Entsorgt";
+$stco['180'] 	= "Eingetauscht";
+$stco['200']	= "Defekt";
+$stco['250'] 	= "Unbekannt";
+
+// Incidentgruppen
+$igrp['1']	= "Neu";
+$igrp['10']	= "Infrastruktur";
+$igrp['11']	= "Stromausfall";
+$igrp['12']	= "Bauarbeiten";
+$igrp['13']	= "Naturgewalten";
+$igrp['14']	= "Dienstanbieter";
+$igrp['15']	= "Tiere";
+$igrp['16']	= "Wetter";
+$igrp['17']	= "Partner";
+$igrp['20']	= "Equipment";
+$igrp['21']	= "Netzteil";
+$igrp['22']	= "Chassis";
+$igrp['23']	= "Modul";
+$igrp['24']	= "Software";
+$igrp['25']	= "Verkehr";
+$igrp['30']	= "Menschen";
+$igrp['31']	= "Wartung";
+$igrp['32']	= "Konfigurationsfehler";
+$igrp['33']	= "Kunde";
+$igrp['34']	= "Hackerangriff";
+
+?>

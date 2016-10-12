@@ -1,0 +1,49 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<a href="gen-MAssets.html"><img src="../../img/16/pkg.png" title="General notes on asset management"></a> - 
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Location Editor</h2>
+
+		This module can be used to place locations on previousely upload backgrounds (using System-Files).
+		Alternatively you can check the first box right of <img src="../../img/16/map.png"> to enable the geocoding API.
+		Location names are then used to search for the correct coordinates. If you check the second box, the description is used instead (create the locations and enter descriptions prior enabling checking this option for desired results).
+
+		<h3 class="lft imga">Usage with Background Images</h3>
+
+		<ul>
+			<li>The default lets you place your locations on a background image and can be leveraged with the "bgmap" map type in Topology-Maps.
+			<li>At first you'll see the top level map, which is a world map by default (I'll change this as soon as NeDi manages networks on other celestial bodies).
+			<li>Select a region and click on the map to set the coordinates. You'll notice that values are being populated and the 'Add' button becomes 'Update', if the location already exists.
+			<li>Upload lower level maps to the correct location in the topo folder. Let's say, your network sites are located in 2 regions (USA and Europe). Just name them background.jpg and upload them to topo/USA and topo/Europe. Now when you select cities in those regions, the appropriate map should be shown and you can place cities accordingly.
+			<li>This also works within cities (makes sense where you've got a big metropolitan network). Just upload background.jpg to topo/Europe/Zurich and as soon as you click on buildings in Zurich you can place them in that metropolitan map.
+			<li>The subfolders are created automatically, when you drill down in Topology-Table with Openstreetmaps enabled.
+		</ul>
+
+		<h3 class="lft imga">Usage with Geocoding</h3>
+
+		<ul>
+			<li>Select the desired location, you wish to add
+			<li>If it doesn't exist or the coordinates are 0 (if it's been added to a background image previously), a geocoding lookup is performed and the coordinates are shown in blue
+			<li>A draggable marker is placed on the map, which can be adjusted to fit your needs (coordinates turn green). Enter a description and click the add button
+			<li>The coordinates should stay black, as they're read from the DB now
+		</ul>
+
+
+		<div id="footer">Remo Rickli 2016</div>
+	</body>
+</html>

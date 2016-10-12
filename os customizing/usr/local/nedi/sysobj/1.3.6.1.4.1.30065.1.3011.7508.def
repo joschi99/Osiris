@@ -1,0 +1,57 @@
+# Definition for 1.3.6.1.4.1.30065.1.3011.7508 created by Defgen 2.0 on 29.May 2015 (bigrow)
+ 
+# Main
+SNMPv	2HC
+Type	DCS-7508
+Typoid	
+Sysdes	
+OS	other
+Icon	w3ad
+Size	12
+Bridge	qbriX
+ArpND	oldphy
+Dispro	LLDPXN
+Serial	
+Bimage	
+CfgChg	
+CfgWrt	
+VLnams	1.3.6.1.2.1.17.7.1.4.3.1.1
+VLnamx	
+Group	
+Mode	
+ 
+# Interfaces
+StartX	
+EndX	
+IFname	1.3.6.1.2.1.31.1.1.1.1
+IFaddr	old	
+IFalia	1.3.6.1.2.1.2.2.1.2
+IFalix	
+InBcast	1.3.6.1.2.1.31.1.1.1.3
+InDisc	1.3.6.1.2.1.2.2.1.13
+OutDisc	1.3.6.1.2.1.2.2.1.19
+IFvlan	1.3.6.1.2.1.17.7.1.4.5.1.1
+IFvlix	1.3.6.1.2.1.17.1.4.1.2
+IFpowr		
+IFpwix	
+IFdupl	
+IFduix	
+Halfdp	1
+Fulldp	2
+ 
+# Modules
+Modesc	1.3.6.1.2.1.47.1.1.1.1.2
+Moclas	1.3.6.1.2.1.47.1.1.1.1.5
+Movalu	3|6|9|10
+Moslot	1.3.6.1.2.1.47.1.1.1.1.2
+Modhw	1.3.6.1.2.1.47.1.1.1.1.8
+Modsw	1.3.6.1.2.1.47.1.1.1.1.10
+Modfw	1.3.6.1.2.1.47.1.1.1.1.9
+Modser	1.3.6.1.2.1.47.1.1.1.1.11
+Momodl	1.3.6.1.2.1.47.1.1.1.1.13
+ 
+# RRD Graphing
+CPUutl		
+Temp		
+MemCPU		
+Custom		

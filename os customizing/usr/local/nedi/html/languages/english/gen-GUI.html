@@ -1,0 +1,44 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-Lists.html"><img src="../../img/16/list.png" title="General notes on list modules"></a>
+		<a href="gen-Monitoring.html"><img src="../../img/16/bino.png" title="General notes on monitoring"></a>
+		<a href="gen-Reports.html"><img src="../../img/16/chrt.png" title="General Notes on Report Modules"></a>
+		<a href="gen-Assets.html"><img src="../../img/16/pkg.png" title="General notes on asset management"></a> - 
+		<img src="../../img/16/bblf.png" title="Go Back" onclick="history.go(-1)">
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">The NeDi GUI</h2>
+
+		NeDi features a modular GUI, which can easily be customized. Have a look at lines beginning with "module" in nedi.conf.
+		The Section equates to the top menu and Module to the menu entry. It links to Section-Module.php and uses the icon specified in
+		the 3rd column. The group determines which users are allowed to see/use that particular module (<a href="http://www.nedi.ch/discover/the-gui/">more details here</a>).
+		<p>
+		<img src="../Header.png">
+		<ul>
+			<li>Each module persists of a header row and a main input form. A larger version of the menu icon always shows up to the left and a click on it resets the module to its defaults. If you hover over it, the exact module name is revealed (shown in the footer as well)
+			<li>If "List optimize" is selected (next to <img src="../../img/16/hat2.png"> in User-Profile), a history is shown next to the menu
+			<li>Use the "Find IT" search field in the header, to get quick results on any text, IP or MAC address
+			<li>The print icon <img src="../../img/16/print.png"> in the header opens a printable view of the current module (usually without the main input form). On most lists you can click on the rows to highlight them
+			<li>You can save the state of most modules to a bookmark or use the notepad icon <img src="../../img/16/note.png"> in the header to add a link to the admin message in User-Profile (look for "EDIT" on the bottom and change accordingly)
+			<li>Text links usually lead to applying a filter within the current form
+			<li>Numbers after a bar-image (e.g. # of device types) take you to the corresponding list module
+			<li>Used SQL queries can be shown by clicking on the debug icon <img src="../../img/16/bug.png"> (only shown for admin). It executes the query in Other-Export for quick analysis
+			<li>Regular users see <img src="../../img/16/user.png"> and those having a view filter applied get <img src="../../img/16/eyes.png"> instead. Hovering over it reveals the username and current server time
+		</ul>
+
+		<div id="footer">Remo Rickli - 2015 &nbsp;</div>
+	</body>
+</html>

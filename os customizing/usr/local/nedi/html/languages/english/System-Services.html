@@ -1,0 +1,40 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">NeDi Services</h2>
+
+		View processes and resources of your NeDi host and start or stop certain services. 
+		<ul>
+			<li>The top section shows and controls NeDi related services.
+			<li>The lower section shows all running processes and some system stats.
+			<li>Click on <img src="../../img/16/walk.png"> to stop or <img src="../../img/16/bcls.png"> start a service
+			<li>This only works, if the services don't need to open any priviledged ports (< 1024). Of course you could run the webserver as root, but that can create security risks! Therefore NeDi's Syslog (syslog.pl) and snmptrapd run on high-ports and usually are redirected by an internal firewall.
+		</ul>
+
+		<h3 class="lft txtb">Discovery</h3>
+
+		Depending on the size and topology of your network, it makes sense to run several discovery threads at the same time.
+		<ul>
+			<li>Do this by dividing the network in a few sections using borders and different seedfiles and add crontab entries accordingly
+			<li>On the far right you see the discovery status (# of threads is revealed by hovering over <img src="../../img/16/walk.png">
+			<li>In case a discovery terminated unexpectedly, you can reset it by clicking on <img src="../../img/16/bcnl.png">. 
+		</ul>
+
+		<div id="footer">Remo Rickli 2015</div>
+	</body>
+</html>

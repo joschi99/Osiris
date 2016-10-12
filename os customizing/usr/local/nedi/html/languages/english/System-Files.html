@@ -1,0 +1,57 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">System Files</h2>
+
+		This modules provides the following major features:
+		<ol>
+			<li>Edit/View system, device configuration and nedi log files
+			<li>Import SQL data or update NeDi files
+			<li>Manage files in html/ log, map, topo and tftpboot
+			<li>Manage CLI command files and install templates (see System-Install)
+			<li>Delete outdated RRDs (older than retire in nedi.conf) to free up disk space
+		</ol>
+
+		<h3 class="lft txtb">Editor/Viewer</h3>
+
+		<ul>
+			<li>Simply choose the file you want to edit and click save, when you're done.
+			<li>You can only edit files, which are writable by the webserver.
+			<li>A device configuration can be written to "tftpboot" and used for PXE provisioning
+			<li>Click on  <img src="../../img/16/add.png"> to create a new install templates or CLI command files
+		</ul>
+
+		<h3 class="lft txtb">Import/Update</h3>
+
+		<ul>
+			<li>Select "Import DB" and upload a .sql.gz (packed) file which will replace the DB data. You can restore dumps created with System-Export for example. Create and activate a snapshot to add data from another NeDi system
+			<li>Select "Update Image" and upload an archive with alternative user icons (usr/0-99.jpg) or device panels (panel/devtype.jpg)
+			<li>Upload a nedi.tgz archive and choose whether you whish to backup your existing config (check for compatibilty!) or not (e.g. for patches)
+		</ul>
+
+		<h3 class="lft txtb">Manage Files</h3>
+
+		<ul> Upload files in the apropriate area. Files in html/log can be accessed directly by clicking on file name.
+			<li>Delete files by clicking on <img src="../../img/16/bcnl.png">
+			<li>Folders in the topo section can be selected to upload a background.jpg or other files to this location. They can be used by Topology-Map as "geo" map backgrounds or Topology-Table and Assets-Location for documentation
+			<li>Click on  <img src="../../img/16/add.png"> to create a new file in "tftpboot" for PXE provisioning
+		</ul>
+
+		<div id="footer">Remo Rickli 2015</div>
+	</body>
+</html>

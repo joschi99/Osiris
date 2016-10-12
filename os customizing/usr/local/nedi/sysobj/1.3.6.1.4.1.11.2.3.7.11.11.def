@@ -1,0 +1,57 @@
+# Definition for 1.3.6.1.4.1.11.2.3.7.11.11 created by Defgen 2.0 on 16.Nov 2014 (admin)
+ 
+# Main
+SNMPv	1
+Type	2424M
+Typoid	
+Sysdes	
+OS	ProCurve
+Icon	w2gn
+Size	1
+Bridge	normal
+ArpND	old
+Dispro	LLDP
+Serial	
+Bimage	
+CfgChg	
+CfgWrt	
+VLnams	
+VLnamx	
+Group	
+Mode	
+ 
+# Interfaces
+StartX	
+EndX	
+IFname	1.3.6.1.2.1.31.1.1.1.1
+IFaddr	adr	
+IFalia	
+IFalix	
+InBcast	1.3.6.1.2.1.31.1.1.1.3
+InDisc	1.3.6.1.2.1.2.2.1.13
+OutDisc	1.3.6.1.2.1.2.2.1.19
+IFvlan	
+IFvlix	
+IFpowr		
+IFpwix	
+IFdupl	
+IFduix	
+Halfdp	
+Fulldp	
+ 
+# Modules
+Modesc	
+Moclas	
+Movalu	
+Moslot	
+Modhw	
+Modsw	
+Modfw	
+Modser	
+Momodl	
+ 
+# RRD Graphing
+CPUutl		
+Temp		
+MemCPU		
+Custom		

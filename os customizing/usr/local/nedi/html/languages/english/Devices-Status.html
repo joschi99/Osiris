@@ -1,0 +1,85 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Device Status</h2>
+
+			This is the centerpoint of individual device management. It's divided into 6 sections (General Info, Modules, Vlans, Links, Interfaces and Monitoring Stats), which correspond to the tables Devices, Modules, Vlans, Links and Interfaces. The monitoring part is shown on the bottom representing data from events, monitoring and incidents.
+			<p>
+			<strong>
+				Due to performance reasons, only uptime, poe, interface (and VM) operational status and interface last-change is realtime (if devices was seen in last discovery). Everthing else is retrieved from the database.
+			</strong>
+
+		<h3 class="lft imgb">Overview</h3>
+
+		<ul>
+			<li>Hover over the icons for hints on what they do.
+			<li>You'll see print supply levels on supported printers or VMs on VMware ESXis. If ssh access is enabled in addition, the VMs can be turned on and off.
+			<li><img src="../../img/16/geom.png"> takes you straight to DefGen, in case you want to edit the definition file.<br>
+			<li><img src="../../img/16/bino.png"> adds the device to monitoring and tests SNMP uptime by default. This icons turns into
+a clock in that case or another symbol, if you change the test method in Monitoring-Setup (click on icon to get there).
+			<li>The serial number is checked against the inventory and reflects support and maintenance status. Click on it to add it or update an existing asset (e.g. to track decomissioned devices).
+		</ul>
+
+		<h3 class="lft imgb">Interfaces</h3>
+
+		<ul>
+			<li>Active interfaces' names are blue and clicking on it pops up a realtime SVG graph window, which lets you observe the traffic in a 1 - 300 second interval.
+			<li>If the absolute counter is not 0, the background becomes blue, showing you there has been traffic on this interface.
+			<li>Recent status changes, high  error count or PoE values will be affect the background as well.
+			<li>If the last status change is more recent than last discovery, Vlan, Speed and Duplex become grey as they may have changed.
+			<li>Node population is shown by checking <img src="../../img/16/nods.png">. The background turns blue if a node was ever discovered on this port, even if it's empty now. The last seen MAC will be revealed upon hovering over it.
+			<li>Interface graphs can be enabled by checking <img src="../../img/16/grph.png">. Their size corresponds to the setting in User-Profile. If unchecked the counter values are shown (not showing 0 values).
+			<li>Filter interfaces by PVID and link status (only shown, if device is reachable)
+		</ul>
+
+		
+		Chances are you won't get complaints if you unplug a port where:
+		<ol>
+			<li>No link (icon not green)
+			<li>Last change is as much as switch uptime...or at least a long time ago!
+			<li>No nodes shown when Population is checked and field itself is not blue.
+			<li>No traffic is shown and respective fields are not blue.
+		</ol>
+		If the switch has been rebooted lately you may want to click on <img src="../../img/p45.png" title="Access Port Free"> in the summary section to review free ports in the Interface List.
+
+		<h3 class="lft imgb">Managing</h3>
+
+		SNMP write enabled:
+		<ul>
+			<li>You can change location, contact and admin status of interfaces directly.
+			<li>If the device is using standard MIBs you may also edit IF-alias (enter a "-" to clear) or toggle PoE delivery (e.g. to reset a hanging AP or VoIP phone).
+		</ul>
+		
+		CLI access enabled:
+		<ul>
+			<li>Click on <img src="../../img/16/wrte.png"> to save the running configuration to flash.
+			<li>Click on <img src="../../img/16/log.png"> to look at the device's log.
+			<li>The "CLI Send ->" selectbox allows for sending commands to a device. Refer to System-Files for creating command files.
+		</ul>
+
+		<h3 class="lft imgb">Customizing</h3>
+
+		A great way of customizing or integrating NeDi with other tools are two includes, which can be edited in System-Files:
+		<ol>
+			<li>devtools.php is included once and will be shown next to the device icon
+			<li>iftools.php is included with every interface and shown with the interface addresses.
+		</ol>
+
+		<div id="footer">Remo Rickli - 2015 &nbsp;</div>
+	</body>
+</html>

@@ -1,0 +1,55 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Topology Table</h2>
+
+		If your devices are configured with SNMP location information according to <a href="http://www.nedi.ch/documentation/"> NeDi's scheme</a>, you can drill down into your network in a tabular fashion here.
+		<p>
+		Those buttons on the top right help navigating and reveal more information:
+		<ul>
+			<li>Click <img src="../../img/16/bbup.png"> to get to the top, <img src="../../img/16/glob.png"> to region, <img src="../../img/16/fort.png"> to city, or <img src="../../img/16/home.png"> to building level.
+			<li><img src="../../img/16/dev.png"> displays number of devices per location
+			<li><img src="../../img/16/nods.png"> adds node population per location
+			<li><img src="../../img/p45.png"> adds free access ports per location
+			<li>Clicking on location names lists all its devices (the displayed width is set in User-Profile <img src="../../img/16/form.png"> ).
+			<li>You can "paint" important buildings red(ish) with redbuild in nedi.conf.
+			<li>A street address can have several buildings, if bldsep is configured correctly. A digit showing the amount of sub-buildings is added, if there are more than one.
+		</ul>
+
+		The next button cycles the display of your sites. The state is preserved within the session and is used in Monitoring-Health as well:
+		<ul>
+			<li><img src="../../img/16/det.png"> Switches to small icons (good for displaying hundreds of sites)
+			<li><img src="../../img/16/paint.png"> Shows NeDi maps (for a glance inside)
+			<li><img src="../../img/16/map.png"> Shows Openstreet maps (which are cached in topo/) or (uncached) Googlemaps, if enabled in User-Profile.
+			<li><img src="../../img/16/wthr.png"> Adds wheather information for cities, with that you know when it's down because of a thunderstorm.
+			<li><img src="../../img/16/icon.png"> Reverts to the default icon display.
+		</ul>
+
+		<h3 class="lft txtb">Building Level</h3>
+
+		Inside a building you get to see the devices on each floor and room. If you specified the rack and rack-unit, the room name becomes a link which takes you to the rackview.
+		<ul>
+			<li>Clicking on a floor lists all matching devices.
+			<li><img src="../../img/16/wlan.png"> Toggles displaying non-SNMP devices.
+			<li><img src="../../img/16/foto.png"> Shows device panels instead of icons.
+			<li>If photos or documents named Building-Floor-something (ignoring non-word characters) are found in topo/Region/City they're presented with an icon underneath the floor label. Clicking on them reveals the photo in a popup window or opens the file.
+		</ul>
+
+		<div id="footer">Remo Rickli 2015</div>
+	</body>
+</html>

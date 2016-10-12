@@ -1,0 +1,14 @@
+# Example for hourly discovery (skipping modules, vlans and IF IPs)
+# and config verbose backup at midnight (skipping arp and forwarding tables)
+#0 1-23 * * *	/var/nedi/nedi.pl -Aall -Smvj > /var/log/nedi/nedi-`date +\%H`.run 2>&1
+#0 0    * * *	/var/nedi/nedi.pl -v -b -Aall -SAF > /var/log/nedi/nedi-00.bup 2>&1
+
+# or 5 min interval (for very small networks)
+#*/5 * * * *	/var/nedi/nedi.pl -vp > /var/log/nedi/nedi-`date +\%H\%M`.run 2>&1
+#3   0 * * *	/var/nedi/nedi.pl -vB5 -A 'login !=""'  -SsmgafpijtedobwOA > /var/log/nedi/nedi-0003.bup 2>&1
+
+# weekly statistic Mondays 6:00 as a chat message
+#0 6 * * 1      /var/nedi/stati.pl
+
+# monthly DB cleanup on the 1st at 1:00 with output in /var/log/nedi
+#0 1 1 * *	/var/nedi/inc/nedio_db_maintenance.sh /var/nedi/nedi.conf /var/log/nedi/nedi-dbcleanup

@@ -1,0 +1,35 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<a href="gen-Lists.html"><img src="../../img/16/list.png" title="General Notes on List Modules"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Interface List</h2>
+
+		List device interfaces, their population and graphs. It also allows to add selection to Node-Track or set individual thresholds.
+		<ul>
+			<li>If the interface status is discovered, the type icon is imbued with the respective color (not realtime). It'll be "admin down" (or 0), if it's been skipped in every discovery. Interfaces of controlled access points are not polled and set to unknown (or 128).
+			<li>Click Track if you wish to track changes on those interfaces in Node-Track
+			<li>Set alert thresholds next to <img src="../../img/16/bino.png"> and click Update to override the values in nedi.conf (enter 0 to clear)
+			<li>Setting a MACflood threshold allows this interface to discover multiple CDP/LLDP neighbors (e.g. in a hub and spoke tpoplogy)
+			<li>The population takes you to the Nodes-List where you get detailed information on the connected nodes.
+			<li>The graph size corresponds to setting in User-Profile.
+			<li>By default a port type and status distribution report is shown
+		</ul>
+
+		<div id="footer">Remo Rickli 2015</div>
+	</body>
+</html>

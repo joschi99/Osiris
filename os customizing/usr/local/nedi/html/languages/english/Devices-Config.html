@@ -1,0 +1,54 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Devices Config</h2>
+
+		Review and compare backed up configurations and their changes.
+		<ul>
+			<li>A config report and recent backup related events are shown by default.
+			<li>There are two modes of operation which are list and compare.
+		</ul>
+
+		<h3 class="lft imgb">List Configurations</h3>
+
+		<ol>
+			<li>Search for text by setting a filter
+			<li>Limit number of displayed characters in the excerpts
+			<li>Limit number of displayed devices
+			<li>Click on an excerpt to view the whole configuration
+		</ol>
+
+		<h3 class="lft imgb">Compare Configurations</h3>
+
+		<ol>
+			<li>Choose a reference device from the "List" selectbox. 
+			<li>Now either select the 2nd device from the left selectbox in "Comparison" or leave it at -Type- (to compare aginst all configurations of the same type.
+			<li>Select how the output should be displayed.
+		</ol>
+
+		When viewing a configuration you've got the following options:
+		<ul>
+			<li><img src="../../img/16/form.png"> Toggles line number display for easier change review.
+			<li><img src="../../img/16/say.png"> Suppresses the motd character with that configurations of Cisco devices can directly be copied an pasted.
+			<li><img src="../../img/16/flop.png"> Use System-Export to display the config as plain-text or select a file version in the changes area to edit the actual file (made available with nedi.pl -Bx)
+			<li><img src="../../img/16/bcnl.png"> Clears configuration or changes.
+		</ul>
+
+		<div id="footer">Remo Rickli - 2015 &nbsp;</div>
+	</body>
+</html>

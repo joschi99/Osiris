@@ -1,0 +1,41 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Devices Graph</h2>
+
+		This module allows you to dynamically generate stacked interface graphs and much more.
+		<p>
+		Please note that NeDi's graphing feature was implemented as an addition to the discovery with lowest possible resource and maintenance cost in mind. 
+		<p>
+		It will not graph those 5 minute peaks (unless you run NeDi every 5 minutes in very small networks), but provides a longterm view 
+		of each and every interface. This translates to baselining and prediction of potential bottlenecks, instead of identifying erratic outbursts of any kind (You'd prefer using a tool like Cacti to monitor this instead).
+
+		<ul>
+			<li>Select any top graphs if you wish to get the big picture on your network.
+			<li>Selecting a device will reveal its interfaces. You can choose several of them to be stacked dynamically (doesn't work for IF status!).
+			<li>Select several graph sources at once to correlate and investigate problems (e.g. CPU load, broadcasts on some interfaces of a device)
+			<li>System related graphs are CPU, Memory and Temperature and a custom graph for other values.
+			<li>Use double arrows to move start (top one), the whole graph (middle) or its end (bottom one) by weeks or single arrows for days. Click on a date icon to manually set a start or end time.
+			<li>If you can't live without degrees Fahrenheit, check it in User-Profile.
+			<li>If you use Cacti on the same host, set $cacticli in html/inc/libmisc.php to easily add graphs...
+			<li>CPU and memory corresponds to System load and battery capacity on UPS'.
+		</ul>
+
+		<div id="footer">Remo Rickli - 2015 &nbsp;</div>
+	</body>
+</html>

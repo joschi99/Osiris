@@ -1,0 +1,88 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">System Policy</h2>
+
+		<div class="genpad bctr warn tqrt">
+			Make sure you understand how policy actions work! You can disable all network interfaces for example, if you don't know what you're doing!
+		</div>
+		<p>
+
+		This module lets you define conditions on device configurations, neighbors or learned MAC addresses and take action on match or miss.
+		<p>
+		The following uses cases can be covered:
+
+		<p>
+		<strong>Stolen Nodes</strong>
+		<p>
+
+		<ol>
+			<li>Click on <img src="../../img/16/hat3.png"> in Nodes-Status to create a MAC policy of that node
+			<li>Adjust Alert setting or info text and click add
+			<li>Everytime this MAC address is found, you'll be notified according to the alert setting
+		</ol>
+
+		<p>
+		<strong>Configuration Compliance</strong>
+		<p>
+
+		<ol>
+			<li>Select "Configuration" from the class selectbox and enter regexp to match (e.g. 'snmp-server community public')
+			<li>Adjust Alert setting and information text and click add
+			<li>Everytime this text occurs in a configuration, you'll be notified according to the alert setting
+			<li>Narrow down the matches by specifying a regexp for device type, location or group for example
+			<li>Alternatively you can change the operator to '!~' to get alerts on missing configuration statements
+		</ol>
+
+		<p>
+		<strong>PoE Police</strong>
+		<p>
+
+		<ol>
+			<li>Add a Neighbor Policy with the "Skip Action" to allow Poe delivery to phones or controlled APs.
+			<li>Add a MAC Policy to either match (~) on particular addresses or enter a '.' to match any
+			<li>Narrow down the matches by specifying a regexp for device type, location or group for example
+			<li>Optionally select an interface condition to only trigger if PoE was active in the previous discovery
+			<li>Select 'PoE Disabled' Action and add a reset policy by selecting a timeframe after which PoE should be re-enabled (status will be new and it's timestamp set in the future)
+			<li>Upon the first discovery, when its timestamp is in the past, the reset policy is executed to restore PoE delivery
+			<li>Adjust Alert setting and information text and click add
+		</ol>
+
+		<p>
+		<strong>General Topics</strong>
+		<p>
+
+		<ul>
+			<li>A policy cannot be edited, but copied by clicking on <img src="../../img/16/copy.png"> and then added again
+			<li>A policy can be disabled by clicking on <img src="../../img/16/bdis.png"> (and enabled respectively)
+			<li>A policy can be removed by clicking on <img src="../../img/16/bcnl.png">
+			<li>The "Skip Action" withelists a port, thus avoids any action to be performed
+			<li>Thoroughly test policies without actions before 'arming' them with one
+			<li>Always add a reset action to recover disabled ports automatically
+			<li>Actions are supported on IOS and ProCurve devices at the moment (config is not saved to flash)
+			<li>In case an error occured while getting device neighbors, the skip action is applied to concerned interfaces (inhibiing erratic actions)
+			<li>The information text is used in events, emails and sms, but also serves as comment in the policy list (e.g. if no Alert is selected)
+			<li>Actions are written to 
+			<li>By default a policy summary report is shown to pol_ files in the cli folder. Those files an the logs can be reviewed in System-Files
+		</ul>
+
+		<p>
+
+		<div id="footer">Remo Rickli 2015</div>
+	</body>
+</html>

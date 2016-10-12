@@ -1,0 +1,59 @@
+# Definition for 1.3.6.1.4.1.8059.1.4.1.1.3.2 created by Defgen 2.0 on 29.Jul 2015 (akorinek)
+ 
+# Main
+SNMPv	1
+Type	SuD2011_12E
+Typoid	
+Sysdes	
+OS	other
+Icon	w2an
+Size	1
+Bridge	
+ArpND	
+Dispro	
+Serial	
+Bimage	
+CfgChg	
+CfgWrt	
+VLnams	
+VLnamx	
+Group	
+Mode	
+ 
+# Interfaces
+StartX	
+EndX	
+IFname	1.3.6.1.2.1.2.2.1.2
+IFaddr	adr	
+IFalia	
+IFalix	
+InBcast	
+InDisc	1.3.6.1.2.1.2.2.1.13
+OutDisc	1.3.6.1.2.1.2.2.1.19
+IFvlan	
+IFvlix	
+IFpowr		
+IFpwix	
+IFdupl	
+IFduix	
+Halfdp	
+Fulldp	
+ 
+# Modules
+Modesc	
+Moclas	
+Movalu	
+Moslot	
+Mostat	
+Mostok	
+Modhw	
+Modsw	
+Modfw	
+Modser	
+Momodl	
+ 
+# RRD Graphing
+CPUutl		
+Temp		
+MemCPU		
+Custom		

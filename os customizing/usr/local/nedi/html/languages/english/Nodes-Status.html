@@ -1,0 +1,43 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Node Status</h2>
+
+		This is the Devices-Status counterpart for nodes. It displays the node relevant information on the left, device and interface on the right with the connection in between.<p>
+		<ul>
+			<li>You'd usually land here coming from other modules like Nodes-List. Alternatively you can enter/paste 
+			a MAC-address in any common format (grouped by - or . or : or plain HEX)
+			<li>If you need the MAC-address in a CLI window of a device, simply copy the appropriate format shown
+			<li><img src="../../img/16/bell.png"> View syslog events containing this MAC address
+			<li><img src="../../img/16/step.png"> Visible for users in the helpdesk group to mark this node as stolen
+			<li><img src="../../img/16/bcnl.png"> Allows administrators to delete the node
+		</ul>
+		<p>
+		Clicking on the network icon of an IP address reveals a context menu:
+		<ul>
+			<li><img src="../../img/16/bell.png"> View syslog events coming from this IP
+			<li><img src="../../img/16/tool.png"> Go to the Toolbox with this IP
+			<li><img src="../../img/16/exit.png"> Send Wake on Lan packets
+			<li><img src="../../img/16/dril.png"> Provision device using entry from System-Install
+			<li><img src="../../img/16/find.png"> Identifies host and available services
+			<li><img src="../../img/16/radr.png"> Discover as an SNMP device
+		</ul>
+
+		<div id="footer">Remo Rickli 2015</div>
+	</body>
+</html>

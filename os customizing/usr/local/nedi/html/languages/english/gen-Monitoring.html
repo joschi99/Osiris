@@ -1,0 +1,51 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General notes on the NeDi GUI"></a>
+		<a href="gen-Lists.html"><img src="../../img/16/list.png" title="General notes on list modules"></a>
+		<a href="gen-Reports.html"><img src="../../img/16/chrt.png" title="General Notes on Report Modules"></a>
+		<a href="gen-Assets.html"><img src="../../img/16/pkg.png" title="General notes on asset management"></a> - 
+		<img src="../../img/16/bblf.png" title="Go Back" onclick="history.go(-1)">
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Monitoring</h2>
+
+		Discovered devices are not monitored by default. Any thresholds (CPU, Mem etc.) and notifcation triggers are applied from nedi.conf.
+		Syslog events only receive a level of 10 (Other), thus can't generate alerts.
+		<p>
+		In order to monitor targets they need to be added to the monitoring table, since devices and nodes are dynamically overwritten by
+		the network discovery (nedi.pl). You can do this in Devices-List or Nodes-List via "Monitor" button (first show filtered
+		list of the desired targets). Alternatively you can add single targets in Devices-Status by clicking on the binoculars <img src="../../img/16/bino.png">. Once added to monitoring, targets can be configured further in Monitoring-Setup.
+		<p>
+		The monitoring daemon moni.pl first sends non-blocking uptime requests to all SNMP targets. Afterwards all other targets are tested sequentially (factoring in availability of their dependencies). This way, a dual homed web-server will only be checked if at least one of the connected switches returned an SNMP uptime.
+		<ul>
+			<li>TCP ping is used by default for nodes and non-SNMP devices, uptime is chosen for devices (as it can detect intermittent reboots as well)
+			<li>The monitoring daemon should be started automatically. It also relies on nedi.conf, where you can set the pause between polls, how many tests a device can fail before it is marked down and how emails should be sent.
+			<li>This daemon can be stopped and started from System-Services after changing any settings to quickly get the results. Otherwise you'll have to wait until the next polling cycle starts.
+			<li>If a target is reported to be down, an entry is created in the incidents table with the start time set to the time it's detected at. The end time will be added automatically, when the target is responding again. Incidents are acknowledged by classification in Monitoring-Incidents
+		</ul>
+
+		<div class="genpad bctr warn tqrt">
+			Due to limitations of the SNMP perl module and non-blocking requests, latencies are not accurate anymore! This will be fixed, when a suitable alternative is found...
+		</div>
+
+		<h3>Message Flows</h3>
+		
+		The following diagram explains how events (originating from syslog, trap, discovery and monitoring) are processed.
+		<img src="../messageflows.png">
+
+		<div id="footer">Remo Rickli - 2015 &nbsp;</div>
+	</body>
+</html>

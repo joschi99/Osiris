@@ -1,0 +1,91 @@
+<h3>Welcome to NeDi</h3>
+<div class="txta">
+<div class="genpad imga">
+Follow this "wizard" to start managing your network with NeDi. You'll find the official documentation <a href="http://www.nedi.ch/documentation" target="_blank">here</a>.
+In case you need assistance in a particular GUI module, click <img src="img/16/ring.png"> on the top for context help. Also check out the general-help buttons at the top of the help window. 
+</div>
+<p>
+<div>
+<form method="post" target="_blank" action="System-Files.php">
+<input type="hidden" name="typ" value="sys">
+<input type="hidden" name="file" value="<?=$nedipath?>/nedi.conf">
+<input type="image" class="imgbtn flft" src="img/32/ucfg.png" value="Submit" title="Edit nedi.conf">
+The first step for getting NeDi up and running is to set <strong>SNMP parameters</strong> and optional login credentials for accessing your network devices. Furthermore you can define borders where the discovery should stop or specify a network pattern device IPs are required to match in order to be discovered. 
+</form>
+</div>
+<p>
+&nbsp;&nbsp;<img src="img/sub.png"><br>
+&nbsp;&nbsp;<img src="img/dwn.png">
+<div>
+<form method="post" target="_blank" action="System-Files.php">
+<input type="hidden" name="typ" value="sys">
+<input type="hidden" name="file" value="<?=$nedipath?>/seedlist">
+<input type="image" class="imgbtn flft" src="img/32/rout.png" value="Submit" title="Add Seeds">
+ Set <strong>starting point(s)</strong> for discovery in the seedlist. Entries can be single addresses or IP ranges like 10.10.5-8.1-254. Read <a href="http://www.nedi.ch/documentation/#first" target="_blank">this</a> for more information (like advanced discovery based on vendor names). If you have discovery protocols enabled, only one starting point is required in theory. The default gateway of this host is used by default.
+</form>
+</div>
+<p>
+&nbsp;&nbsp;<img src="img/sub.png"><br>
+&nbsp;&nbsp;<img src="img/dwn.png">
+<p>
+<div>
+<form method="post" target="_blank" action="System-NeDi.php">
+<input type="hidden" name="mde" value="d">
+<input type="hidden" name="skp" value="Gg">
+<input type="hidden" name="dip" value="1">
+<input type="image" class="imgbtn flft" src="img/32/radr.png" value="Submit" title="Run NeDi">
+<strong>Discover</strong> the network for the first time (skipping graph generation). You'll be able to follow the progress in the text box. Click inside of it to have it automatically scroll down (turns yellow). This might come in handy after 100 devices or so.
+</form>
+</div>
+<p>
+&nbsp;&nbsp;<img src="img/sub.png"><br>
+&nbsp;&nbsp;<img src="img/dwn.png">
+<p>
+<div>
+<a href="Devices-List.php?in[]=" target="_blank"><img src="img/32/dev.png" class="imgbtn flft" title="Device List"></a> Check out the discovered <strong>devices</strong>. If you got them all in there, click above discover button again and note the duration. It should be less than the first time as communities and logins are known now.
+</div>
+<p>
+&nbsp;&nbsp;<img src="img/sub.png"><br>
+&nbsp;&nbsp;<img src="img/dwn.png">
+<p>
+<div>
+<form method="post" target="_blank" action="System-Files.php">
+<input type="hidden" name="typ" value="sys">
+<input type="hidden" name="file" value="<?=$nedipath?>/inc/crontab">
+<input type="image" class="imgbtn flft" src="img/32/clock.png" value="Submit" title="Edit Crontab">
+<strong>Schedule</strong> discoveries based on duration of previous step in crontab. If you choose anything else than 1h, adjust rrdstep in nedi.conf accordingly. A rule of thumb is using at least double the time it takes for a discovery run.
+</form>
+</div>
+<p>
+&nbsp;&nbsp;<img src="img/sub.png"><br>
+&nbsp;&nbsp;<img src="img/dwn.png">
+<p>
+<div>
+<a href="Devices-List.php?in[]=snmpversion&op[]=>&st[]=0&mon=1" target="_blank">
+<img src="img/32/bino.png" class="imgbtn flft" title="Monitor Devices"></a>Now you can start <strong>monitoring</strong> all your SNMP devices. By default all targets are tested for reachability by fetching the uptime. This way intermittant reboots can be discovered as well.
+</div>
+<p>
+&nbsp;&nbsp;<img src="img/sub.png"><br>
+&nbsp;&nbsp;<img src="img/dwn.png">
+<p>
+<div>
+<a href="Monitoring-Health.php" target="_blank"><img src="img/32/hlth.png" class="imgbtn flft" title="Monitoring Health"></a>Behold the <strong>health</strong> of your network and maybe even put it up on that big screen in the NOC. High CPU or memory usage and temperatures of all devices are shown as well as excess traffic and errors on all their interfaces.
+</div>
+<p>
+&nbsp;&nbsp;<img src="img/sub.png"><br>
+&nbsp;&nbsp;<img src="img/dwn.png">
+<p>
+<div>
+<a href="Other-Invoice.php" class="imgbtn flft" target="_blank">
+<img src="img/32/cash.png" title="Support NeDi"></a> Please purchase the annual subscription to <strong>help financing NeDi's development</strong>. Depending on the amount, you'll be entitled for the latest version, additional resources and even official support!
+</div>
+<p>
+<h3>Further steps</h3>
+<ul>
+<li>&nbsp;<img src="img/16/log.png">&nbsp; Explore the <a href="http://www.nedi.ch/documentation/" target="_blank">documentation</a>.
+<li>&nbsp;<img src="img/16/ugrp.png">&nbsp; Join the <a href="http://forum.nedi.ch" target="_blank">community</a>.
+<li><a href="https://plus.google.com/106414135314831644755" rel="me" title="Follow NeDi on Google+" target="_blank"><img src="http://www.nedi.ch/wp-content/uploads/g.png"  alt="Follow NeDi on Google+"  title="Follow NeDi on Google+" /> Follow NeDi on Google+</a></li>
+<li><a href="https://www.facebook.com/pages/NeDi-Consulting/926380117394916" title="Follow NeDi on facebook" target="_blank"><img src="http://www.nedi.ch/wp-content/uploads/f.png"  alt="Like NeDi on Facebook"  title="Follow NeDi on facebook" /> Like NeDi on Facebook</a></li>
+<li><a href="https://www.youtube.com/user/NetworkDiscovery" title="Educational shorts" target="_blank"><img src="http://www.nedi.ch/wp-content/uploads/y.png"  alt="NeDi Videos"  title="Educational shorts" />Watch NeDi video tutorials</a></li>
+</ul>
+</div>

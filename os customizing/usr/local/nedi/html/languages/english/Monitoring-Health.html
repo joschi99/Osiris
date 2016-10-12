@@ -1,0 +1,53 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<a href="gen-Monitoring.html"><img src="../../img/16/bino.png" title="General Notes on Monitoring"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Monitoring Health</h2>
+
+		If you do use NeDi's network monitoring features, this is the module to just leave open in a browser.
+		It'll refresh every minute to alert you (with original www.PSI.ch siren sounds!), if something went bad.
+		The size of the graphs can be set in User-Profile.
+		If you drill down into locations, the messages and events will be filtered accordingly. A mobile version without graphs and session management (no login required) can be accessed with mh.php.
+		Simply delete this file, if you don't want to allow this.
+		<p>
+		
+		Top section:
+		<ul>
+			<li>Displays overall network condition
+			<li>Target availability, excessive traffic or errors on interfaces
+			<li>Exceeded CPU, memory and temperature thresholds of devices
+		</ul>
+
+		Event section:
+		<ul>
+			<li>Some statistic to the left and important events within the last 24h to the right are shown by default
+			<li>Adjust #top events in User-Profile (< 6 shows less statistics, < 3 no events at all)
+		</ul>
+		
+		Topology section:
+		<ul>
+			<li>Works just like Topology-Map, providing operational status of locations in addition
+			<li>Monitored nodes and non-SNMP devices won't be shown
+			<li>A shaded backgroun indicates that not all devices are monitored in a location
+			<li>Events with a level of 250 cause a flashing warning symbol to appear on the respective location (in general, an event can be acknowledged by clicking its Id)
+			<li>Adjust #columns in User-Profile fit your screen (setting it to 0 hides this section)
+		</ul>
+
+		<div id="footer">Remo Rickli - 2015 &nbsp;</div>
+	</body>
+</html>

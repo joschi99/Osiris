@@ -1,0 +1,57 @@
+# Definition for 1.3.6.1.4.1.3417.1.1.34 created by Defgen 2.0 on 3.Dec 2014 (admin) 
+  
+# Main 
+SNMPv	2HC 
+Type	Blue Coat SG900 
+Typoid	 
+Sysdes	 
+OS	other 
+Icon	csan 
+Size	1 
+Bridge	 
+ArpND	old 
+Dispro	 
+Serial	1.3.6.1.4.1.3417.2.11.1.4.0 
+Bimage	 
+CfgChg	 
+CfgWrt	 
+VLnams	 
+VLnamx	 
+Group	 
+Mode	 
+  
+# Interfaces 
+StartX	 
+EndX	 
+IFname	1.3.6.1.2.1.31.1.1.1.1 
+IFaddr	old	 
+IFalia	 
+IFalix	 
+InBcast	1.3.6.1.2.1.31.1.1.1.3 
+InDisc	1.3.6.1.2.1.2.2.1.13 
+OutDisc	1.3.6.1.2.1.2.2.1.19 
+IFvlan	 
+IFvlix	 
+IFpowr		 
+IFpwix	 
+IFdupl	 
+IFduix	 
+Halfdp	 
+Fulldp	 
+  
+# Modules 
+Modesc	 
+Moclas	 
+Movalu	 
+Moslot	 
+Modhw	 
+Modsw	 
+Modfw	 
+Modser	 
+Momodl	 
+  
+# RRD Graphing 
+CPUutl		 
+Temp		 
+MemCPU		 
+Custom		

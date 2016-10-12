@@ -1,0 +1,224 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<a href="gen-Assets.html"><img src="../../img/16/pkg.png" title="General notes on asset management"></a> - 
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Assets Management</h2>
+
+		Add or edit one asset at the time.
+		<ul>
+			<li>By default asset summaries are shown. Click on the text to get a filtered list of matching assets and clicking on the value takes those items to the module Assets-List.
+			<li>Use a bar code scanner (should send a "tab" upon successful reading) to scan type and serial number or enter them manually. 
+			<li>Specify location, condition, source/provider and warranty. If the latter one is closer than a month it'll be highlited with the "warning" color or with the "critical" color if expired.
+			<li>Click on the <img src="../../img/16/abc.png"> Icon to open the panel browser
+			<li>Refer to Devices-Modules for a list of the classes
+			<li>If you list by a property (e.g. location), the appropriate field on the top is populated as well for easier batch additions. 
+			<li>You can edit items listed by clicking on its serial number. The current list will stay. Note that the focus will move to the location field as SN cannot be edited. You can either update or delete an item now.
+			<li>If you click on a class icon, you get to the respective device or module if it has been discovered.
+			<li>You can export a list as XLS, but Assets-List is more flexible in that respect.
+		</ul>
+		<p>
+		You can upload a CSV file containing assets with their maintenance contract information as well:
+		<ul>
+			<li><img src="../../img/16/date.png"> Select date format used in the CSV file
+			<li><img src="../../img/16/form.png"> Field separator
+			<li><img src="../../img/16/bbd2.png"> Rows to skip from top
+		</ul>
+
+		Currently the columns need to be arranged like this:
+		<table class="content">
+			<tr class="imgb">
+				<th class="s">
+					Field
+				</th>
+				<th class="m">
+					Example
+				</th>
+				<th>
+					Description
+				</th>
+			</tr>
+			<tr class="txtb">
+				<td>
+					Class
+				</td>
+				<td>
+					License
+				</td>
+				<td>
+					Only Software or License is identified. Everything else (e.g. Chassis) can be determined upon discovery
+				</td>
+			</tr>
+			<tr class="txta">
+				<td>
+					SLA
+				</td>
+				<td>
+					7x24
+				</td>
+				<td>
+					Stored in 'Services Level'
+				</td>
+			</tr>
+			<tr class="txtb">
+				<td>
+					type
+				</td>
+				<td>
+					2520-8G-PoE
+				</td>
+				<td>
+					The type as specified by vendor can be used to determine its EoL status
+				</td>
+			</tr>
+			<tr class="txta">
+				<td>
+					serial
+				</td>
+				<td>
+					123456ABC
+				</td>
+				<td>
+					The SN# is the primary key in the inventory table
+				</td>
+			</tr>
+			<tr class="txtb">
+				<td>
+					count
+				</td>
+				<td>
+					-
+				</td>
+				<td>
+					Currently ignored (just add an empty column for now)
+				</td>
+			</tr>
+			<tr class="txta">
+				<td>
+					serial2
+				</td>
+				<td>
+					ITEM2345
+				</td>
+				<td>
+					Will be used, if the first SN# was not available for some reason
+				</td>
+			</tr>
+			<tr class="txtb">
+				<td>
+					contact
+				</td>
+				<td>
+					Sherlock Holmes
+				</td>
+				<td>
+					Stored in 'Asset Contact'
+				</td>
+			</tr>
+			<tr class="txta">
+				<td>
+					address
+				</td>
+				<td>
+					221b Baker Street
+				</td>
+				<td>
+					Combined in assetlocation with place (to place;address)
+				</td>
+			</tr>
+			<tr class="txtb">
+				<td>
+					place
+				</td>
+				<td>
+					London
+				</td>
+				<td>
+					Combined in assetlocation with address (to place;address)
+				</td>
+			</tr>
+			<tr class="txta">
+				<td>
+					description
+				</td>
+				<td>
+					anything useful
+				</td>
+				<td>
+					Stored in 'Maintenance Description'
+				</td>
+			</tr>
+			<tr class="txtb">
+				<td>
+					renewal
+				</td>
+				<td>
+					Yes/No Ja/Nein
+				</td>
+				<td>
+					Determines whether maintenance contracts are renewed or not (Maintenance Status)
+				</td>
+			</tr>
+			<tr class="txta">
+				<td>
+					end of maintenance
+				</td>
+				<td>
+					05/26/2015
+				</td>
+				<td>
+					Current maintenance end date
+				</td>
+			</tr>
+			<tr class="txtb">
+				<td>
+					end of sale
+				</td>
+				<td>
+					-
+				</td>
+				<td>
+					Currently ignored (just add an empty column for now) 
+				</td>
+			</tr>
+			<tr class="txta">
+				<td>
+					end of support
+				</td>
+				<td>
+					05/26/2036
+				</td>
+				<td>
+					End of routine failure analysis 
+				</td>
+			</tr>
+			<tr class="txtb">
+				<td>
+					End of Life
+				</td>
+				<td>
+					05/26/2071
+				</td>
+				<td>
+					R.I.P. all said...
+				</td>
+			</tr>
+		</table>
+		<p>
+		<div id="footer">Remo Rickli 2015</div>
+	</body>
+</html>

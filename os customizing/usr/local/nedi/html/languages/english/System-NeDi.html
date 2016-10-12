@@ -1,0 +1,83 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">System NeDi</h2>
+
+		Execute nedi.pl from the GUI.
+
+		The module can be used to perform the following tasks:
+		<ol>
+			<li>By default the help is displayed, which reveals options and the output legend
+			<li>Definitions shows all available .def files, sysobjids are linked to Defgen
+			<li>Discover will actually find devices
+			<li>Services scans for certain open ports on given IP addresses and uses the answers for host identification
+			<li>Secure password to be used with usrsec in nedi.conf (enter cleartext pw in Options box)
+			<li>Init drops and recreate the whole database, but does not remove any config files or RRDs
+		</ol>
+
+		<h3 class="lft txtb">Discover</h3>
+
+		This is NeDi's core. You can use this module to determine the best way to discover your network.
+		Once you've found the right options, copy the command above the output and put it in crontab via System-Files.
+		There are several approaches to discover a network. First the right method to use the sources needs to be found: 
+		<ol>
+			<li>Don't add any IPs to the seedlist and check "Protocol". This discovers the default gateway of the NeDi host and any neighbors via CDP or LLDP
+			<li>If you have firewalls or other "hurdles" separating your networks (not supporting CDP or LLDP), you need to add a seed for each island
+			<li>Use a static seedlist and don't use any discovery protocols
+			<li>Select "Address" from the Seed-selectbox and enter a single IP or range like 1.2.3,6,8.10-15
+			<li>Alternatively you can click <img src="../../img/16/db.png"> to select Devices with the 'all' option to discover all devices in the DB
+			<li>You can also use a query to only discover a subset and use crontab to parallelize the discoveries this way
+			<li>To find more "exotic" devices, add the vendor strings to ouidev in nedi.conf and check "OUI". Discover a router connected to those devices and they'll be queued
+			<li>You can use route tables as layer3 discovery by checking "Routes"
+		</ol>
+
+		The behavior can be controlled with the following options:
+		<ul>
+			<li>Select a Configuration option to back up device configurations to DB and the config folder
+			<li>Click <img src="../../img/16/port.png"> to skip interface info, <img src="../../img/16/grph.png"> to avoid graphs or <img src="../../img/16/nods.png"> to ignore nodes (any combination is possible, to speed up the discovery)
+			<li>Select "Version" to force using an SNMP version (only tested upon first discovery and the first one working is stored in DB)
+			<li>Check "Write" to re-test SNMP write community strings (only tested upon first discovery, can be turned of via snmpwrite in nedi.conf)
+			<li>Check FQDN to use complete device names. Otherwise everything after a '.' is truncated as fqdn's can cause wrong links
+			<li>NeDi relies on unique device names. Check DevIP to use their IP addresses instead
+			<li>Select a command file from CLI-Send selectbox to have it executed on each discovered device (see System-Files for creating them)
+		</ul>
+
+		<h3 class="lft txtb">DNS Names</h3>
+
+		<ul>
+			<li>Select Address from the Seed-selectbox and enter a single IP or range like 1.2.3,6,8.10-15
+			<li>Check verbose to follow the progress of the name resolution
+			<li>Click Execute to resolve all names in that IP range
+			<li>The Network Population report in Reports-Networks leverages this information to show unused DNS records for example
+		</ul>
+
+		<h3 class="lft txtb">Services</h3>
+
+		<ul>
+			<li>Select Address from the Seed-selectbox and enter a single IP or range like 1.2.3,6,8.10-15
+			<li>Alternatively you can select Nodes and enter a query like oui ~ 'intel'
+			<li>Select Ping (1-3s timeout) to make sure an address is in use (TCP echo is used and may not work on some hosts)
+			<li>Check verbose to follow the progress of the host identification
+			<li>The 'id' option uses ssh, sendmail, http, https and netbios for host identification
+			<li>If used from CLI, additional ports can be checked like -sid,3128,5900
+		</ul>
+
+
+		<div id="footer">Remo Rickli 2015</div>
+	</body>
+</html>

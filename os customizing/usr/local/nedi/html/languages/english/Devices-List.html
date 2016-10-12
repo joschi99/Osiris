@@ -1,0 +1,67 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<a href="gen-Lists.html"><img src="../../img/16/list.png" title="General Notes on List Modules"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">Devices List</h2>
+
+		List devices, system graphs, population, free access ports and configuration status. Realtime Spanning-Tree information can be added for troubleshooting as well.
+		<ul>
+			<li>Unselecting the device column hides the icons i.e. to create a simple text list.
+			<li>The serial number is checked against the inventory and reflects support and maintenance status. Click on it to add it or update an existing asset (e.g. to track decomissioned devices).
+			<li>The selected devices can be monitored by clicking the Monitor button (go to Monitor-Setup to configure them further).
+			<li>The selected devices and related information (e.g. modules and interfaces) can be deleted, by clicking the Delete button.
+			<li>By default a vendor and type distribution report without piecharts is shown.
+		</ul>
+
+		Device Options are used internally to describe the device's capabilities. They can be used for filtering as well. A '-' indicates that a property is not available:
+		<table class="content">
+			<tr class="imgb">
+				<th>Position</th>
+				<th>Character</th>
+				<th>Description</th>
+			</tr>
+			<tr class="txta">
+				<td>1</td>
+				<td>A,-</td>
+				<td>ifAlias from IF-MIB</td>
+			</tr>
+			<tr class="txtb">
+				<td>2</td>
+				<td>C,W,-</td>
+				<td>CPU utilization or Wattage on UPS devices</td>
+			</tr>
+			<tr class="txta">
+				<td>3</td>
+				<td>P,S,N,-</td>
+				<td>Power-Ethernet MIB support and how interfaces relate to it</td>
+			</tr>
+			<tr class="txtb">
+				<td>4</td>
+				<td>I,-</td>
+				<td>Has interfaces or not</td>
+			</tr>
+			<tr class="txta">
+				<td>5</td>
+				<td>s,i</td>
+				<td>sysname or IP used as name</td>
+			</tr>
+		</table>
+		<p>
+		<div id="footer">Remo Rickli - 2015 &nbsp;</div>
+	</body>
+</html>

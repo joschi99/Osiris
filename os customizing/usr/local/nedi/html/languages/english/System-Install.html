@@ -1,0 +1,60 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">System Install</h2>
+
+		<div class="genpad bctr warn tqrt">
+			At this time only HP ProCurve Switches have been tested!
+		</div>
+		<p>
+
+		This module is part of NeDi's provisioning system. It allows for installing unconfigured switches upon discovery. The procedure is divided into the following setps:
+		<ol>
+			<li>Create install entries specifying device type and IP address to be matched. The desired name and IP settings need to be set as well, rest is optional
+			<li>Create an install template with System-Files (see below)
+			<li>Perform installation (with nedi.pl -T or checking "Install" in System-NeDi). If type and IP match an install entry with the state "New", the target IP is pinged
+			<li>If no answer comes back the entry is used to create a device configuration from the install template. The state of the install entry is changed to "Active"
+			<li>If the device is discovered with the new IP address the state of the install entry is changed to "Used"
+			<li>Check verbose nedi.pl output, if status changes to "Broken"
+			<li>By default an install entries summary report is shown
+		</ol>
+
+		<h3 class="lft txtb">Install Template</h3>
+
+		An install template persists of a series of commands (1 command per line with optional confirmation and timeout separated by ;) to prepare the target device and a config template with placeholders, which are filled in from the install entry. If used, the password is taken from the appropriate user in nedi.conf, but usually is a fixed/encryped string
+		<p>
+		<div class="genpad bctr code pre txtb tqrt">
+Cli command1
+Cli command2;y;600
+Cli command3;y;0
+===
+sysname %NAME%
+ip addr %IPADDR% %MASK%
+ip default route %GATEWAY%
+vlan %VLANID%
+snmp location %LOCATION%
+snmp contact %CONTACT%
+username %LOGIN%
+password %PASSWORD%
+enable password %ENABLEPW%
+		</div>
+		<p>
+
+		<div id="footer">Remo Rickli 2015</div>
+	</body>
+</html>

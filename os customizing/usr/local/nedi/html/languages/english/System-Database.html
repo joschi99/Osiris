@@ -1,0 +1,48 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN">
+
+<html>
+	<head>
+		<title>NeDi Help</title>
+		<meta http-equiv="Content-Type" content="text/html;charset=iso-8859-1">
+		<link href="../../themes/flatblues.css" type="text/css" rel="stylesheet">
+		<link rel="shortcut icon" href="../../img/favicon.ico">
+	</head>
+	<body>
+		<div id="header" class="bgtop">
+			<img src="../../img/16/ring.png">
+			NeDi Help
+		</div>
+		<p>
+		<a href="gen-GUI.html"><img src="../../img/16/idea.png" title="General Notes on the NeDi GUI"></a>
+		<img src="../../img/16/bcnl.png" title="Close Help" onclick="window.close()">
+
+		<h2 class="lft txtb">System Database</h2>
+
+		Backup SQL tables, perform DB maintenance, export configurations as text files or other tables as CSV files. By default the complete DB structure including number of records is shown:
+		<ul>
+			<li>Quickly view (the first 1000) entries of a table by clicking on the <img src="../../img/16/eyes.png">, if shown
+			<li>Optimize a table with <img src="../../img/16/hat2.png"> or repair with <img src="../../img/16/dril.png">
+			<li>Delete all records with <img src="../../img/16/bcnl.png">
+		</ul>
+
+		<h3 class="lft txtb">Execute</h3>
+
+		<ul>
+			<li>Select a query from the "--DB List-- selectbox. Entries begin with simple SELECT statements to display entire tables, but also contain maintenance tasks towards the bottom
+			<li>"Configuration Backup" simply adds a query to select all configs, but creates a downloadable gzip archive as well
+
+			<li>All other select statements list the respective table contents, which can be displayed as CSV (with destination set to "plain")
+			<li><img src="../../img/16/abc.png"> changes IP addresses and timestamps to a human readable format and adds a timestamp to the archive name, if destination is Gzip or Bzip2
+			<li>Bzip2 needs more resources, but generally creates smaller archives.
+			<li>Depending on the amount of data you're dealing with, the module requires more memory or time to finish processing!
+		</ul>
+
+		<h3 class="lft txtb">SQL Dump</h3>
+
+		<ul>
+			<li>Select (hold down CTRL for multiple) tables to be exported in SQL format
+			<li>The resulting file can be imported again via System-Files, if Destination was set to Gzip
+		</ul>
+		<div id="footer">Remo Rickli 2015</div>
+	</body>
+</html>
