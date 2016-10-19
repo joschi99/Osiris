@@ -9,9 +9,8 @@ actions:
   1:
     action: delete_indices
     description: >-
-      Delete indices older than 45 days (based on index name), for logstash-
-      prefixed indices. Ignore the error if the filter does not result in an
-      actionable list of indices (ignore_empty_list) and exit cleanly.
+      Delete indices older than 15 days (based on the index name)
+      Except Kibana Index
     options:
       ignore_empty_list: True
       timeout_override:
@@ -31,9 +30,8 @@ actions:
   2:
     action: delete_indices
     description: >-
-      Delete indices older than 45 days (based on index name), for logstash-
-      prefixed indices. Ignore the error if the filter does not result in an
-      actionable list of indices (ignore_empty_list) and exit cleanly.
+      Delete index to shrink the used space to 20GB
+      Except Kibana Index
     options:
       ignore_empty_list: True
       timeout_override:
