@@ -3,7 +3,7 @@ i-Vertix 2016 - 2.3.0
 		- Upgrade Centreon Web 2.7.7
 		- Upgrade Centreon Broker 2.11.5
 		- Upgrade Yowsup2 2.5.0
-		- Centreon plugins 20160902
+		- Centreon plugins 20161014
 		- Upgrade Selenium 2.53.1
 	Inventory
 		- Upgrade GLPI 0.90.5
