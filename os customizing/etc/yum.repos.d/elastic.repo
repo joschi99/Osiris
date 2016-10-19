@@ -1,6 +1,6 @@
-[logstash-2.3]
-name=Logstash repository for 2.3.x packages
-baseurl=https://packages.elastic.co/logstash/2.3/centos
+[logstash-2.4]
+name=Logstash repository for 2.4.x packages
+baseurl=https://packages.elastic.co/logstash/2.4/centos
 gpgcheck=1
 gpgkey=https://packages.elastic.co/GPG-KEY-elasticsearch
 enabled=1
@@ -12,9 +12,9 @@ gpgcheck=1
 gpgkey=https://packages.elastic.co/GPG-KEY-elasticsearch
 enabled=1
 
-[kibana-4.5]
-name=Kibana repository for 4.5.x packages
-baseurl=http://packages.elastic.co/kibana/4.5/centos
+[kibana-4.6]
+name=Kibana repository for 4.6.x packages
+baseurl=http://packages.elastic.co/kibana/4.6/centos
 gpgcheck=1
 gpgkey=http://packages.elastic.co/GPG-KEY-elasticsearch
 enabled=1

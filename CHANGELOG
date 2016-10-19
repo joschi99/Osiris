@@ -15,10 +15,10 @@ i-Vertix 2016 - 2.3.0
 		- Upgrade rancid 3.5.1
 	Syslog, Log- & Datamanagement
 		- New sFlow Analysis - nfdump 1.6.15
-		- Upgrade Elasticsearch 2.3.5
-		- Upgrade Logstash 2.3.4
-		- Upgrade Kibana 4.5.4
-		- Upgrade Curator 4.0.5
+		- Upgrade Elasticsearch 2.4.1
+		- Upgrade Logstash 2.4.0
+		- Upgrade Kibana 4.6.1
+		- Upgrade Curator 4.1.2
 		- Upgrade RSyslog 8.22.0
 	System
 		- SL 6.8

@@ -1,8 +1,8 @@
 # Kibana is served by a back end server. This controls which port to use.
-server.port: 5601
+# server.port: 5601
 
 # The host to bind the server to.
-server.host: "0.0.0.0"
+# server.host: "0.0.0.0"
 
 # If you are running kibana behind a proxy, and want to mount it at a path,
 # specify that path here. The basePath can't end in a slash.
@@ -23,7 +23,7 @@ elasticsearch.preserveHost: true
 kibana.index: ".kibana"
 
 # The default application to load.
-kibana.defaultAppId: "discover"
+kibana.defaultAppId: "dashboard"
 
 # If your Elasticsearch is protected with basic auth, these are the user credentials
 # used by the Kibana server to perform maintenance on the kibana_index at startup. Your Kibana
@@ -57,6 +57,10 @@ elasticsearch.pingTimeout: 1500
 # Time in milliseconds to wait for responses from the back end or elasticsearch.
 # This must be > 0
 elasticsearch.requestTimeout: 30000
+
+# Header names and values that are sent to Elasticsearch. Any custom headers cannot be overwritten
+# by client-side headers.
+# elasticsearch.customHeaders: {}
 
 # Time in milliseconds for Elasticsearch to wait for responses from shards.
 # Set to 0 to disable.
