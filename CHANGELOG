@@ -13,6 +13,7 @@ i-Vertix 2016 - 2.3.0
 	Network
 		- Upgrade nedi 1.5.225p3
 		- Upgrade rancid 3.5.1
+		- Upgrade Packetbeat 1.3.1
 	Syslog, Log- & Datamanagement
 		- New sFlow Analysis - nfdump 1.6.15
 		- Upgrade Elasticsearch 2.4.1
@@ -25,6 +26,7 @@ i-Vertix 2016 - 2.3.0
 		- Upgrade MariaDB 5.5.53
 		- Upgrade glances 2.6.2
 		- Upgrade Webmin 1.820
+		- Upgrade Topbeat 1.3.1
 Osiris 2.2.1
 	Monitoring
 		- Upgrade Centreon Broker 2.11.4
