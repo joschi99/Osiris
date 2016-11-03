@@ -1,9 +1,9 @@
 [
   {
-    "_id": "Syslog-critical-events",
+    "_id": "syslog-critical-events",
     "_type": "search",
     "_source": {
-      "title": "Syslog critical events",
+      "title": "syslog critical events",
       "description": "",
       "hits": 0,
       "columns": [
@@ -19,15 +19,15 @@
       ],
       "version": 1,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[rsyslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"severity-id: [0 TO 3]\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+        "searchSourceJSON": "{\"index\":\"rsyslog-*\",\"filter\":[],\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"require_field_match\":false,\"fragment_size\":2147483647},\"query\":{\"query_string\":{\"query\":\"severity-id: [0 TO 3]\",\"analyze_wildcard\":true}}}"
       }
     }
   },
   {
-    "_id": "Syslog-warning-events",
+    "_id": "syslog-warning-events",
     "_type": "search",
     "_source": {
-      "title": "Syslog warning events",
+      "title": "syslog warning events",
       "description": "",
       "hits": 0,
       "columns": [
@@ -43,15 +43,15 @@
       ],
       "version": 1,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[rsyslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"severity-id: [0 TO 4]\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+        "searchSourceJSON": "{\"index\":\"rsyslog-*\",\"filter\":[],\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"require_field_match\":false,\"fragment_size\":2147483647},\"query\":{\"query_string\":{\"query\":\"severity-id: [0 TO 4]\",\"analyze_wildcard\":true}}}"
       }
     }
   },
   {
-    "_id": "Syslog-all-events",
+    "_id": "syslog-all-events",
     "_type": "search",
     "_source": {
-      "title": "Syslog all events",
+      "title": "syslog all events",
       "description": "",
       "hits": 0,
       "columns": [
@@ -67,7 +67,7 @@
       ],
       "version": 1,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[rsyslog-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"*\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+        "searchSourceJSON": "{\"index\":\"rsyslog-*\",\"filter\":[],\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"require_field_match\":false,\"fragment_size\":2147483647}}"
       }
     }
   }

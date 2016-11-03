@@ -1,18 +1,18 @@
 [
   {
-    "_id": "Syslog",
+    "_id": "syslog",
     "_type": "dashboard",
     "_source": {
-      "title": "Syslog",
+      "title": "syslog",
       "hits": 0,
       "description": "",
-      "panelsJSON": "[{\"col\":1,\"id\":\"Syslog-all-events-timeline\",\"row\":1,\"size_x\":4,\"size_y\":3,\"type\":\"visualization\"},{\"col\":9,\"id\":\"Syslog-warning-events-top-hosts-timeline\",\"row\":1,\"size_x\":4,\"size_y\":3,\"type\":\"visualization\"},{\"col\":1,\"id\":\"Syslog-warning-severity\",\"row\":4,\"size_x\":3,\"size_y\":2,\"type\":\"visualization\"},{\"col\":4,\"id\":\"Syslog-warning-facility\",\"row\":4,\"size_x\":3,\"size_y\":2,\"type\":\"visualization\"},{\"col\":7,\"id\":\"Syslog-warning-program\",\"row\":4,\"size_x\":3,\"size_y\":2,\"type\":\"visualization\"},{\"col\":10,\"id\":\"Syslog-warning-host\",\"row\":4,\"size_x\":3,\"size_y\":2,\"type\":\"visualization\"},{\"col\":1,\"columns\":[\"fromhost\",\"severity\",\"facility\",\"programname\",\"message\"],\"id\":\"Syslog-critical-events\",\"row\":6,\"size_x\":10,\"size_y\":3,\"sort\":[\"@timestamp\",\"desc\"],\"type\":\"search\"},{\"col\":1,\"columns\":[\"fromhost\",\"severity\",\"facility\",\"programname\",\"message\"],\"id\":\"Syslog-warning-events\",\"row\":9,\"size_x\":10,\"size_y\":3,\"sort\":[\"@timestamp\",\"desc\"],\"type\":\"search\"},{\"col\":11,\"id\":\"Syslog-no-critical-events\",\"row\":6,\"size_x\":2,\"size_y\":2,\"type\":\"visualization\"},{\"col\":11,\"id\":\"Syslog-no-warning-events\",\"row\":8,\"size_x\":2,\"size_y\":2,\"type\":\"visualization\"},{\"col\":11,\"id\":\"Syslog-no-events\",\"row\":10,\"size_x\":2,\"size_y\":2,\"type\":\"visualization\"},{\"id\":\"Syslog-events-timeline-top-hosts\",\"type\":\"visualization\",\"size_x\":4,\"size_y\":3,\"col\":5,\"row\":1}]",
+      "panelsJSON": "[{\"col\":1,\"id\":\"all-events-timeline\",\"panelIndex\":12,\"row\":1,\"size_x\":5,\"size_y\":3,\"type\":\"visualization\"},{\"col\":6,\"id\":\"all-events-top-10-hosts\",\"panelIndex\":2,\"row\":1,\"size_x\":4,\"size_y\":3,\"type\":\"visualization\"},{\"col\":1,\"id\":\"warning-events-slash-severity\",\"panelIndex\":3,\"row\":4,\"size_x\":3,\"size_y\":3,\"type\":\"visualization\"},{\"col\":4,\"id\":\"warning-events-slash-facility\",\"panelIndex\":4,\"row\":4,\"size_x\":3,\"size_y\":3,\"type\":\"visualization\"},{\"col\":7,\"id\":\"warning-events-slash-programname\",\"panelIndex\":5,\"row\":4,\"size_x\":3,\"size_y\":3,\"type\":\"visualization\"},{\"col\":10,\"id\":\"warning-events-slash-host-(top-10)\",\"panelIndex\":6,\"row\":4,\"size_x\":3,\"size_y\":3,\"type\":\"visualization\"},{\"col\":1,\"columns\":[\"fromhost\",\"severity\",\"facility\",\"programname\",\"message\"],\"id\":\"syslog-critical-events\",\"panelIndex\":11,\"row\":7,\"size_x\":9,\"size_y\":3,\"sort\":[\"@timestamp\",\"desc\"],\"type\":\"search\"},{\"col\":10,\"id\":\"count-critical-events\",\"panelIndex\":8,\"row\":7,\"size_x\":3,\"size_y\":2,\"type\":\"visualization\"},{\"col\":10,\"id\":\"count-warning-events\",\"panelIndex\":9,\"row\":9,\"size_x\":3,\"size_y\":2,\"type\":\"visualization\"},{\"col\":1,\"columns\":[\"fromhost\",\"severity\",\"facility\",\"programname\",\"message\"],\"id\":\"syslog-warning-events\",\"panelIndex\":7,\"row\":10,\"size_x\":9,\"size_y\":3,\"sort\":[\"@timestamp\",\"desc\"],\"type\":\"search\"},{\"col\":10,\"id\":\"count-all-events\",\"panelIndex\":10,\"row\":11,\"size_x\":3,\"size_y\":2,\"type\":\"visualization\"},{\"id\":\"failed-authentications\",\"type\":\"visualization\",\"panelIndex\":13,\"size_x\":3,\"size_y\":3,\"col\":10,\"row\":1}]",
+      "optionsJSON": "{\"darkTheme\":false}",
+      "uiStateJSON": "{}",
       "version": 1,
-      "timeRestore": true,
-      "timeTo": "now",
-      "timeFrom": "now-1h",
+      "timeRestore": false,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"filter\":[{\"query\":{\"query_string\":{\"query\":\"*\",\"analyze_wildcard\":true}}}]}"
+        "searchSourceJSON": "{\"filter\":[{\"query\":{\"query_string\":{\"analyze_wildcard\":true,\"query\":\"*\"}}}]}"
       }
     }
   }
