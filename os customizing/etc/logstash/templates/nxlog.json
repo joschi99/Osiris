@@ -1,35 +1,64 @@
 {
-    "template" : "win_evt-*",
-    "settings" : { "index.refresh_interval" : "5s" },
-    "mappings" : {
-        "_default_" : {
-            "_all" : { "enabled" : true, "omit_norms" : true },
-            "dynamic_templates" : [{
-              "message_field" : {
-                "match" : "message",
-                "match_mapping_type" : "string",
-                "mapping" : { "type" : "string", "index" : "analyzed", "omit_norms" : true }
-              }
-            }, {
-              "string_fields" : {
-                "match" : "*",
-                "match_mapping_type" : "string",
-                "mapping" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true }
-              }
-            }],
-            "properties" : {
-                "@timestamp" : { "type" : "date", "format" : "dateOptionalTime" },
-                "@version" : { "type" : "integer", "index" : "not_analyzed" },
-                "EventTime" : { "type" : "date", "format" : "YYYY-MM-dd HH:mm:ss" },
-                "EventID" : { "type" : "long", "norms" : { "enabled" : false } },
-                "ProcessID" : { "type" : "long", "norms" : { "enabled" : false } },
-                "RecordNumber" : { "type" : "long", "norms" : { "enabled" : false } },
-                "Keywords" : { "type" : "string", "index" : "analyzed", "omit_norms" : true },
-                "SeverityValue" : { "type" : "integer", "norms" : { "enabled" : false } },
-                "Hostname" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true },
-                "SourceName" : { "type" : "string", "index" : "not_analyzed", "omit_norms" : true },
-                "ThreadID" : { "type" : "long", "norms" : { "enabled" : false } }
-            }
+  "template": "win_evt-*",
+  "settings": { "index.refresh_interval": "5s" },
+  "mappings": {
+    "_default_": {
+      "_all": {
+        "norms" : false
+      },
+      "_meta": {
+        "version": "2.4.0"
+      },
+      "dynamic_templates": [
+        {
+          "strings_as_keyword": {
+            "mapping": {
+              "ignore_above": 1024,
+              "type": "keyword"
+            },
+            "match_mapping_type": "string"
+          }
         }
+      ],
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "EventTime": {
+          "type": "date", 
+          "format": "YYYY-MM-dd HH:mm:ss"
+         },
+        "EventID": {
+          "type": "long"
+        },
+        "ProcessID": {
+          "type": "long"
+        },
+        "LocalAddress": {
+           "type": "ip"
+        },
+        "RemoteAddress": {
+           "type": "ip"
+        },
+        "RecordNumber" : {
+          "type": "long"
+        },
+        "Keywords" : {
+          "type": "keyword"
+        },
+        "SeverityValue": {
+          "type": "integer"
+        },
+        "Hostname": {
+          "type": "keyword"
+        },
+        "SourceName": {
+          "type": "keyword"
+        },
+        "ThreadID": {
+          "type": "long"
+        }
+      }
     }
+  }
 }

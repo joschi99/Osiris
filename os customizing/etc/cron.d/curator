@@ -1,2 +1,3 @@
 # 01:00 delete indices older then 15 days or space is > 20GB
 00 01 * * * root curator --config /etc/curator/curator.yml /etc/curator/del_index.yml >> /var/log/curator.log 2>&1
+10 01 * * * root curator --config /etc/curator/curator.yml /etc/curator/close_index.yml >> /var/log/curator.log 2>&1

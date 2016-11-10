@@ -1,74 +1,165 @@
 {
-    "template" : "sflow-*",
-    "settings": {
-      "index.refresh_interval": "5s"
-    },
-    "mappings" : {
-      "_default_" : {
-        "_all" : {"enabled" : false},
-        "properties" : {
-          "@version": { "index": "analyzed", "type": "integer" },
-          "@timestamp": { "index": "analyzed", "type": "date" },
-          "port_src": {"index": "not_analyzed", "type": "string" },
-          "port_dst": {"index": "not_analyzed", "type": "string" },
-          "geoip_src": {
-            "type" : "object",
-            "dynamic" : true,
-            "properties" : {
-              "location" : { "type" : "geo_point" },
-              "city_name": {"index": "not_analyzed", "type": "string" },
-              "country_name": {"index": "not_analyzed", "type": "string" },
-              "real_region_name": {"index": "not_analyzed", "type": "string" },
-              "region_name": {"index": "not_analyzed", "type": "string" }
+  "template": "sflow-*",
+  "settings": { "index.refresh_interval": "5s" },
+  "mappings": {
+    "_default_": {
+      "_all": {
+        "norms" : false
+      },
+      "_meta": {
+        "version": "2.4.0"
+      },
+      "dynamic_templates": [
+        {
+          "strings_as_keyword": {
+            "mapping": {
+              "ignore_above": 1024,
+              "type": "keyword"
+            },
+            "match_mapping_type": "string"
+          }
+        }
+      ],
+      "properties": {
+        "@timestamp": {
+          "type": "date"
+        },
+        "geoip_src": {
+          "type": "object",
+          "dynamic": true,
+          "properties": {
+            "location": { 
+              "type" : "geo_point"
+            },
+            "city_name": {
+              "type": "keyword"
+            },
+            "country_name": {
+              "type": "keyword"
+            },
+            "real_region_name": {
+              "type": "keyword"
+            },
+            "region_name": {
+              "type": "keyword" 
             }
-          },
-          "geoip_dst": {
-            "type" : "object",
-            "dynamic" : true,
-            "properties" : {
-              "location" : { "type" : "geo_point" },
-              "city_name": {"index": "not_analyzed", "type": "string" },
-              "country_name": {"index": "not_analyzed", "type": "string" },
-              "real_region_name": {"index": "not_analyzed", "type": "string" },
-              "region_name": {"index": "not_analyzed", "type": "string" }
+          }
+        },
+        "geoip_dst": {
+          "type": "object",
+          "dynamic": true,
+          "properties": {
+            "location": { 
+              "type" : "geo_point"
+            },
+            "city_name": {
+              "type": "keyword"
+            },
+            "country_name": {
+              "type": "keyword"
+            },
+            "real_region_name": {
+              "type": "keyword"
+            },
+            "region_name": {
+              "type": "keyword" 
             }
-          },
-          "sflow": {
-            "dynamic": true,
-            "type": "object",
-            "properties": {
-              "engine_id": { "index": "not_analyzed", "type": "string" },
-              "bgp_next_hop_router": { "index": "analyzed", "type": "ip" },
-              "bytes_in": { "index": "not_analyzed", "type": "long" },
-              "bytes_out": { "index": "not_analyzed", "type": "long" },
-              "duration": { "index": "not_analyzed", "type": "float" },
-              "host": { "index": "analyzed", "type": "ip" },
-              "latency_app": { "index": "not_analyzed", "type": "float" },
-              "latency_client": { "index": "not_analyzed", "type": "float" },
-              "latency_server": { "index": "not_analyzed", "type": "float" },
-              "interface_in": { "index": "not_analyzed", "type": "string" },
-              "interface_out": { "index": "not_analyzed", "type": "string" },
-              "ip_dst": { "index": "not_analyzed", "type": "string" },
-              "ip_src": { "index": "not_analyzed", "type": "string" },
-              "mac_input_dst": { "index": "analyzed", "type": "string" },
-              "mac_input_src": { "index": "analyzed", "type": "string" },
-              "mac_output_dst": { "index": "analyzed", "type": "string" },
-              "mac_output_src": { "index": "analyzed", "type": "string" },
-              "netmask_dst": { "index": "not_analyzed", "type": "integer" },
-              "netmask_src": { "index": "not_analyzed", "type": "integer" },
-              "next_hop_router": { "index": "analyzed", "type": "ip" },
-              "pkts_in": { "index": "not_analyzed", "type": "long" },
-              "pkts_out": { "index": "not_analyzed", "type": "long" },
-              "protocol": { "index": "analyzed", "type": "string" },
-              "src_tos": { "index": "analyzed", "type": "integer" },
-              "system_id": { "index": "not_analyzed", "type": "string" },
-              "time_end": { "index": "not_analyzed", "type": "date" },
-              "time_start": { "index": "not_analyzed", "type": "date" },
-              "vlan_dst": { "index": "not_analyzed", "type": "integer" },
-              "vlan_src": { "index": "not_analyzed", "type": "integer" }
+          }
+        },
+        "sflow": {
+          "dynamic": true,
+          "type": "object",
+          "properties": {
+            "engine_id": {
+              "type": "keyword"
+            },
+            "bgp_next_hop_router": {
+              "type": "ip"
+            },
+            "bytes_in": {
+              "type": "long"
+            },
+            "bytes_out": {
+              "type": "long"
+            },
+            "duration": {
+              "type": "float"
+            },
+            "host": {
+              "type": "ip"
+            },
+            "latency_app": {
+              "type": "float"
+            },
+            "latency_client": {
+              "type": "float"
+            },
+            "latency_server": {
+              "type": "float"
+            },
+            "interface_in": {
+              "type": "keyword"
+            },
+            "interface_out": {
+              "type": "keyword"
+            },
+            "ip_dst": {
+              "type": "ip"
+            },
+            "ip_src": {
+              "type": "ip"
+            },
+            "mac_input_dst": {
+              "type": "keyword"
+            },
+            "mac_input_src": {
+              "type": "keyword"
+            },
+            "mac_output_dst": {
+              "type": "keyword"
+            },
+            "mac_output_src": {
+              "type": "keyword"
+            },
+            "netmask_dst": {
+              "type": "integer"
+            },
+            "netmask_src": {
+              "type": "integer"
+            },
+            "next_hop_router": {
+              "type": "ip"
+            },
+            "pkts_in": {
+              "type": "long"
+            },
+            "pkts_out": {
+              "type": "long"
+            },
+            "protocol": {
+              "type": "keyword"
+            },
+            "src_tos": {
+              "type": "integer"
+            },
+            "system_id": {
+              "type": "keyword"
+            },
+            "time_end": {
+              "type": "date"
+            },
+            "time_start": {
+              "type": "date"
+            },
+            "vlan_dst": {
+              "type": "integer"
+            },
+            "vlan_src": {
+              "type": "integer"
             }
           }
         }
       }
     }
+  }
 }
