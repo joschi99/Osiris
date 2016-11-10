@@ -3,8 +3,8 @@
 echo -e "
 #########################################
 #
-# i-Vertix 2016 Network Management System
-# 2.3.0
+# i-Vertix 2017 Network Management System
+# 2.4.0
 #
 # All rights reserved
 # (c)2016 PGUM GmbH/Srl
