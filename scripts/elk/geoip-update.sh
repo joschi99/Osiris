@@ -21,4 +21,4 @@ gzip -d GeoLite2-City.mmdb.gz
 mv -f GeoLite2-City.mmdb /etc/logstash
 
 # restart Logstash
-initctl restart logstash
+/sbin/initctl restart logstash

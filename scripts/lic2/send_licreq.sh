@@ -8,15 +8,16 @@
 # Development:
 #  Jochen Platzgummer
 #
-# Version 1.1
+# Version 1.2
 #
 # Changelog
-#   20.08.2016: Update PGUM GmbH
+#	11.11.2016: Update license request email
+#	20.08.2016: Update PGUM GmbH
 #	16.01.2016: Erste Version für Osiris2.2
 ###############################################################################
 
 FROM="i-vertix-lic@pgum.local"
-TO="support@bi-s.it"
+TO="license@pgum.eu"
 
 declare -r FILE_LIC="/tmp/.ivertix.lic.tmp"
 

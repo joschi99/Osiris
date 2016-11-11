@@ -8,10 +8,11 @@
 # Development:
 #  Jochen Platzgummer
 #
-# Version 1.3
+# Version 1.4
 #
 # Changelog
-#   20.08.2016: Update PGUM GmbH
+#	11.11.2016: ELK 5.0 update
+#	20.08.2016: Update PGUM GmbH
 #	12.05.2016: IP Adresse wird angezeigt
 #	17.01.2016: check_lic.cfg
 #	16.01.2016: Erste Version für Osiris2.2
@@ -19,7 +20,7 @@
 
 source /opt/bi-s/software/scripts/lic2/check_lic.cfg
 
-declare -r version="1.3"
+declare -r version="1.4"
 
 declare -r FILE_LIC_TMP="ivertix.lic.tmp"
 declare -r FILE_LIC="ivertix.lic"
@@ -34,7 +35,7 @@ declare -r LIC_STATUS_ERR=1
 declare -r LIC_STATUS_ERR_LIC=2
 declare -r LIC_STATUS_NO_LIC=3
 declare -r MAIL_LIC_SENDER="i-vertix-lic@pgum.local"
-declare -r MAIL_LIC_REC="support@bi-s.it"
+declare -r MAIL_LIC_REC="license@pgum.eu"
 
 #CentEngine Status
 declare -r STATUS_ERR=2
@@ -50,7 +51,7 @@ function start () {
 	check_licfile_exist
 	check_licenses
 	actions
-	write_statusfile	
+	write_statusfile
 	exit "$EXIT_STATUS"
 }
 
@@ -94,18 +95,24 @@ function startstop_ELK () {
 	if [ "$1" = "start" ]
 	then
 		#enable ELK
-		/sbin/chkconfig logstash on
+		if [ -f "/etc/init/logstash.conf.disable" ]
+		then
+			mv /etc/init/logstash.conf.disable /etc/init/logstash.conf
+		fi
 		/sbin/chkconfig elasticsearch on
 		/sbin/chkconfig kibana on
 	else
 		#disable & stop ELK
-		/sbin/chkconfig logstash off
-		/sbin/chkconfig elasticsearch off
-		/sbin/chkconfig kibana off
-		
-		/etc/init.d/logstash stop
+		/sbin/initctl stop logstash
 		/etc/init.d/elasticsearch stop
 		/etc/init.d/kibana stop
+
+		if [ -f "/etc/init/logstash.conf" ]
+		then
+			mv /etc/init/logstash.conf /etc/init/logstash.conf.disable
+		fi
+		/sbin/chkconfig elasticsearch off
+		/sbin/chkconfig kibana off
 		
 		echo "Syslog license error" | logger
 		echo "ELK disabled and stopped due a license error" | logger
