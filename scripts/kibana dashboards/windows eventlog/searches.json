@@ -1,9 +1,9 @@
 [
   {
-    "_id": "Windows-Events-error",
+    "_id": "win-evtlog-all-warning-events",
     "_type": "search",
     "_source": {
-      "title": "Windows Events error",
+      "title": "win-evtlog all warning events",
       "description": "",
       "hits": 0,
       "columns": [
@@ -11,7 +11,7 @@
         "Severity",
         "Channel",
         "SourceName",
-        "Context",
+        "EventID",
         "Message"
       ],
       "sort": [
@@ -20,15 +20,15 @@
       ],
       "version": 1,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[win_evt-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"SeverityValue: >3\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+        "searchSourceJSON": "{\"index\":\"win_evt-*\",\"query\":{\"query_string\":{\"query\":\"SeverityValue: >2\",\"analyze_wildcard\":true}},\"filter\":[],\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"require_field_match\":false,\"fragment_size\":2147483647}}"
       }
     }
   },
   {
-    "_id": "Windows-Events",
+    "_id": "win-evtlog-all-error-events",
     "_type": "search",
     "_source": {
-      "title": "Windows Events",
+      "title": "win-evtlog all error events",
       "description": "",
       "hits": 0,
       "columns": [
@@ -36,7 +36,7 @@
         "Severity",
         "Channel",
         "SourceName",
-        "Context",
+        "EventID",
         "Message"
       ],
       "sort": [
@@ -45,15 +45,15 @@
       ],
       "version": 1,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[win_evt-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"analyze_wildcard\":true,\"query\":\"*\"}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+        "searchSourceJSON": "{\"index\":\"win_evt-*\",\"query\":{\"query_string\":{\"query\":\"SeverityValue: >3\",\"analyze_wildcard\":true}},\"filter\":[],\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"require_field_match\":false,\"fragment_size\":2147483647}}"
       }
     }
   },
   {
-    "_id": "Windows-Events-warning",
+    "_id": "win-evtlog-all-events",
     "_type": "search",
     "_source": {
-      "title": "Windows Events warning",
+      "title": "win-evtlog all events",
       "description": "",
       "hits": 0,
       "columns": [
@@ -61,7 +61,7 @@
         "Severity",
         "Channel",
         "SourceName",
-        "Context",
+        "EventID",
         "Message"
       ],
       "sort": [
@@ -70,7 +70,7 @@
       ],
       "version": 1,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[win_evt-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"SeverityValue: >2\",\"analyze_wildcard\":true}},\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"fragment_size\":2147483647},\"filter\":[]}"
+        "searchSourceJSON": "{\"index\":\"win_evt-*\",\"query\":{\"query_string\":{\"query\":\"*\",\"analyze_wildcard\":true}},\"filter\":[],\"highlight\":{\"pre_tags\":[\"@kibana-highlighted-field@\"],\"post_tags\":[\"@/kibana-highlighted-field@\"],\"fields\":{\"*\":{}},\"require_field_match\":false,\"fragment_size\":2147483647}}"
       }
     }
   }

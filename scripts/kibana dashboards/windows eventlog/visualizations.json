@@ -1,38 +1,13 @@
 [
   {
-    "_id": "Win-evt-log-timeline",
+    "_id": "win-evt-all-events-timeline",
     "_type": "visualization",
     "_source": {
-      "title": "Win evt log timeline",
-      "visState": "{\"type\":\"line\",\"params\":{\"shareYAxis\":true,\"addTooltip\":true,\"addLegend\":true,\"showCircles\":true,\"smoothLines\":true,\"interpolate\":\"linear\",\"scale\":\"log\",\"drawLinesBetweenPoints\":true,\"radiusRatio\":9,\"times\":[],\"addTimeMarker\":true,\"defaultYExtents\":false,\"setYExtents\":false,\"yAxis\":{}},\"aggs\":[{\"id\":\"1\",\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"2\",\"type\":\"date_histogram\",\"schema\":\"segment\",\"params\":{\"field\":\"@timestamp\",\"interval\":\"auto\",\"customInterval\":\"2h\",\"min_doc_count\":1,\"extended_bounds\":{}}},{\"id\":\"3\",\"type\":\"terms\",\"schema\":\"group\",\"params\":{\"field\":\"Severity\",\"size\":10,\"order\":\"desc\",\"orderBy\":\"1\"}}],\"listeners\":{}}",
+      "title": "win-evt all events timeline",
+      "visState": "{\"title\":\"win-evt all events timeline\",\"type\":\"line\",\"params\":{\"shareYAxis\":true,\"addTooltip\":true,\"addLegend\":true,\"legendPosition\":\"bottom\",\"showCircles\":true,\"smoothLines\":true,\"interpolate\":\"linear\",\"scale\":\"log\",\"drawLinesBetweenPoints\":true,\"radiusRatio\":9,\"times\":[],\"addTimeMarker\":false,\"defaultYExtents\":false,\"setYExtents\":false,\"yAxis\":{}},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{\"customLabel\":\"no events\"}},{\"id\":\"2\",\"enabled\":true,\"type\":\"date_histogram\",\"schema\":\"segment\",\"params\":{\"field\":\"@timestamp\",\"interval\":\"auto\",\"customInterval\":\"2h\",\"min_doc_count\":1,\"extended_bounds\":{}}},{\"id\":\"3\",\"enabled\":true,\"type\":\"terms\",\"schema\":\"group\",\"params\":{\"field\":\"Severity\",\"size\":5,\"order\":\"desc\",\"orderBy\":\"1\"}},{\"id\":\"4\",\"enabled\":true,\"type\":\"count\",\"schema\":\"radius\",\"params\":{}}],\"listeners\":{}}",
+      "uiStateJSON": "{\"vis\":{\"legendOpen\":true,\"colors\":{\"INFO\":\"#078F34\",\"WARNING\":\"#EDE43F\",\"ERROR\":\"#D8060F\",\"CRITICAL\":\"#A60303\"}}}",
       "description": "",
-      "version": 1,
-      "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[win_evt-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"*\",\"analyze_wildcard\":true}},\"filter\":[]}"
-      }
-    }
-  },
-  {
-    "_id": "Win-Evt-log-top-10-hosts",
-    "_type": "visualization",
-    "_source": {
-      "title": "Win Evt log top 10 hosts",
-      "visState": "{\"type\":\"histogram\",\"params\":{\"shareYAxis\":true,\"addTooltip\":true,\"addLegend\":true,\"scale\":\"linear\",\"mode\":\"stacked\",\"times\":[],\"addTimeMarker\":true,\"defaultYExtents\":true,\"setYExtents\":false,\"yAxis\":{}},\"aggs\":[{\"id\":\"1\",\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"2\",\"type\":\"date_histogram\",\"schema\":\"segment\",\"params\":{\"field\":\"@timestamp\",\"interval\":\"auto\",\"customInterval\":\"2h\",\"min_doc_count\":1,\"extended_bounds\":{}}},{\"id\":\"3\",\"type\":\"terms\",\"schema\":\"group\",\"params\":{\"field\":\"Hostname\",\"size\":10,\"order\":\"desc\",\"orderBy\":\"1\"}}],\"listeners\":{}}",
-      "description": "",
-      "version": 1,
-      "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[win_evt-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"*\",\"analyze_wildcard\":true}},\"filter\":[]}"
-      }
-    }
-  },
-  {
-    "_id": "Win-evt-log-severity",
-    "_type": "visualization",
-    "_source": {
-      "title": "Win evt log severity",
-      "visState": "{\"type\":\"pie\",\"params\":{\"shareYAxis\":true,\"addTooltip\":true,\"addLegend\":true,\"isDonut\":true},\"aggs\":[{\"id\":\"1\",\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"3\",\"type\":\"terms\",\"schema\":\"segment\",\"params\":{\"field\":\"Severity\",\"size\":5,\"order\":\"desc\",\"orderBy\":\"1\"}}],\"listeners\":{}}",
-      "description": "",
-      "savedSearchId": "Windows-Events-warning",
+      "savedSearchId": "win-evtlog-all-events",
       "version": 1,
       "kibanaSavedObjectMeta": {
         "searchSourceJSON": "{\"filter\":[]}"
@@ -40,13 +15,14 @@
     }
   },
   {
-    "_id": "Win-evt-log-channel",
+    "_id": "win-evt-all-events-top-10-hosts",
     "_type": "visualization",
     "_source": {
-      "title": "Win evt log channel",
-      "visState": "{\"type\":\"pie\",\"params\":{\"shareYAxis\":true,\"addTooltip\":true,\"addLegend\":true,\"isDonut\":true},\"aggs\":[{\"id\":\"1\",\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"3\",\"type\":\"terms\",\"schema\":\"segment\",\"params\":{\"field\":\"Channel\",\"size\":5,\"order\":\"desc\",\"orderBy\":\"1\"}}],\"listeners\":{}}",
+      "title": "win-evt all events top 10 hosts",
+      "visState": "{\"title\":\"win-evt all events top 10 hosts\",\"type\":\"histogram\",\"params\":{\"shareYAxis\":true,\"addTooltip\":true,\"addLegend\":true,\"legendPosition\":\"bottom\",\"scale\":\"linear\",\"mode\":\"stacked\",\"times\":[],\"addTimeMarker\":false,\"defaultYExtents\":false,\"setYExtents\":false,\"yAxis\":{}},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{\"customLabel\":\"no events\"}},{\"id\":\"2\",\"enabled\":true,\"type\":\"date_histogram\",\"schema\":\"segment\",\"params\":{\"field\":\"@timestamp\",\"interval\":\"auto\",\"customInterval\":\"2h\",\"min_doc_count\":1,\"extended_bounds\":{}}},{\"id\":\"3\",\"enabled\":true,\"type\":\"terms\",\"schema\":\"group\",\"params\":{\"field\":\"Hostname\",\"size\":10,\"order\":\"desc\",\"orderBy\":\"1\"}}],\"listeners\":{}}",
+      "uiStateJSON": "{}",
       "description": "",
-      "savedSearchId": "Windows-Events-warning",
+      "savedSearchId": "win-evtlog-all-events",
       "version": 1,
       "kibanaSavedObjectMeta": {
         "searchSourceJSON": "{\"filter\":[]}"
@@ -54,13 +30,58 @@
     }
   },
   {
-    "_id": "Win-evt-log-warnings-top-10-hosts",
+    "_id": "win-evt-warning-events-slash-severity",
     "_type": "visualization",
     "_source": {
-      "title": "Win evt log warnings top 10 hosts",
-      "visState": "{\"type\":\"pie\",\"params\":{\"shareYAxis\":true,\"addTooltip\":true,\"addLegend\":true,\"isDonut\":true},\"aggs\":[{\"id\":\"1\",\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"2\",\"type\":\"terms\",\"schema\":\"segment\",\"params\":{\"field\":\"Hostname\",\"size\":10,\"order\":\"desc\",\"orderBy\":\"1\"}}],\"listeners\":{}}",
+      "title": "win-evt warning events / severity",
+      "visState": "{\n  \"title\": \"win-evt warning events / severity\",\n  \"type\": \"pie\",\n  \"params\": {\n    \"shareYAxis\": true,\n    \"addTooltip\": true,\n    \"addLegend\": true,\n    \"legendPosition\": \"bottom\",\n    \"isDonut\": true\n  },\n  \"aggs\": [\n    {\n      \"id\": \"1\",\n      \"enabled\": true,\n      \"type\": \"count\",\n      \"schema\": \"metric\",\n      \"params\": {}\n    },\n    {\n      \"id\": \"2\",\n      \"enabled\": true,\n      \"type\": \"terms\",\n      \"schema\": \"segment\",\n      \"params\": {\n        \"field\": \"Severity\",\n        \"size\": 5,\n        \"order\": \"desc\",\n        \"orderBy\": \"1\"\n      }\n    }\n  ],\n  \"listeners\": {}\n}",
+      "uiStateJSON": "{\n  \"vis\": {\n    \"legendOpen\": true,\n    \"colors\": {\n      \"INFO\": \"#078F34\",\n      \"WARNING\": \"#EDE43F\",\n      \"ERROR\": \"#D8060F\",\n      \"CRITICAL\": \"#A60303\"\n    }\n  }\n}",
       "description": "",
-      "savedSearchId": "Windows-Events-warning",
+      "savedSearchId": "win-evtlog-all-warning-events",
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\n  \"filter\": []\n}"
+      }
+    }
+  },
+  {
+    "_id": "win-evt-all-events-timeline-comp.-yesterday",
+    "_type": "visualization",
+    "_source": {
+      "title": "win-evt all events timeline comp. yesterday",
+      "visState": "{\"title\":\"win-evt all events timeline comp. yesterday\",\"type\":\"timelion\",\"params\":{\"expression\":\".es(index=win_evt-*,kibana=true).label(\\\"now\\\").color(#468966),.es(index=win_evt-*,offset=-1d,kibana=true).label(\\\"yesterday\\\").color(#B64926),.es(index=win_evt-*,kibana=true).subtract(.es(index=win_evt-*,offset=-1d,kibana=true)).label(\\\"difference\\\").color(#FFB03B).bars(width=2)\",\"interval\":\"auto\"},\"aggs\":[],\"listeners\":{}}",
+      "uiStateJSON": "{}",
+      "description": "",
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"query\":{\"query_string\":{\"query\":\"*\",\"analyze_wildcard\":true}},\"filter\":[]}"
+      }
+    }
+  },
+  {
+    "_id": "win-evt-warning-events-slash-channel-slash-severity",
+    "_type": "visualization",
+    "_source": {
+      "title": "win-evt warning events / channel / severity",
+      "visState": "{\n  \"title\": \"win-evt warning events / channel / severity\",\n  \"type\": \"pie\",\n  \"params\": {\n    \"shareYAxis\": true,\n    \"addTooltip\": true,\n    \"addLegend\": true,\n    \"legendPosition\": \"bottom\",\n    \"isDonut\": true\n  },\n  \"aggs\": [\n    {\n      \"id\": \"1\",\n      \"enabled\": true,\n      \"type\": \"count\",\n      \"schema\": \"metric\",\n      \"params\": {}\n    },\n    {\n      \"id\": \"2\",\n      \"enabled\": true,\n      \"type\": \"terms\",\n      \"schema\": \"segment\",\n      \"params\": {\n        \"field\": \"Channel\",\n        \"size\": 10,\n        \"order\": \"desc\",\n        \"orderBy\": \"1\"\n      }\n    },\n    {\n      \"id\": \"3\",\n      \"enabled\": true,\n      \"type\": \"terms\",\n      \"schema\": \"segment\",\n      \"params\": {\n        \"field\": \"Severity\",\n        \"size\": 5,\n        \"order\": \"desc\",\n        \"orderBy\": \"1\"\n      }\n    }\n  ],\n  \"listeners\": {}\n}",
+      "uiStateJSON": "{\n  \"vis\": {\n    \"legendOpen\": true,\n    \"colors\": {\n      \"INFO\": \"#078F34\",\n      \"WARNING\": \"#EDE43F\",\n      \"ERROR\": \"#D8060F\",\n      \"CRITICAL\": \"#A60303\"\n    }\n  }\n}",
+      "description": "",
+      "savedSearchId": "win-evtlog-all-warning-events",
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\n  \"filter\": []\n}"
+      }
+    }
+  },
+  {
+    "_id": "win-evt-warning-events-top-10-source-name",
+    "_type": "visualization",
+    "_source": {
+      "title": "win-evt warning events top 10 source name",
+      "visState": "{\"title\":\"win-evt warning events top 10 source name\",\"type\":\"pie\",\"params\":{\"addLegend\":true,\"addTooltip\":true,\"isDonut\":true,\"legendPosition\":\"bottom\",\"shareYAxis\":true},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"2\",\"enabled\":true,\"type\":\"terms\",\"schema\":\"segment\",\"params\":{\"field\":\"SourceName\",\"size\":10,\"order\":\"desc\",\"orderBy\":\"1\"}}],\"listeners\":{}}",
+      "uiStateJSON": "{}",
+      "description": "",
+      "savedSearchId": "win-evtlog-all-warning-events",
       "version": 1,
       "kibanaSavedObjectMeta": {
         "searchSourceJSON": "{\"filter\":[]}"
@@ -68,13 +89,14 @@
     }
   },
   {
-    "_id": "Win-evt-log-source-top-10",
+    "_id": "win-evt-no-warning-events",
     "_type": "visualization",
     "_source": {
-      "title": "Win evt log source top 10",
-      "visState": "{\"type\":\"pie\",\"params\":{\"shareYAxis\":true,\"addTooltip\":true,\"addLegend\":true,\"isDonut\":true},\"aggs\":[{\"id\":\"1\",\"type\":\"count\",\"schema\":\"metric\",\"params\":{}},{\"id\":\"3\",\"type\":\"terms\",\"schema\":\"segment\",\"params\":{\"field\":\"SourceName\",\"size\":10,\"order\":\"desc\",\"orderBy\":\"1\"}}],\"listeners\":{}}",
+      "title": "win-evt no warning events",
+      "visState": "{\"title\":\"win-evt no warning events\",\"type\":\"metric\",\"params\":{\"handleNoResults\":true,\"fontSize\":\"40\"},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{\"customLabel\":\"no events\"}}],\"listeners\":{}}",
+      "uiStateJSON": "{}",
       "description": "",
-      "savedSearchId": "Windows-Events-warning",
+      "savedSearchId": "win-evtlog-all-warning-events",
       "version": 1,
       "kibanaSavedObjectMeta": {
         "searchSourceJSON": "{\"filter\":[]}"
@@ -82,13 +104,14 @@
     }
   },
   {
-    "_id": "Win-no-evt-logs-warn",
+    "_id": "win-evt-no-error-events",
     "_type": "visualization",
     "_source": {
-      "title": "Win no evt logs warn",
-      "visState": "{\"type\":\"metric\",\"params\":{\"fontSize\":\"40\"},\"aggs\":[{\"id\":\"1\",\"type\":\"count\",\"schema\":\"metric\",\"params\":{}}],\"listeners\":{}}",
+      "title": "win-evt no error events",
+      "visState": "{\"title\":\"win-evt no error events\",\"type\":\"metric\",\"params\":{\"handleNoResults\":true,\"fontSize\":\"45\"},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{\"customLabel\":\"no events\"}}],\"listeners\":{}}",
+      "uiStateJSON": "{}",
       "description": "",
-      "savedSearchId": "Windows-Events-warning",
+      "savedSearchId": "win-evtlog-all-error-events",
       "version": 1,
       "kibanaSavedObjectMeta": {
         "searchSourceJSON": "{\"filter\":[]}"
@@ -96,13 +119,14 @@
     }
   },
   {
-    "_id": "Win-no-evt-logs-error",
+    "_id": "win-evt-no-events",
     "_type": "visualization",
     "_source": {
-      "title": "Win no evt logs error",
-      "visState": "{\"type\":\"metric\",\"params\":{\"fontSize\":\"40\"},\"aggs\":[{\"id\":\"1\",\"type\":\"count\",\"schema\":\"metric\",\"params\":{}}],\"listeners\":{}}",
+      "title": "win-evt no events",
+      "visState": "{\"title\":\"win-evt no events\",\"type\":\"metric\",\"params\":{\"handleNoResults\":true,\"fontSize\":\"40\"},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{\"customLabel\":\"no events\"}}],\"listeners\":{}}",
+      "uiStateJSON": "{}",
       "description": "",
-      "savedSearchId": "Windows-Events-error",
+      "savedSearchId": "win-evtlog-all-events",
       "version": 1,
       "kibanaSavedObjectMeta": {
         "searchSourceJSON": "{\"filter\":[]}"
@@ -110,15 +134,32 @@
     }
   },
   {
-    "_id": "Win-no-evt-logs",
+    "_id": "win-evt-authentication-activities",
     "_type": "visualization",
     "_source": {
-      "title": "Win no evt logs",
-      "visState": "{\"type\":\"metric\",\"params\":{\"fontSize\":\"40\"},\"aggs\":[{\"id\":\"1\",\"type\":\"count\",\"schema\":\"metric\",\"params\":{}}],\"listeners\":{}}",
+      "title": "win-evt authentication activities",
+      "visState": "{\"title\":\"win-evt authentication activities\",\"type\":\"histogram\",\"params\":{\"shareYAxis\":true,\"addTooltip\":true,\"addLegend\":true,\"legendPosition\":\"bottom\",\"scale\":\"linear\",\"mode\":\"stacked\",\"times\":[],\"addTimeMarker\":false,\"defaultYExtents\":false,\"setYExtents\":false,\"yAxis\":{}},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{\"customLabel\":\"no events\"}},{\"id\":\"2\",\"enabled\":true,\"type\":\"date_histogram\",\"schema\":\"segment\",\"params\":{\"field\":\"@timestamp\",\"interval\":\"auto\",\"customInterval\":\"2h\",\"min_doc_count\":1,\"extended_bounds\":{}}},{\"id\":\"3\",\"enabled\":true,\"type\":\"filters\",\"schema\":\"group\",\"params\":{\"filters\":[{\"input\":{\"query\":{\"query_string\":{\"query\":\"Channel: Security AND EventID: 4625\",\"analyze_wildcard\":true}}},\"label\":\"failed login\"},{\"input\":{\"query\":{\"query_string\":{\"query\":\"Channel: Security AND EventID: 4724\",\"analyze_wildcard\":true}}},\"label\":\"successfull login\"},{\"input\":{\"query\":{\"query_string\":{\"query\":\"Channel: Security AND EventID: 4740\",\"analyze_wildcard\":true}}},\"label\":\"account lockouts\"},{\"input\":{\"query\":{\"query_string\":{\"query\":\"Channel: Security AND EventID: 4672\",\"analyze_wildcard\":true}}},\"label\":\"privileged login\"},{\"input\":{\"query\":{\"query_string\":{\"query\":\"Channel: Security AND (EventID: 4728 OR EventID: 4732 OR EventID: 4756)\",\"analyze_wildcard\":true}}},\"label\":\"user added to priv group\"},{\"input\":{\"query\":{\"query_string\":{\"query\":\"Channel: Security AND EventID: 4635\",\"analyze_wildcard\":true}}},\"label\":\"security enabled group modification\"}]}}],\"listeners\":{}}",
+      "uiStateJSON": "{\"vis\":{\"colors\":{\"EventID: 4625\":\"#E24D42\",\"account locked out\":\"#C15C17\",\"failed login\":\"#F9934E\",\"privileged login\":\"#5195CE\",\"successfull login\":\"#7EB26D\"},\"legendOpen\":true}}",
       "description": "",
+      "savedSearchId": "win-evtlog-all-events",
       "version": 1,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"index\":\"[win_evt-]YYYY.MM.DD\",\"query\":{\"query_string\":{\"query\":\"*\",\"analyze_wildcard\":true}},\"filter\":[]}"
+        "searchSourceJSON": "{\"filter\":[]}"
+      }
+    }
+  },
+  {
+    "_id": "win-evt-application-problems",
+    "_type": "visualization",
+    "_source": {
+      "title": "win-evt application problems",
+      "visState": "{\"title\":\"win-evt application problems\",\"type\":\"histogram\",\"params\":{\"shareYAxis\":true,\"addTooltip\":true,\"addLegend\":true,\"legendPosition\":\"bottom\",\"scale\":\"linear\",\"mode\":\"stacked\",\"times\":[],\"addTimeMarker\":false,\"defaultYExtents\":false,\"setYExtents\":false,\"yAxis\":{}},\"aggs\":[{\"id\":\"1\",\"enabled\":true,\"type\":\"count\",\"schema\":\"metric\",\"params\":{\"customLabel\":\"no events\"}},{\"id\":\"2\",\"enabled\":true,\"type\":\"date_histogram\",\"schema\":\"segment\",\"params\":{\"field\":\"@timestamp\",\"interval\":\"auto\",\"customInterval\":\"2h\",\"min_doc_count\":1,\"extended_bounds\":{}}},{\"id\":\"3\",\"enabled\":true,\"type\":\"filters\",\"schema\":\"group\",\"params\":{\"filters\":[{\"input\":{\"query\":{\"query_string\":{\"query\":\"Channel: Application AND EventID: 1000\",\"analyze_wildcard\":true}}},\"label\":\"application error\"},{\"input\":{\"query\":{\"query_string\":{\"query\":\"Channel: Application AND EventID: 1002\",\"analyze_wildcard\":true}}},\"label\":\"application hang\"},{\"input\":{\"query\":{\"query_string\":{\"query\":\"Channel: Application AND EventID: 1001\",\"analyze_wildcard\":true}}},\"label\":\"windows error reporting\"},{\"input\":{\"query\":{\"query_string\":{\"query\":\"Channel: System AND EventID: 1001\",\"analyze_wildcard\":true}}},\"label\":\"windows system error reporting\"}]}}],\"listeners\":{}}",
+      "uiStateJSON": "{}",
+      "description": "",
+      "savedSearchId": "win-evtlog-all-events",
+      "version": 1,
+      "kibanaSavedObjectMeta": {
+        "searchSourceJSON": "{\"filter\":[]}"
       }
     }
   }
