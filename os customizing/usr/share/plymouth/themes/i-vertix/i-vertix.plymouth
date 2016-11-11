@@ -1,0 +1,11 @@
+[Plymouth Theme]
+Name=i-Vertix
+Description=i-Vertix Network Management System theme
+ModuleName=i-vertix
+[two-step]
+ImageDir=/usr/share/plymouth/themes/i-vertix
+HorizontalAlignment=.5
+VerticalAlignment=.5
+BackgroundStartColor=0x080808
+BackgroundEndColor=0x080808
+ProgressFunction=linear
