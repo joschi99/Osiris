@@ -1,11 +1,14 @@
 i-Vertix 2017 - 2.4.0
 	Monitoring
-		- Upgrade Centreon Web 2.7.8
+		- Upgrade Centreon Web 2.8.1
+		- Upgrade Centreon Broker 3.0.1
+		- Upgrade Centreon Engine 1.6.1
 	Syslog, Log- & Datamanagement
-		- Upgrade Elasticsearch 5.0.0
-		- Upgrade Logstash 5.0.0
-		- Upgrade Kibana 5.0.0
+		- Upgrade Elasticsearch 5.0.1
+		- Upgrade Logstash 5.0.1
+		- Upgrade Kibana 5.0.1
 		- Upgrade Curator 4.2.1
+		- Upgrade RSyslog 8.23.0
 i-Vertix 2016 - 2.3.0
 	Monitoring
 		- Upgrade Centreon Web 2.7.7
