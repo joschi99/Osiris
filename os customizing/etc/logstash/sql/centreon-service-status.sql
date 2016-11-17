@@ -1,0 +1,42 @@
+SELECT h.name AS h_name,
+h.alias AS h_alias,
+h.address AS h_address,
+h.display_name AS h_display_name,
+s.description,
+s.acknowledged,
+s.acknowledgement_type,
+s.active_checks,
+s.check_attempt,
+s.check_freshness,
+s.check_interval,
+s.check_period,
+s.check_type,
+s.checked,
+s.display_name,
+s.execution_time,
+s.last_check,
+s.last_hard_state,
+s.last_hard_state_change,
+s.last_notification,
+s.last_state_change,
+s.last_time_critical,
+s.last_time_ok,
+s.last_time_unknown,
+s.last_time_warning,
+s.last_update,
+s.latency,
+s.max_check_attempts,
+s.next_check,
+s.next_notification,
+s.perfdata,
+s.scheduled_downtime_depth,
+s.output,
+s.state,
+s.state_type
+FROM
+services AS s,
+hosts AS h
+WHERE
+s.host_id = h.host_id AND s.enabled = 1
+AND h.enabled = 1
+AND s.last_check > :sql_last_value

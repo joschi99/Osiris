@@ -1,3 +1,5 @@
+curl -XDELETE 'localhost:9200/_template/rsyslog'
+
 curl -XPUT localhost:9200/_template/rsyslog -d '
 { 
   "template": "rsyslog-*", 
