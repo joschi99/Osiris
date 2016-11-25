@@ -8,11 +8,12 @@
 # Development:
 #  Jochen Platzgummer
 #
-# Version 1.1
+# Version 1.2
 #
 # Changelog
+#   25.11.2016: sync new path for centreon plugins /usr/lib/centreon/plugins/
 #   20.08.2016: Update PGUM GmbH
-#	16.01.2016: Erste Version für Osiris2.2
+#   16.01.2016: Erste Version für Osiris2.2
 ###############################################################################
 
 CENT_USER="support"
@@ -35,6 +36,7 @@ function sync_poller() {
   if ping -c 1 $IP &> /dev/null
   then
     rsync -azrP --delete --progress /usr/lib/nagios/plugins/ root@$IP:/usr/lib/nagios/plugins/ >> /var/log/sync-poller.log 2>&1
+    rsync -azrP --delete --progress /usr/lib/centreon/plugins/ root@$IP:/usr/lib/centreon/plugins/ >> /var/log/sync-poller.log 2>&1
   else
     echo "Poller $IP not reachable" >> /var/log/sync-poller.log 2>&1
   fi
