@@ -1,8 +1,8 @@
 i-Vertix 2017 - 2.4.0
 	Monitoring
 		- Upgrade Centreon Web 2.8.1
-		- Upgrade Centreon Broker 3.0.1
-		- Upgrade Centreon Engine 1.6.1
+		- Upgrade Centreon Broker 3.0.2
+		- Upgrade Centreon Engine 1.6.2
 	Inventory
 		- Upgrade GLPI 9.1.1
 		- Upgrade Fusioninventory 9.1+1.0
