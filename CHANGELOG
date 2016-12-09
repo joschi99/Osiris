@@ -7,10 +7,10 @@ i-Vertix 2017 - 2.4.0
 		- Upgrade GLPI 9.1.1
 		- Upgrade Fusioninventory 9.1+1.0
 	Syslog, Log- & Datamanagement
-		- Upgrade Elasticsearch 5.0.2
-		- Upgrade Logstash 5.0.2
-		- Upgrade Kibana 5.0.2
-		- Upgrade Curator 4.2.3.post1
+		- Upgrade Elasticsearch 5.1.1
+		- Upgrade Logstash 5.1.1
+		- Upgrade Kibana 5.1.1
+		- Upgrade Curator 4.2.4
 		- Upgrade RSyslog 8.23.0
 i-Vertix 2016 - 2.3.0
 	Monitoring
