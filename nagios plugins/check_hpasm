@@ -2114,7 +2114,8 @@ sub check {
       $self->add_info(sprintf 'fan %d (%s) degraded',
           $self->{cpqHeFltTolFanIndex}, $self->{cpqHeFltTolFanLocale});
       $self->add_message(WARNING, $self->{info});
-    } elsif ($self->{cpqHeFltTolFanCondition} ne 'ok') {
+    } elsif ($self->{cpqHeFltTolFanCondition} ne 'ok' &&
+        $self->{cpqHeFltTolFanCondition} ne 'other') {
       $self->add_info(sprintf 'fan %d (%s) is not ok',
           $self->{cpqHeFltTolFanIndex}, $self->{cpqHeFltTolFanLocale});
       $self->add_message(WARNING, $self->{info});
@@ -4200,6 +4201,7 @@ sub new {
   my $self = {
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -4220,7 +4222,9 @@ sub init {
   my $tmpaccel = {};
   my $tmpld = {};
   my $tmppd = {};
+  my $tmpencl = {};
   my $cntlindex = 0;
+  my $enclosureindex = 0;
   my $ldriveindex = 0;
   my $pdriveindex = 0;
   my $incontroller = 0;
@@ -4276,6 +4280,7 @@ sub init {
   }
   $slot = 0;
   $cntlindex = 0;
+  $enclosureindex = 0;
   $ldriveindex = 0;
   $pdriveindex = 0;
   foreach (split(/\n/, $hpacucli)) {
@@ -4294,6 +4299,16 @@ sub init {
       #}
       $slot = $2;
       $pdriveindex = 1;
+    } elsif (/([\s\w]+) at Port ([\w]+), Box (\d+), (.*)/) {
+      $enclosureindex++;
+      $tmpencl->{$slot}->{$enclosureindex}->{cpqDaEnclCntlrIndex} = $cntlindex;
+      $tmpencl->{$slot}->{$enclosureindex}->{cpqDaEnclIndex} = $enclosureindex;
+      $tmpencl->{$slot}->{$enclosureindex}->{cpqDaEnclPort} = $2;
+      $tmpencl->{$slot}->{$enclosureindex}->{cpqDaEnclBox} = $3;
+      $tmpencl->{$slot}->{$enclosureindex}->{cpqDaEnclCondition} = $4;
+      $tmpencl->{$slot}->{$enclosureindex}->{cpqDaEnclStatus} =
+          $tmpencl->{$slot}->{$enclosureindex}->{cpqDaEnclCondition};
+      $tmpencl->{$slot}->{$enclosureindex}->{cpqDaLogDrvPhyDrvIDs} = 'unknown';
     } elsif (/logicaldrive\s+(.+?)\s+\((.*)\)/) {
       # logicaldrive 1 (683.5 GB, RAID 5, OK)
       # logicaldrive 1 (683.5 GB, RAID 5, OK)
@@ -4348,6 +4363,7 @@ sub init {
         ! $self->identified($tmpcntl->{$slot}->{cpqDaCntlrModel})) {
       delete $tmpcntl->{$slot};
       delete $tmpaccel->{$slot};
+      delete $tmpencl->{$slot};
       delete $tmpld->{$slot};
       delete $tmppd->{$slot};
     }
@@ -4372,6 +4388,14 @@ sub init {
     push(@{$self->{accelerators}},
         HP::Proliant::Component::DiskSubsystem::Da::Accelerator->new(
             %{$tmpaccel->{$slot}}));
+  }
+  foreach my $slot (keys %{$tmpencl}) {
+    foreach my $enclosureindex (keys %{$tmpencl->{$slot}}) {
+      $tmpencl->{$slot}->{$enclosureindex}->{runtime} = $self->{runtime};
+      push(@{$self->{enclosures}},
+          HP::Proliant::Component::DiskSubsystem::Da::Enclosure->new(
+              %{$tmpencl->{$slot}->{$enclosureindex}}));
+    }
   }
   foreach my $slot (keys %{$tmpld}) {
     foreach my $ldriveindex (keys %{$tmpld->{$slot}}) {
@@ -4417,6 +4441,7 @@ sub new {
   my $self = { 
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -4490,7 +4515,7 @@ sub init {
       cpqDaAccelEntry => "1.3.6.1.4.1.232.3.2.2.2.1",
       cpqDaAccelCntlrIndex => "1.3.6.1.4.1.232.3.2.2.2.1.1",
       cpqDaAccelStatus => "1.3.6.1.4.1.232.3.2.2.2.1.2",
-      cpqDaAccelSlot => "1.3.6.1.4.1.232.3.2.2.2.1.5",
+      cpqDaAccelErrCode  => "1.3.6.1.4.1.232.3.2.2.2.1.5",
       cpqDaAccelBattery  => "1.3.6.1.4.1.232.3.2.2.2.1.6",
       cpqDaAccelCondition  => "1.3.6.1.4.1.232.3.2.2.2.1.9",
       cpqDaAccelBatteryValue => {
@@ -4513,7 +4538,41 @@ sub init {
           3 => "enabled",
           4 => "tmpDisabled",
           5 => "permDisabled",
-      }
+      },
+      cpqDaAccelErrCodeValue => {
+          1 => 'other',
+          2 => 'invalid',
+          3 => 'badConfig',
+          4 => 'lowBattery',
+          5 => 'disableCmd',
+          6 => 'noResources',
+          7 => 'notConnected',
+          8 => 'badMirrorData',
+          9 => 'readErr',
+          10 => 'writeErr',
+          11 => 'configCmd',
+          12 => 'expandInProgress',
+          13 => 'snapshotInProgress',
+          14 => 'redundantLowBattery',
+          15 => 'redundantSizeMismatch',
+          16 => 'redundantCacheFailure',
+          17 => 'excessiveEccErrors',
+          18 => 'adgEnablerMissing',
+          19 => 'postEccErrors',
+          20 => 'batteryHotRemoved',
+          21 => 'capacitorChargeLow',
+          22 => 'notEnoughBatteries',
+          23 => 'cacheModuleNotSupported',
+          24 => 'batteryNotSupported',
+          25 => 'noCapacitorAttached',
+          26 => 'capBasedBackupFailed',
+          27 => 'capBasedRestoreFailed',
+          28 => 'capBasedModuleHWFailure',
+          29 => 'capacitorFailedToCharge',
+          30 => 'capacitorBasedHWMemBeingErased',
+          31 => 'incompatibleCacheModule',
+          32 => 'fbcmChargerCircuitFailure',
+      },
   };
     
   # INDEX { cpqDaAccelCntlrIndex }
@@ -4616,6 +4675,7 @@ sub new {
     method => $params{method},
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -4677,6 +4737,9 @@ sub check {
   $self->blacklist('daco', $self->{cpqDaCntlrIndex});
   foreach (@{$self->{accelerators}}) {
     $_->check();
+  }
+  foreach (@{$self->{enclosures}}) {
+    $_->check();
   } 
   foreach (@{$self->{logical_drives}}) {
     $_->check();
@@ -4735,6 +4798,9 @@ sub dump {
   foreach (@{$self->{accelerators}}) {
     $_->dump();
   }
+  foreach (@{$self->{enclosures}}) {
+    $_->dump();
+  }
   foreach (@{$self->{logical_drives}}) {
     $_->dump();
   }
@@ -4762,6 +4828,7 @@ sub new {
     cpqDaAccelBattery => $params{cpqDaAccelBattery} || 'notPresent',
     cpqDaAccelCondition => $params{cpqDaAccelCondition},
     cpqDaAccelStatus => $params{cpqDaAccelStatus},
+    cpqDaAccelErrCode => $params{cpqDaAccelErrCode},
     blacklisted => 0,
     failed => 0,
   };
@@ -4775,14 +4842,10 @@ sub check {
   $self->blacklist('daac', $self->{cpqDaAccelCntlrIndex});
   $self->add_info(sprintf 'controller accelerator is %s',
       $self->{cpqDaAccelCondition});
-  if ($self->{cpqDaAccelStatus} ne "enabled") {
-  } elsif ($self->{cpqDaAccelCondition} ne "ok") {
-    if ($self->{cpqDaAccelBattery} eq "failed" &&
-        $self->{cpqDaAccelStatus} eq "tmpDisabled") {
-      # handled later
-    } else {
-      $self->add_message(CRITICAL, "controller accelerator needs attention");
-    }
+  if ($self->{cpqDaAccelCondition} eq "failed" || $self->{cpqDaAccelCondition} eq "degraded") {
+    $self->add_message(CRITICAL, sprintf
+        "controller accelerator is %s (reason: %s) and needs attention",
+        $self->{cpqDaAccelCondition}, $self->{cpqDaAccelErrCode});
   }
   $self->blacklist('daacb', $self->{cpqDaAccelCntlrIndex});
   $self->add_info(sprintf 'controller accelerator battery is %s',
@@ -4813,12 +4876,60 @@ sub dump {
   my $self = shift;
   printf "[ACCELERATOR]\n";
   foreach (qw(cpqDaAccelCntlrIndex cpqDaAccelBattery
-      cpqDaAccelStatus cpqDaAccelCondition)) {
+      cpqDaAccelStatus cpqDaAccelCondition cpqDaAccelErrCode)) {
     printf "%s: %s\n", $_, $self->{$_};
   }
   printf "\n";
 }
 
+package HP::Proliant::Component::DiskSubsystem::Da::Enclosure;
+our @ISA = qw(HP::Proliant::Component::DiskSubsystem::Da);
+
+use strict;
+use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
+
+sub new {
+  my $class = shift;
+  my %params = @_;
+  my $self = {
+    runtime => $params{runtime},
+    name => $params{name},
+    cpqDaEnclCntlrIndex => $params{cpqDaEnclCntlrIndex},
+    cpqDaEnclIndex => $params{cpqDaEnclIndex},
+    cpqDaEnclPort => $params{cpqDaEnclPort},
+    cpqDaEnclBox => $params{cpqDaEnclBox},
+    cpqDaEnclCondition => $params{cpqDaEnclCondition},
+    blacklisted => 0,
+  };
+  bless $self, $class;
+  $self->{name} = $params{name} ||
+      $self->{cpqDaEnclPort}.':'.$self->{cpqDaEnclBox}; ##vorerst
+  $self->{controllerindex} = $self->{cpqDaEnclCntlrIndex};
+  return $self;
+}
+
+sub check {
+  my $self = shift;
+  $self->blacklist('dae', $self->{name});
+  $self->add_info(
+      sprintf "disk enclosure %s is %s",
+          $self->{name}, $self->{cpqDaEnclCondition});
+  if ($self->{cpqDaEnclCondition} !~ /^OK/) {
+    $self->add_message(CRITICAL,
+        sprintf "disk enclosure %s is %s",
+            $self->{name}, $self->{cpqDaEnclCondition});
+  }
+}
+
+sub dump {
+  my $self = shift;
+  printf "[Disk Enclosure]\n";
+  foreach (qw(cpqDaEnclCntlrIndex cpqDaEnclIndex cpqDaEnclPort
+		   cpqDaEnclBox cpqDaEnclCondition)) {
+    printf "%s: %s\n", $_, $self->{$_};
+  }
+  printf "\n";
+}
 
 package HP::Proliant::Component::DiskSubsystem::Da::LogicalDrive;
 our @ISA = qw(HP::Proliant::Component::DiskSubsystem::Da);
@@ -4968,6 +5079,7 @@ sub new {
   my $self = {
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -4995,6 +5107,7 @@ sub new {
   my $self = { 
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -5121,6 +5234,7 @@ sub new {
     rawdata => $params{rawdata},
     method => $params{method},
     controllers => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -5369,6 +5483,7 @@ sub new {
   my $self = {
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -5396,6 +5511,7 @@ sub new {
   my $self = { 
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -5530,6 +5646,7 @@ sub new {
     rawdata => $params{rawdata},
     method => $params{method},
     controllers => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -5754,6 +5871,7 @@ sub new {
   my $self = {
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -5781,6 +5899,7 @@ sub new {
   my $self = { 
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -5896,6 +6015,7 @@ sub new {
     rawdata => $params{rawdata},
     method => $params{method},
     controllers => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -5952,6 +6072,7 @@ sub new {
 
 sub check {
   my $self = shift;
+  $self->blacklist('ideco', $self->{name});
   if ($self->{cpqIdeControllerOverallCondition} eq 'other') {
     if (scalar(@{$self->{physical_drives}})) {
       $self->add_message(CRITICAL,
@@ -6037,6 +6158,7 @@ sub new {
 
 sub check {
   my $self = shift;
+  $self->blacklist('ideld', $self->{name});
   if ($self->{cpqIdeLogicalDriveCondition} ne "ok") {
     if ($self->{cpqIdeLogicalDriveStatus} =~ 
         /rebuild/) {
@@ -6099,6 +6221,7 @@ sub new {
 
 sub check {
   my $self = shift;
+  $self->blacklist('idepd', $self->{name});
   if ($self->{cpqIdeAtaDiskCondition} ne 'ok') {
     $self->add_message(CRITICAL,
         sprintf "physical drive %s is %s", 
@@ -6146,6 +6269,7 @@ sub new {
   my $self = {
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -6180,6 +6304,7 @@ sub new {
   my $self = { 
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -6485,6 +6610,7 @@ sub new {
     host_controllers => [],
     controllers => [],
     accelerators => [],
+    enclosures => [],
     physical_drives => [],
     logical_drives => [],
     spare_drives => [],
@@ -6995,6 +7121,8 @@ sub assemble {
       scalar(@{$self->{controllers}}));
   $self->trace(3, sprintf "has %d accelerators",
       scalar(@{$self->{accelerators}})) if exists $self->{accelerators};
+  $self->trace(3, sprintf "has %d enclosures",
+      scalar(@{$self->{enclosures}}));
   $self->trace(3, sprintf "has %d physical_drives",
       scalar(@{$self->{physical_drives}}));
   $self->trace(3, sprintf "has %d logical_drives",
@@ -7003,20 +7131,22 @@ sub assemble {
       scalar(@{$self->{spare_drives}}));
   my $found = {
       accelerators => {},
+      enclosures => {},
       logical_drives => {},
       physical_drives => {},
       spare_drives => {},
   };
   # found->{komponente}->{controllerindex} ist ein array
   # von teilen, die zu einem controller gehoeren
-  foreach my $item (qw(accelerators logical_drives physical_drives spare_drives)) {
+  foreach my $item (qw(accelerators enclosures logical_drives physical_drives spare_drives)) {
+    next if ($item eq "enclosures" && ! exists $self->{$item});
     foreach (@{$self->{$item}}) {
       $found->{item}->{$_->{controllerindex}} = []
           unless exists $found->{$item}->{$_->{controllerindex}};
       push(@{$found->{$item}->{$_->{controllerindex}}}, $_);
     }
   }
-  foreach my $item (qw(accelerators logical_drives physical_drives spare_drives)) {
+  foreach my $item (qw(accelerators enclosures logical_drives physical_drives spare_drives)) {
     foreach (@{$self->{controllers}}) {
       if (exists $found->{$item}->{$_->{controllerindex}}) {
         $_->{$item} = $found->{$item}->{$_->{controllerindex}};
@@ -7048,6 +7178,11 @@ sub has_physical_drives {
 sub has_logical_drives {
   my $self = shift;
   return scalar(@{$self->{logical_drives}});
+}
+
+sub has_enclosures {
+  my $self = shift;
+  return scalar(@{$self->{enclosures}});
 }
 
 
@@ -7399,15 +7534,29 @@ EOEO
           if ($self->{runtime}->{options}->{hpacucli}) {
             #1 oder 0. pfad selber finden
             my $hpacucli = undef;
-            if (-e '/usr/sbin/hpacucli') {
+            if (-e '/usr/sbin/hpssacli') {
+              $hpacucli = '/usr/sbin/hpssacli';
+            } elsif (-e '/usr/local/sbin/hpssacli') {
+              $hpacucli = '/usr/local/sbin/hpssacli';
+            } elsif (-e '/usr/sbin/hpacucli') {
               $hpacucli = '/usr/sbin/hpacucli';
             } elsif (-e '/usr/local/sbin/hpacucli') {
               $hpacucli = '/usr/local/sbin/hpacucli';
+            } elsif (-e '/usr/sbin/hpssacli') {
+              $hpacucli = '/usr/sbin/hpssacli';
+            } elsif (-e '/usr/local/sbin/hpssacli') {
+              $hpacucli = '/usr/local/sbin/hpssacli';
             } else {
               $hpacucli = $hpasmcli;
               $hpacucli =~ s/^sudo\s*//;
               $hpacucli =~ s/hpasmcli/hpacucli/;
               $hpacucli = -e $hpacucli ? $hpacucli : undef;
+              if (! $hpacucli) {
+                $hpacucli = $hpasmcli;
+                $hpacucli =~ s/^sudo\s*//;
+                $hpacucli =~ s/hpasmcli/hpssacli/;
+                $hpacucli = -e $hpacucli ? $hpacucli : undef;
+              }
             }
             if ($hpacucli) {
               if ($< != 0) {
@@ -7540,6 +7689,8 @@ sub check_hpasm_client {
     } elsif (grep /must have a tty/, @output) {
       $self->add_message(CRITICAL,
           'sudo must be configured with requiretty=no (man sudo)');
+    } elsif (grep /ERROR: hpasmcli only runs on HPE Proliant Servers/, @output) {
+      $self->add_message(UNKNOWN, "hpasmcli detected incompatible hardware");
     } elsif (! grep /CLEAR/, @output) {
       $self->add_message(UNKNOWN,
           sprintf "insufficient rights to call %s", $hpasmcli);
@@ -9972,6 +10123,9 @@ sub new {
       } elsif ($self->{productname} =~ /OpenView .* appliance/) {
         bless $self, 'HP::Proliant::SNMP';
         $self->trace(3, 'using HP::Proliant::SNMP');
+      } elsif ($self->{productname} =~ /Superdome.*Enclosure/i) {
+        bless $self, 'HP::BladeSystem';
+        $self->trace(3, 'using HP::BladeSystem');
       } elsif ($self->{productname} =~ /BladeSystem/) {
         bless $self, 'HP::BladeSystem';
         $self->trace(3, 'using HP::BladeSystem');
@@ -9984,6 +10138,9 @@ sub new {
         bless $self, 'HP::Proliant::SNMP';
         $self->trace(3, 'using HP::Proliant::SNMP');
       } elsif ($self->{productname} =~ /StorageWorks/i) {
+        bless $self, 'HP::StorageWorks';
+        $self->trace(3, 'using HP::StorageWorks');
+      } elsif ($self->{productname} =~ /MSA/i) {
         bless $self, 'HP::StorageWorks';
         $self->trace(3, 'using HP::StorageWorks');
       } elsif ($self->{productname} =~ /StoreEasy/i) {
@@ -10019,10 +10176,11 @@ sub check_snmp_and_model {
           sprintf 'file %s not found',
           $self->{runtime}->{plugin}->opts->snmpwalk);
     } elsif (-x $self->{runtime}->{plugin}->opts->snmpwalk) {
-      my $cmd = sprintf "%s -On -v%s -c%s %s 1.3.6.1.4.1.232 2>&1",
+      my $cmd = sprintf "%s -On -v%s -c%s %s:%s 1.3.6.1.4.1.232 2>&1",
           $self->{runtime}->{plugin}->opts->snmpwalk,
           $self->{runtime}->{plugin}->opts->protocol,
           $self->{runtime}->{plugin}->opts->community,
+          $self->{runtime}->{plugin}->opts->domain,
           $self->{runtime}->{plugin}->opts->hostname;
       open(WALK, "$cmd |");
       while (<WALK>) {
@@ -10094,6 +10252,7 @@ sub check_snmp_and_model {
         -timeticks => 0x0
       ];
       $params{'-hostname'} = $self->{runtime}->{plugin}->opts->hostname;
+      $params{'-domain'} = $self->{runtime}->{plugin}->opts->domain;
       $params{'-version'} = $self->{runtime}->{plugin}->opts->protocol;
       if ($self->{runtime}->{plugin}->opts->port) {
         $params{'-port'} = $self->{runtime}->{plugin}->opts->port;
@@ -10172,7 +10331,9 @@ sub whoami {
     my $cpqHoMibStatusArray = '1.3.6.1.4.1.232.11.2.10.1.0';
     my $dummy = '1.3.6.1.2.1.1.5.0';
     if ($productname = $self->valid_response($cpqSiProductName)) {
-      if ($productname eq '') {
+      if ($productname =~ /HP P\d+ .*SAS/ && $self->valid_response($cpqHoMibStatusArray)) {
+        $self->{productname} = 'StorageWorks'
+      } elsif ($productname eq '') {
         $self->{productname} = 'ProLiant';
       } else {
         $self->{productname} = $productname;
@@ -10382,7 +10543,7 @@ my $plugin = Nagios::MiniPlugin->new(
     usage => 'Usage: %s [ -v|--verbose ] [ -t <timeout> ] '.
         '--hostname <proliant> --community <snmp-community>'.
         '  ...]',
-    version => '4.7.1.1',
+    version => '4.7.5.2',
     blurb => 'This plugin checks the hardware of hp/compaq proliant servers',
     url => 'http://labs.consol.de/nagios/check_hpasm',
     timeout => 60,
@@ -10447,6 +10608,13 @@ $plugin->add_arg(
    The SNMP protocol to use (default: 2c, other possibilities: 1,3)',
     required => 0,
     default => '2c',
+);
+$plugin->add_arg(
+    spec => 'domain|d=s',
+    help => '--domain
+   The transport protocol to use (default: udp, other possibilities: tcp)',
+    required => 0,
+    default => 'udp',
 );
 $plugin->add_arg(
     spec => 'community|C=s',
