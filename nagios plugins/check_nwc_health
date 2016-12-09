@@ -1,6 +1,108 @@
 #! /usr/bin/perl -w
 # nagios: -epn
 
+package Monitoring::GLPlugin::Commandline::Extraopts;
+use strict;
+use File::Basename;
+use strict;
+
+sub new {
+  my $class = shift;
+  my %params = @_;
+  my $self = {
+    file => $params{file},
+    commandline => $params{commandline},
+    config => {},
+    section => 'default_no_section',
+  };
+  bless $self, $class;
+  $self->prepare_file_and_section();
+  $self->init();
+  return $self;
+}
+
+sub prepare_file_and_section {
+  my $self = shift;
+  if (! defined $self->{file}) {
+    # ./check_stuff --extra-opts
+    $self->{section} = basename($0);
+    $self->{file} = $self->get_default_file();
+  } elsif ($self->{file} =~ /^[^@]+$/) {
+    # ./check_stuff --extra-opts=special_opts
+    $self->{section} = $self->{file};
+    $self->{file} = $self->get_default_file();
+  } elsif ($self->{file} =~ /^@(.*)/) {
+    # ./check_stuff --extra-opts=@/etc/myconfig.ini
+    $self->{section} = basename($0);
+    $self->{file} = $1;
+  } elsif ($self->{file} =~ /^(.*?)@(.*)/) {
+    # ./check_stuff --extra-opts=special_opts@/etc/myconfig.ini
+    $self->{section} = $1;
+    $self->{file} = $2;
+  }
+}
+
+sub get_default_file {
+  my $self = shift;
+  foreach my $default (qw(/etc/nagios/plugins.ini
+      /usr/local/nagios/etc/plugins.ini
+      /usr/local/etc/nagios/plugins.ini
+      /etc/opt/nagios/plugins.ini
+      /etc/nagios-plugins.ini
+      /usr/local/etc/nagios-plugins.ini
+      /etc/opt/nagios-plugins.ini)) {
+    if (-f $default) {
+      return $default;
+    }
+  }
+  return undef;
+}
+
+sub init {
+  my $self = shift;
+  if (! defined $self->{file}) {
+    $self->{errors} = sprintf 'no extra-opts file specified and no default file found';
+  } elsif (! -f $self->{file}) {
+    $self->{errors} = sprintf 'could not open %s', $self->{file};
+  } else {
+    my $data = do { local (@ARGV, $/) = $self->{file}; <> };
+    my $in_section = 'default_no_section';
+    foreach my $line (split(/\n/, $data)) {
+      if ($line =~ /\[(.*)\]/) {
+        $in_section = $1;
+      } elsif ($line =~ /(.*?)\s*=\s*(.*)/) {
+        $self->{config}->{$in_section}->{$1} = $2;
+      }
+    }
+  }
+}
+
+sub is_valid {
+  my $self = shift;
+  return ! exists $self->{errors};
+}
+
+sub overwrite {
+  my $self = shift;
+  if (scalar(keys %{$self->{config}->{default_no_section}}) > 0) {
+    foreach (keys %{$self->{config}->{default_no_section}}) {
+      $self->{commandline}->{$_} = $self->{config}->{default_no_section}->{$_};
+    }
+  }
+  if (exists $self->{config}->{$self->{section}}) {
+    foreach (keys %{$self->{config}->{$self->{section}}}) {
+      $self->{commandline}->{$_} = $self->{config}->{$self->{section}}->{$_};
+    }
+  }
+}
+
+sub errors {
+  my $self = shift;
+  return $self->{errors} || "";
+}
+
+
+
 package Monitoring::GLPlugin::Commandline::Getopt;
 use strict;
 use File::Basename;
@@ -79,6 +181,8 @@ sub _init {
 
 sub new {
   my ($class, @params) = @_;
+  require Monitoring::GLPlugin::Commandline::Extraopts
+      if ! grep /BEGIN/, keys %Monitoring::GLPlugin::Commandline::Extraopts::;
   my $self = bless {}, $class;
   $self->_init(@params);
 }
@@ -101,13 +205,27 @@ sub mod_arg {
 sub getopts {
   my ($self) = @_;
   my %commandline = ();
+  $self->{opts}->{all_my_opts} = {};
   my @params = map { $_->{spec} } @{$self->{_args}};
   if (! GetOptions(\%commandline, @params)) {
     $self->print_help();
-    exit 0;
+    exit 3;
   } else {
     no strict 'refs';
     no warnings 'redefine';
+    if (exists $commandline{'extra-opts'}) {
+      # read the extra file and overwrite other parameters
+      my $extras = Monitoring::GLPlugin::Commandline::Extraopts->new(
+          file => $commandline{'extra-opts'},
+          commandline => \%commandline
+      );
+      if (! $extras->is_valid()) {
+        printf "UNKNOWN - extra-opts are not valid: %s\n", $extras->errors();
+        exit 3;
+      } else {
+        $extras->overwrite();
+      }
+    }
     do { $self->print_help(); exit 0; } if $commandline{help};
     do { $self->print_version(); exit 0 } if $commandline{version};
     do { $self->print_usage(); exit 3 } if $commandline{usage};
@@ -117,9 +235,12 @@ sub getopts {
         return $self->{opts}->{$field};
       };
     }
+    *{"all_my_opts"} = sub {
+      return $self->{opts}->{all_my_opts};
+    };
     foreach (map { $_->{spec} =~ /^([\w\-]+)/; $1; }
         grep { exists $_->{required} && $_->{required} } @{$self->{_args}}) {
-      do { $self->print_usage(); exit 0 } if ! exists $commandline{$_};
+      do { $self->print_usage(); exit 3 } if ! exists $commandline{$_};
     }
     foreach (grep { exists $_->{default} } @{$self->{_args}}) {
       $_->{spec} =~ /^([\w\-]+)/;
@@ -128,6 +249,7 @@ sub getopts {
     }
     foreach (keys %commandline) {
       $self->{opts}->{$_} = $commandline{$_};
+      $self->{opts}->{all_my_opts}->{$_} = $commandline{$_};
     }
     foreach (grep { exists $_->{env} } @{$self->{_args}}) {
       $_->{spec} =~ /^([\w\-]+)/;
@@ -180,7 +302,6 @@ sub print_help {
   } @{$self->{_args}}) {
     printf " %s\n", $_->{help};
   }
-  exit 0;
 }
 
 sub print_usage {
@@ -424,6 +545,28 @@ sub add_perfdata {
       if $self->selected_perfdata($label);
 }
 
+sub add_pandora {
+  my ($self, %args) = @_;
+  my $label = $args{label};
+  my $value = $args{value};
+
+  if ($args{help}) {
+    push @{$self->{pandora}}, sprintf("# HELP %s %s", $label, $args{help});
+  }
+  if ($args{type}) {
+    push @{$self->{pandora}}, sprintf("# TYPE %s %s", $label, $args{type});
+  }
+  if ($args{labels}) {
+    push @{$self->{pandora}}, sprintf("%s{%s} %s", $label,
+        join(",", map {
+            sprintf '%s="%s"', $_, $args{labels}->{$_};
+        } keys %{$args{labels}}),
+        $value);
+  } else {
+    push @{$self->{pandora}}, sprintf("%s %s", $label, $value);
+  }
+}
+
 sub add_html {
   my ($self, $line) = @_;
   push @{$self->{html}}, $line;
@@ -523,6 +666,15 @@ sub perfdata_string {
   my ($self) = @_;
   if (scalar (@{$self->{perfdata}})) {
     return join(" ", @{$self->{perfdata}});
+  } else {
+    return "";
+  }
+}
+
+sub metrics_string {
+  my ($self) = @_;
+  if (scalar (@{$self->{metrics}})) {
+    return join("\n", @{$self->{metrics}});
   } else {
     return "";
   }
@@ -777,7 +929,7 @@ use Digest::MD5 qw(md5_hex);
 use Errno;
 use Data::Dumper;
 our $AUTOLOAD;
-*VERSION = \'2.1';
+*VERSION = \'2.3.6';
 
 use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
 
@@ -790,6 +942,7 @@ use constant { OK => 0, WARNING => 1, CRITICAL => 2, UNKNOWN => 3 };
   our $extendedinfo = [];
   our $summary = [];
   our $variables = {};
+  our $survive_sudo_env = ["LD_LIBRARY_PATH", "SHLIB_PATH"];
 }
 
 sub new {
@@ -895,6 +1048,12 @@ sub add_default_args {
       required => 0,
   );
   $self->add_arg(
+      spec => 'extra-opts=s',
+      help => "--extra-opts
+   read command line arguments from an external file",
+      required => 0,
+  );
+  $self->add_arg(
       spec => 'blacklist|b=s',
       help => '--blacklist
    Blacklist some (missing/failed) components',
@@ -987,7 +1146,20 @@ sub add_default_args {
       spec => 'reset',
       help => "--reset
    remove the state file",
-      aliasfor => "name",
+      required => 0,
+      hidden => 1,
+  );
+  $self->add_arg(
+      spec => 'runas=s',
+      help => "--runas
+   run as a different user",
+      required => 0,
+      hidden => 1,
+  );
+  $self->add_arg(
+      spec => 'shell',
+      help => "--shell
+   forget what you see",
       required => 0,
       hidden => 1,
   );
@@ -1400,6 +1572,7 @@ sub load_my_extension {
     }
     my $plugin_name = $Monitoring::GLPlugin::pluginname;
     $plugin_name =~ /check_(.*?)_health/;
+    my $deprecated_class = "DBD::".(uc $1)."::Server";
     $plugin_name = "Check".uc(substr($1, 0, 1)).substr($1, 1)."Health";
     foreach my $libpath (split(":", $self->opts->get("with-mymodules-dyn-dir"))) {
       foreach my $extmod (glob $libpath."/".$plugin_name."*.pm") {
@@ -1422,7 +1595,8 @@ sub load_my_extension {
     my $original_init = $self->can("init");
     $self->compatibility_class() if $self->can('compatibility_class');
     bless $self, "My$class";
-    $self->compatibility_methods() if $self->can('compatibility_methods');
+    $self->compatibility_methods() if $self->can('compatibility_methods') &&
+        $self->isa($deprecated_class);
     if ($self->isa("Monitoring::GLPlugin")) {
       my $new_init = $self->can("init");
       if ($new_init == $original_init) {
@@ -1514,6 +1688,8 @@ sub opts { # die beiden _nicht_ in AUTOLOAD schieben, das kracht!
 sub getopts {
   my ($self, $envparams) = @_;
   $envparams ||= [];
+  my $needs_restart = 0;
+  my @restart_opts = ();
   $Monitoring::GLPlugin::plugin->getopts();
   # es kann sein, dass beim aufraeumen zum schluss als erstes objekt
   # das $Monitoring::GLPlugin::plugin geloescht wird. in anderen destruktoren
@@ -1534,7 +1710,82 @@ sub getopts {
       exit 3;
     }
   }
+  if ($self->opts->environment) {
+    # wenn die gewuenschten Environmentvariablen sich von den derzeit
+    # gesetzten unterscheiden, dann restart. Denn $ENV aendert
+    # _nicht_ das Environment des laufenden Prozesses. 
+    # $ENV{ZEUGS} = 1 bedeutet lediglich, dass $ENV{ZEUGS} bei weiterer
+    # Verwendung 1 ist, bedeutet aber _nicht_, dass diese Variable 
+    # im Environment des laufenden Prozesses existiert.
+    foreach (keys %{$self->opts->environment}) {
+      if ((! $ENV{$_}) || ($ENV{$_} ne $self->opts->environment->{$_})) {
+        $needs_restart = 1;
+        $ENV{$_} = $self->opts->environment->{$_};
+        $self->debug(sprintf "new %s=%s forces restart\n", $_, $ENV{$_});
+      }
+    }
+  }
+  if ($self->opts->runas) {
+    # exec sudo $0 ... und dann ohne --runas
+    $needs_restart = 1;
+    # wenn wir environmentvariablen haben, die laut survive_sudo_env als
+    # wichtig erachtet werden, dann muessen wir die ueber einen moeglichen
+    # sudo-aufruf rueberretten, also in zusaetzliche --environment umwandenln.
+    # sudo putzt das Environment naemlich aus.
+    foreach my $survive_env (@{$Monitoring::GLPlugin::survive_sudo_env}) {
+      if ($ENV{$survive_env} && ! scalar(grep { /^$survive_env=/ }
+          keys %{$self->opts->environment})) {
+        $self->opts->environment->{$survive_env} = $ENV{$survive_env};
+        printf STDERR "add important --environment %s=%s\n",
+            $survive_env, $ENV{$survive_env} if $self->opts->verbose >= 2;
+        push(@restart_opts, '--environment');
+        push(@restart_opts, sprintf '%s=%s',
+            $survive_env, $ENV{$survive_env});
+      }
+    }
+  }
+  if ($needs_restart) {
+    foreach my $option (keys %{$self->opts->all_my_opts}) {
+      # der fliegt raus, sonst gehts gleich wieder in needs_restart rein
+      next if $option eq "runas";
+      foreach my $spec (map { $_->{spec} } @{$Monitoring::GLPlugin::plugin->opts->{_args}}) {
+        if ($spec =~ /^(\w+)=(.*)/) {
+          if ($1 eq $option && $2 =~ /s%/) {
+            foreach (keys %{$self->opts->$option()}) {
+              push(@restart_opts, sprintf "--%s", $option);
+              push(@restart_opts, sprintf "%s=%s", $_, $self->opts->$option()->{$_});
+            }
+          } elsif ($1 eq $option) {
+            push(@restart_opts, sprintf "--%s", $option);
+            push(@restart_opts, sprintf "%s", $self->opts->$option());
+          }
+        } elsif ($spec eq $option) {
+          push(@restart_opts, sprintf "--%s", $option);
+        }
+      }
+    }
+    if ($self->opts->runas && ($> == 0)) {
+      # Ja, es gibt so Narrische, die gehen mit check_by_ssh als root
+      # auf Datenbankmaschinen drauf und lassen dann dort check_oracle_health
+      # laufen. Damit OPS$-Anmeldung dann funktioniert, wird mit --runas
+      # auf eine andere Kennung umgeschwenkt. Diese Kennung gleich fuer
+      # ssh zu verwenden geht aus Sicherheitsgruenden nicht. Narrische halt.
+      exec "su", "-c", sprintf("%s %s", $0, join(" ", @restart_opts)), "-", $self->opts->runas;
+    } elsif ($self->opts->runas) {
+      exec "sudo", "-S", "-u", $self->opts->runas, $0, @restart_opts;
+    } else {
+      exec $0, @restart_opts;
+      # dadurch werden SHLIB oder LD_LIBRARY_PATH sauber gesetzt, damit beim
+      # erneuten Start libclntsh.so etc. gefunden werden.
+    }
+    exit;
+  }
+  if ($self->opts->shell) {
+    # So komme ich bei den Narrischen zu einer root-Shell.
+    system("/bin/sh");
+  }
 }
+
 
 sub add_ok {
   my ($self, $message) = @_;
@@ -1863,12 +2114,13 @@ sub valdiff {
           if ($date >= ($now - $self->opts->lookback)) {
             $last_values->{$_} = $last_values->{lookback_history}->{$_}->{$date};
             $last_values->{timestamp} = $date;
+            $self->{'delta_timestamp'} = $now - $last_values->{timestamp};
             if (ref($last_values->{$_}) eq "ARRAY") {
               $self->debug(sprintf "oldest value of %s within lookback is size %s (age %d)",
-                  $_, scalar(@{$last_values->{$_}}), time - $date);
+                  $_, scalar(@{$last_values->{$_}}), $now - $date);
             } else {
               $self->debug(sprintf "oldest value of %s within lookback is %s (age %d)",
-                  $_, $last_values->{$_}, time - $date);
+                  $_, $last_values->{$_}, $now - $date);
             }
             last;
           } else {
@@ -2302,9 +2554,9 @@ sub AUTOLOAD {
     $self->{components}->{$subsystem}->check();
     $self->{components}->{$subsystem}->dump()
         if $self->opts->verbose >= 2;
-  } elsif ($AUTOLOAD =~ /^.*::(status_code|check_messages|nagios_exit|html_string|perfdata_string|selected_perfdata|check_thresholds|get_thresholds|opts)$/) {
+  } elsif ($AUTOLOAD =~ /^.*::(status_code|check_messages|nagios_exit|html_string|perfdata_string|selected_perfdata|check_thresholds|get_thresholds|opts|pandora_string)$/) {
     return $Monitoring::GLPlugin::plugin->$1(@params);
-  } elsif ($AUTOLOAD =~ /^.*::(reduce_messages|reduce_messages_short|clear_messages|suppress_messages|add_html|add_perfdata|override_opt|create_opt|set_thresholds|force_thresholds)$/) {
+  } elsif ($AUTOLOAD =~ /^.*::(reduce_messages|reduce_messages_short|clear_messages|suppress_messages|add_html|add_perfdata|override_opt|create_opt|set_thresholds|force_thresholds|add_pandora)$/) {
     $Monitoring::GLPlugin::plugin->$1(@params);
   } elsif ($AUTOLOAD =~ /^.*::mod_arg_(.*)$/) {
     return $Monitoring::GLPlugin::plugin->mod_arg($1, @params);
@@ -2462,6 +2714,13 @@ sub add_snmp_modes {
       help => 'Show snmpwalk command with the oids necessary for a simulation',
   );
   $self->add_mode(
+      internal => 'device::walkbulk',
+      spec => 'bulkwalk',
+      alias => undef,
+      help => 'Show snmpbulkwalk command with the oids necessary for a simulation',
+      hidden => 1,
+  );
+  $self->add_mode(
       internal => 'device::supportedmibs',
       spec => 'supportedmibs',
       alias => undef,
@@ -2589,7 +2848,7 @@ sub add_snmp_args {
 sub validate_args {
   my ($self) = @_;
   $self->SUPER::validate_args();
-  if ($self->opts->mode eq 'walk') {
+  if ($self->opts->mode =~ /^walk/) {
     if ($self->opts->snmpwalk && $self->opts->hostname) {
       if ($self->check_messages == CRITICAL) {
         # gemecker vom super-validierer, der sicherstellt, dass die datei
@@ -2667,7 +2926,8 @@ sub init {
       while (! $timedout && @trees) {
         my $tree = shift @trees;
         $SIG{CHLD} = 'IGNORE';
-        my $cmd = sprintf "snmpwalk -ObentU -v%s -c %s %s %s >> %s", 
+        my $cmd = sprintf "%s -ObentU -v%s -c %s %s %s >> %s",
+            ($self->mode =~ /bulk/) ? "snmpbulkwalk" : "snmpwalk",
             $self->opts->protocol,
             $self->opts->community,
             $self->opts->hostname,
@@ -2691,7 +2951,8 @@ sub init {
     } else {
       printf "rm -f %s\n", $name;
       foreach (@trees) {
-        printf "snmpwalk -ObentU -v%s -c %s %s %s >> %s\n", 
+        printf "%s -ObentU -v%s -c %s %s %s >> %s\n",
+            ($self->mode =~ /bulk/) ? "snmpbulkwalk -t 15 -r 20" : "snmpwalk",
             $self->opts->protocol,
             $self->opts->community,
             $self->opts->hostname,
@@ -2839,7 +3100,7 @@ sub init {
     push(@{$mibdepot}, ['1.3.6.1.2.1.107', 'ietf', 'v2', 'HC-PerfHist-TC-MIB']);
     push(@{$mibdepot}, ['1.3.6.1.2.1.16.20.5', 'ietf', 'v2', 'HC-RMON-MIB']);
     push(@{$mibdepot}, ['1.3.6.1.2.1.25.1', 'ietf', 'v1', 'HOST-RESOURCES-MIB']);
-    push(@{$mibdepot}, ['1.3.6.1.2.1.25.7.1', 'ietf', 'v2', 'HOST-RESOURCES-MIB']);
+    push(@{$mibdepot}, ['1.3.6.1.2.1.25.1', 'ietf', 'v2', 'HOST-RESOURCES-MIB']);
     push(@{$mibdepot}, ['1.3.6.1.2.1.34.6.1.5', 'ietf', 'v2', 'HPR-IP-MIB']);
     push(@{$mibdepot}, ['1.3.6.1.2.1.34.6', 'ietf', 'v2', 'HPR-MIB']);
     push(@{$mibdepot}, ['1.3.6.1.2.1.106', 'ietf', 'v2', 'IANA-CHARSET-MIB']);
@@ -3107,6 +3368,7 @@ sub init {
     push(@{$mibdepot}, ['1.3.6.1.2.1.129', 'ietf', 'v2', 'VPN-TC-STD-MIB']);
     push(@{$mibdepot}, ['1.3.6.1.2.1.68', 'ietf', 'v2', 'VRRP-MIB']);
     push(@{$mibdepot}, ['1.3.6.1.2.1.65', 'ietf', 'v2', 'WWW-MIB']);
+    push(@{$mibdepot}, ['1.3.6.1.4.1.8072', 'net-snmp', 'v2', 'NET-SNMP-MIB']);
     my $oids = $self->get_entries_by_walk(-varbindlist => [
         '1.3.6.1.2.1', '1.3.6.1.4.1',
     ]);
@@ -4034,6 +4296,12 @@ sub get_snmp_table_objects {
   return @entries;
 }
 
+sub bulk_is_baeh {
+  my ($self, $maxrepetitions) = @_;
+  $maxrepetitions ||= 1;
+  $Monitoring::GLPlugin::SNMP::maxrepetitions = $maxrepetitions;
+}
+
 ################################################################
 # 3rd level functions. calling net::snmp-functions
 # 
@@ -4067,7 +4335,15 @@ sub get_request {
     # und beim abschliessenden map wirds natuerlich nicht mehr gefunden 
     # also leeres return. <<kraftausdruck>>
     foreach my $key (%{$result}) {
-      $self->add_rawdata($key, $result->{$key});
+      # so, und zwei jahre spaeter kommt man drauf, dass es viele sorten 
+      # von stinkstiefeln gibt. die fragt man nach 1.3.6.1.4.1.13885.120.1.3.1
+      # und kriegt als antwort 1.3.6.1.4.1.13885.120.1.3.1.0=[noSuchInstance]
+      # bis zum 11.10.16 wurde das in den cache geschrieben. eine etage hoeher
+      # wird aber dann nach 1.3.6.1.4.1.13885.120.1.3.1.0 gefallbacked, was
+      # dann prompt aus dem cache gefischt wird, anstatt den agenten zu fragen,
+      # der in diesem fall eine saubere antwort liefern wuerde.
+      # ergo: keine fehlermeldungen in den chache
+      $self->add_rawdata($key, $result->{$key}) if defined $result->{$key} && $result->{$key} ne 'noSuchInstance';
     }
   }
   my $result = {};
@@ -4330,6 +4606,11 @@ sub get_table {
     if ($Monitoring::GLPlugin::SNMP::session->version() == 3) {
       $params{-contextengineid} = $self->opts->contextengineid if $self->opts->contextengineid;
       $params{-contextname} = $self->opts->contextname if $self->opts->contextname;
+    }
+    if ($Monitoring::GLPlugin::SNMP::maxrepetitions) {
+      # some devices (Bintec) don't like bulk-requests. They call bulk_is_baeh(), so
+      # we immediately send get-next
+      $params{'-maxrepetitions'} = $Monitoring::GLPlugin::SNMP::maxrepetitions;
     }
     $self->debug(sprintf "get_table %s", Data::Dumper::Dumper(\%params));
     my $result = $Monitoring::GLPlugin::SNMP::session->get_table(%params);
@@ -6508,6 +6789,35 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'ALCATEL-IND1-BASE-MIB'} =
   '1.3.6.1.4.1.6486.800';
 
 
+
+package Monitoring::GLPlugin::SNMP::MibsAndOids::ARISTAENTITYSENSORMIB;
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'ARISTA-ENTITY-SENSOR-MIB'} = {
+  url => '',
+  name => 'ARISTA-ENTITY-SENSOR-MIB',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'ARISTA-ENTITY-SENSOR-MIB'} =
+    '1.3.6.1.4.1.30065.3.12';
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'ARISTA-ENTITY-SENSOR-MIB'} = {
+  aristaEntSensorMIB => '1.3.6.1.4.1.30065.3.12',
+  aristaEntSensorMibNotifications => '1.3.6.1.4.1.30065.3.12.0',
+  aristaEntSensorMibObjects => '1.3.6.1.4.1.30065.3.12.1',
+  aristaEntSensorThresholdTable => '1.3.6.1.4.1.30065.3.12.1.1',
+  aristaEntSensorThresholdEntry => '1.3.6.1.4.1.30065.3.12.1.1.1',
+  aristaEntSensorThresholdLowWarning => '1.3.6.1.4.1.30065.3.12.1.1.1.1',
+  aristaEntSensorThresholdLowCritical => '1.3.6.1.4.1.30065.3.12.1.1.1.2',
+  aristaEntSensorThresholdHighWarning => '1.3.6.1.4.1.30065.3.12.1.1.1.3',
+  aristaEntSensorThresholdHighCritical => '1.3.6.1.4.1.30065.3.12.1.1.1.4',
+  aristaEntSensorStatusDescr => '1.3.6.1.4.1.30065.3.12.1.1.1.5',
+  aristaEntSensorMibConformance => '1.3.6.1.4.1.30065.3.12.2',
+  aristaEntSensorMibCompliances => '1.3.6.1.4.1.30065.3.12.2.1',
+  aristaEntSensorMibGroups => '1.3.6.1.4.1.30065.3.12.2.2',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'ARISTA-ENTITY-SENSOR-MIB'} = {
+};
 
 package Monitoring::GLPlugin::SNMP::MibsAndOids::ARUBATCMIB;
 
@@ -10912,6 +11222,583 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'CISCO-PROCESS-MIB'} =
 
 
 
+package Monitoring::GLPlugin::SNMP::MibsAndOids::CISCOSBHWENVIROMENT;
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'CISCOSB-HWENVIROMENT'} = {
+  url => '',
+  name => 'CISCOSB-HWENVIROMENT',
+};
+
+#$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'CISCOSB-HWENVIROMENT'} = 
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'CISCOSB-HWENVIROMENT'} = {
+  rlEnv => '1.3.6.1.4.1.9.6.1.101.83',
+  rlEnvPhysicalDescription => '1.3.6.1.4.1.9.6.1.101.83.1',
+  rlEnvMonFanStatusTable => '1.3.6.1.4.1.9.6.1.101.83.1.1',
+  rlEnvMonFanStatusEntry => '1.3.6.1.4.1.9.6.1.101.83.1.1.1',
+  rlEnvMonFanStatusIndex => '1.3.6.1.4.1.9.6.1.101.83.1.1.1.1',
+  rlEnvMonFanStatusDescr => '1.3.6.1.4.1.9.6.1.101.83.1.1.1.2',
+  rlEnvMonFanState => '1.3.6.1.4.1.9.6.1.101.83.1.1.1.3',
+  rlEnvMonFanStateDefinition => 'CISCOSB-HWENVIROMENT::RlEnvMonState',
+  rlEnvMonSupplyStatusTable => '1.3.6.1.4.1.9.6.1.101.83.1.2',
+  rlEnvMonSupplyStatusEntry => '1.3.6.1.4.1.9.6.1.101.83.1.2.1',
+  rlEnvMonSupplyStatusIndex => '1.3.6.1.4.1.9.6.1.101.83.1.2.1.1',
+  rlEnvMonSupplyStatusDescr => '1.3.6.1.4.1.9.6.1.101.83.1.2.1.2',
+  rlEnvMonSupplyState => '1.3.6.1.4.1.9.6.1.101.83.1.2.1.3',
+  rlEnvMonSupplyStateDefinition => 'CISCOSB-HWENVIROMENT::RlEnvMonState',
+  rlEnvMonSupplySource => '1.3.6.1.4.1.9.6.1.101.83.1.2.1.4',
+  rlEnvMonSupplySourceDefinition => 'CISCOSB-HWENVIROMENT::rlEnvMonSupplySource',
+  rlEnvMonSupplyFanDirection => '1.3.6.1.4.1.9.6.1.101.83.1.2.1.5',
+  rlEnvMonSupplyFanDirectionDefinition => 'CISCOSB-HWENVIROMENT::RlEnvMonDirection',
+  rlEnvFanData => '1.3.6.1.4.1.9.6.1.101.83.5',
+  rlEnvFanDataTable => '1.3.6.1.4.1.9.6.1.101.83.5.1',
+  rlEnvFanDataEntry => '1.3.6.1.4.1.9.6.1.101.83.5.1.1',
+  rlEnvFanDataStackUnit => '1.3.6.1.4.1.9.6.1.101.83.5.1.1.1',
+  rlEnvFanDataTemp => '1.3.6.1.4.1.9.6.1.101.83.5.1.1.2',
+  rlEnvFanDataSpeed => '1.3.6.1.4.1.9.6.1.101.83.5.1.1.3',
+  rlEnvFanDataOperLevel => '1.3.6.1.4.1.9.6.1.101.83.5.1.1.4',
+  rlEnvFanDataAdminLevel => '1.3.6.1.4.1.9.6.1.101.83.5.1.1.5',
+  rlEnvFanDataDirection => '1.3.6.1.4.1.9.6.1.101.83.5.1.1.6',
+  rlEnvFanDataDirectionDefinition => 'CISCOSB-HWENVIROMENT::RlEnvMonDirection',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'CISCOSB-HWENVIROMENT'} = {
+  rlEnvMonSupplySource => {
+    '1' => 'unknown',
+    '2' => 'ac',
+    '3' => 'dc',
+    '4' => 'externalPowerSupply',
+    '5' => 'internalRedundant',
+  },
+  RlEnvMonDirection => {
+    '1' => 'unKnown',
+    '2' => 'frontToBack',
+    '3' => 'backToFront',
+    '4' => 'clockwise',
+    '5' => 'unClockwise',
+    '6' => 'insideOut',
+    '7' => 'outsideIn',
+    '8' => 'rightToLeft',
+    '9' => 'leftToRight',
+  },
+  RlEnvMonState => {
+    '1' => 'normal',
+    '2' => 'warning',
+    '3' => 'critical',
+    '4' => 'shutdown',
+    '5' => 'notPresent',
+    '6' => 'notFunctioning',
+  },
+};
+package Monitoring::GLPlugin::SNMP::MibsAndOids::CISCOSBRNDMNG;
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'CISCOSB-RNDMNG'} = {
+  url => '',
+  name => 'CISCOSB-RNDMNG',
+};
+
+#$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'CISCOSB-RNDMNG'} = 
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'CISCOSB-RNDMNG'} = {
+  rndMng => '1.3.6.1.4.1.9.6.1.101.1',
+  rndSysId => '1.3.6.1.4.1.9.6.1.101.1.1',
+  rndAction => '1.3.6.1.4.1.9.6.1.101.1.2',
+  rndActionDefinition => 'CISCOSB-rndMng::rndAction',
+  rndFileName => '1.3.6.1.4.1.9.6.1.101.1.3',
+  rlSnmpVersionSupported => '1.3.6.1.4.1.9.6.1.101.1.4',
+  rlSnmpMibVersion => '1.3.6.1.4.1.9.6.1.101.1.5',
+  rlCpuUtilEnable => '1.3.6.1.4.1.9.6.1.101.1.6',
+  rlCpuUtilDuringLastSecond => '1.3.6.1.4.1.9.6.1.101.1.7',
+  rlCpuUtilDuringLastMinute => '1.3.6.1.4.1.9.6.1.101.1.8',
+  rlCpuUtilDuringLast5Minutes => '1.3.6.1.4.1.9.6.1.101.1.9',
+  rlRebootDelay => '1.3.6.1.4.1.9.6.1.101.1.10',
+  rlGroupManagement => '1.3.6.1.4.1.9.6.1.101.1.11',
+  rlGroupMngQuery => '1.3.6.1.4.1.9.6.1.101.1.11.1',
+  rlGroupMngQueryDefinition => 'CISCOSB-rndMng::rlGroupMngQuery',
+  rlGroupMngQueryPeriod => '1.3.6.1.4.1.9.6.1.101.1.11.2',
+  rlGroupMngLastUpdate => '1.3.6.1.4.1.9.6.1.101.1.11.3',
+  rlGroupMngDevicesTable => '1.3.6.1.4.1.9.6.1.101.1.11.4',
+  rlGroupMngDeviceEntry => '1.3.6.1.4.1.9.6.1.101.1.11.4.1',
+  rlGroupMngDeviceIdType => '1.3.6.1.4.1.9.6.1.101.1.11.4.1.1',
+  rlGroupMngDeviceId => '1.3.6.1.4.1.9.6.1.101.1.11.4.1.2',
+  rlGroupMngSubdevice => '1.3.6.1.4.1.9.6.1.101.1.11.4.1.3',
+  rlGroupMngDeviceDescription => '1.3.6.1.4.1.9.6.1.101.1.11.4.1.4',
+  rlGroupMngGroupMngEnabled => '1.3.6.1.4.1.9.6.1.101.1.11.4.1.5',
+  rlGroupMngGroupLLDPDeviceId => '1.3.6.1.4.1.9.6.1.101.1.11.4.1.6',
+  rlGroupMngDeviceVendor => '1.3.6.1.4.1.9.6.1.101.1.11.4.1.7',
+  rlGroupMngDeviceAdvertisedCachingTime => '1.3.6.1.4.1.9.6.1.101.1.11.4.1.8',
+  rlGroupMngDeviceLocationURL => '1.3.6.1.4.1.9.6.1.101.1.11.4.1.9',
+  rlGroupMngDeviceLastSeen => '1.3.6.1.4.1.9.6.1.101.1.11.4.1.10',
+  rlRunningCDBequalToStartupCDB => '1.3.6.1.4.1.9.6.1.101.1.13',
+  rlClearMib => '1.3.6.1.4.1.9.6.1.101.1.14',
+  rlScheduledReload => '1.3.6.1.4.1.9.6.1.101.1.15',
+  rlScheduledReloadPendingDate => '1.3.6.1.4.1.9.6.1.101.1.16',
+  rlScheduledReloadApprovedDate => '1.3.6.1.4.1.9.6.1.101.1.17',
+  rlScheduledReloadCommit => '1.3.6.1.4.1.9.6.1.101.1.18',
+  rlSysNameTable => '1.3.6.1.4.1.9.6.1.101.1.19',
+  rlSysNameEntry => '1.3.6.1.4.1.9.6.1.101.1.19.1',
+  rlSysNameSource => '1.3.6.1.4.1.9.6.1.101.1.19.1.1',
+  rlSysNameSourceDefinition => 'CISCOSB-rndMng::rlSysNameSource',
+  rlSysNameIfIndex => '1.3.6.1.4.1.9.6.1.101.1.19.1.2',
+  rlSysNameName => '1.3.6.1.4.1.9.6.1.101.1.19.1.3',
+  rlSysNameRowStatus => '1.3.6.1.4.1.9.6.1.101.1.19.1.4',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'CISCOSB-RNDMNG'} = {
+  rlSysNameSource => {
+    '1' => 'dhcpv6',
+    '2' => 'dhcpv4',
+    '3' => 'static',
+  },
+  rlGroupMngQuery => {
+    '1' => 'query',
+    '2' => 'idle',
+  },
+  rndAction => {
+    '1' => 'reset',
+    '2' => 'sendNetworkTab',
+    '3' => 'deleteNetworkTab',
+    '4' => 'sendRoutingTab',
+    '5' => 'deleteRoutingTab',
+    '6' => 'sendLanTab',
+    '7' => 'deleteLanTab',
+    '8' => 'deleteArpTab',
+    '9' => 'sendArpTab',
+    '10' => 'deleteRouteTab',
+    '11' => 'sendRouteTab',
+    '12' => 'backupSPFRoutingTab',
+    '13' => 'backupIPRoutingTab',
+    '14' => 'backupNetworkTab',
+    '15' => 'backupLanTab',
+    '16' => 'backupArpTab',
+    '17' => 'backupIPXRipTab',
+    '18' => 'backupIPXSAPTab',
+    '19' => 'resetStartupCDB',
+    '20' => 'eraseStartupCDB',
+    '21' => 'deleteZeroHopRoutingAllocTab',
+    '22' => 'slipDisconnect',
+    '23' => 'deleteDynamicLanTab',
+    '24' => 'eraseRunningCDB',
+    '25' => 'copyStartupToRunning',
+    '26' => 'none',
+    '27' => 'resetToFactoryDefaults',
+  },
+};
+package Monitoring::GLPlugin::SNMP::MibsAndOids::CISCOSBSYSMNGMIB;
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'CISCOSB-SYSMNG-MIB'} = {
+  url => '',
+  name => 'CISCOSB-SYSMNG-MIB',
+};
+
+#$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'CISCOSB-SYSMNG-MIB'} = 
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'CISCOSB-SYSMNG-MIB'} = {
+  rlSysmngMib => '1.3.6.1.4.1.9.6.1.101.204',
+  rlSysmngTcamAllocations => '1.3.6.1.4.1.9.6.1.101.204.1',
+  rlSysmngTcamAllocationsTable => '1.3.6.1.4.1.9.6.1.101.204.1.1',
+  rlSysmngTcamAllocationsEntry => '1.3.6.1.4.1.9.6.1.101.204.1.1.1',
+  rlSysmngTcamAllocProfileName => '1.3.6.1.4.1.9.6.1.101.204.1.1.1.1',
+  rlSysmngTcamAllocPoolType => '1.3.6.1.4.1.9.6.1.101.204.1.1.1.2',
+  rlSysmngTcamAllocPoolTypeDefinition => 'CISCOSB-SYSMNG-MIB::SysmngPoolType',
+  rlSysmngTcamAllocMinRequiredEntries => '1.3.6.1.4.1.9.6.1.101.204.1.1.1.3',
+  rlSysmngTcamAllocStaticConfigEntries => '1.3.6.1.4.1.9.6.1.101.204.1.1.1.4',
+  rlSysmngTcamAllocInUseEntries => '1.3.6.1.4.1.9.6.1.101.204.1.1.1.5',
+  rlSysmngTcamAllocPoolSize => '1.3.6.1.4.1.9.6.1.101.204.1.1.1.6',
+  rlSysmngResource => '1.3.6.1.4.1.9.6.1.101.204.2',
+  rlSysmngResourceTable => '1.3.6.1.4.1.9.6.1.101.204.2.1',
+  rlSysmngResourceEntry => '1.3.6.1.4.1.9.6.1.101.204.2.1.1',
+  rlSysmngResourceRouteType => '1.3.6.1.4.1.9.6.1.101.204.2.1.1.1',
+  rlSysmngResourceRouteTypeDefinition => 'CISCOSB-SYSMNG-MIB::SysmngResourceRouteType',
+  rlSysmngResourceCurrentUse => '1.3.6.1.4.1.9.6.1.101.204.2.1.1.2',
+  rlSysmngResourceCurrentUseHw => '1.3.6.1.4.1.9.6.1.101.204.2.1.1.3',
+  rlSysmngResourceCurrentMax => '1.3.6.1.4.1.9.6.1.101.204.2.1.1.4',
+  rlSysmngResourceCurrentMaxHw => '1.3.6.1.4.1.9.6.1.101.204.2.1.1.5',
+  rlSysmngResourceTemporaryMax => '1.3.6.1.4.1.9.6.1.101.204.2.1.1.6',
+  rlSysmngResourceTemporaryMaxHw => '1.3.6.1.4.1.9.6.1.101.204.2.1.1.7',
+  rlSysmngResourceCurrentNexthopMax => '1.3.6.1.4.1.9.6.1.101.204.2.1.1.8',
+  rlSysmngResourceCurrentNexthopMaxHw => '1.3.6.1.4.1.9.6.1.101.204.2.1.1.9',
+  rlSysmngResourceCurrentNexthopUse => '1.3.6.1.4.1.9.6.1.101.204.2.1.1.10',
+  rlSysmngResourceCurrentNexthopUseHw => '1.3.6.1.4.1.9.6.1.101.204.2.1.1.11',
+  rlSysmngRouterResourceAction => '1.3.6.1.4.1.9.6.1.101.204.3',
+  rlSysmngResourceUsage => '1.3.6.1.4.1.9.6.1.101.204.4',
+  rlSysmngResourceUsageTable => '1.3.6.1.4.1.9.6.1.101.204.4.1',
+  rlSysmngResourceUsageEntry => '1.3.6.1.4.1.9.6.1.101.204.4.1.1',
+  rlSysmngResourceUsageType => '1.3.6.1.4.1.9.6.1.101.204.4.1.1.1',
+  rlSysmngResourceUsageTypeDefinition => 'CISCOSB-SYSMNG-MIB::SysmngResourceRouteUsageType',
+  rlSysmngResourceUsageNum => '1.3.6.1.4.1.9.6.1.101.204.4.1.1.2',
+  rlSysmngResourcePerUnit => '1.3.6.1.4.1.9.6.1.101.204.5',
+  rlSysmngResourcePerUnitTable => '1.3.6.1.4.1.9.6.1.101.204.5.1',
+  rlSysmngResourcePerUnitEntry => '1.3.6.1.4.1.9.6.1.101.204.5.1.1',
+  rlSysmngResourcePerUnitRouteType => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.1',
+  rlSysmngResourcePerUnitRouteTypeDefinition => 'CISCOSB-SYSMNG-MIB::SysmngResourceRouteType',
+  rlSysmngResourcePerUnitUnitId => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.2',
+  rlSysmngResourcePerUnitCurrentUse => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.3',
+  rlSysmngResourcePerUnitCurrentUseHw => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.4',
+  rlSysmngResourcePerUnitCurrentMax => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.5',
+  rlSysmngResourcePerUnitCurrentMaxHw => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.6',
+  rlSysmngResourcePerUnitTemporaryMax => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.7',
+  rlSysmngResourcePerUnitTemporaryMaxHw => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.8',
+  rlSysmngResourcePerUnitCurrentNexthopMax => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.9',
+  rlSysmngResourcePerUnitCurrentNexthopMaxHw => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.10',
+  rlSysmngResourcePerUnitCurrentNexthopUse => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.11',
+  rlSysmngResourcePerUnitCurrentNexthopUseHw => '1.3.6.1.4.1.9.6.1.101.204.5.1.1.12',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'CISCOSB-SYSMNG-MIB'} = {
+  SysmngPoolType => {
+    '1' => 'router',
+    '2' => 'iscsi',
+    '3' => 'voip',
+    '4' => 'misc',
+  },
+  SysmngResourceRouteUsageType => {
+    '1' => 'ipv4Neighbor',
+    '2' => 'ipv4Address',
+    '3' => 'ipv4Route',
+    '4' => 'ipv6Neighbor',
+    '5' => 'ipv6Address',
+    '6' => 'ipv6OnlinkPrefix',
+    '7' => 'ipv6Route',
+    '8' => 'ipmv4Route',
+    '9' => 'ipmv4RouteStarG',
+    '10' => 'ipmv6Route',
+    '11' => 'ipmv6RouteStarG',
+  },
+  SysmngResourceRouteType => {
+    '1' => 'ipv4',
+    '2' => 'ipv6',
+    '3' => 'ipmv4',
+    '4' => 'ipmv6',
+    '5' => 'nonIp',
+  },
+};
+package Monitoring::GLPlugin::SNMP::MibsAndOids::CISCOSBTUNING;
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'CISCOSB-TUNING'} = {
+  url => '',
+  name => 'CISCOSB-TUNING',
+};
+
+#$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'CISCOSB-TUNING'} = 
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'CISCOSB-TUNING'} = {
+  rsTunning => '1.3.6.1.4.1.9.6.1.101.29',
+  rsHighPriority => '1.3.6.1.4.1.9.6.1.101.29.1',
+  rsLowPriority => '1.3.6.1.4.1.9.6.1.101.29.2',
+  rsDbgLevel => '1.3.6.1.4.1.9.6.1.101.29.3',
+  rsDiagnosticsTable => '1.3.6.1.4.1.9.6.1.101.29.4',
+  rsDiagnosticsEntry => '1.3.6.1.4.1.9.6.1.101.29.4.1',
+  rsDiagnosticsRequestId => '1.3.6.1.4.1.9.6.1.101.29.4.1.1',
+  rsDiagnosticsCode => '1.3.6.1.4.1.9.6.1.101.29.4.1.2',
+  rsDiagnosticsLocation => '1.3.6.1.4.1.9.6.1.101.29.4.1.3',
+  rsDiagnosticsText => '1.3.6.1.4.1.9.6.1.101.29.4.1.4',
+  rsConfirmMessagTab => '1.3.6.1.4.1.9.6.1.101.29.5',
+  eventMessageTable => '1.3.6.1.4.1.9.6.1.101.29.6',
+  eventMessageEntry => '1.3.6.1.4.1.9.6.1.101.29.6.1',
+  eventNum => '1.3.6.1.4.1.9.6.1.101.29.6.1.1',
+  eventDesc => '1.3.6.1.4.1.9.6.1.101.29.6.1.2',
+  reaTunning => '1.3.6.1.4.1.9.6.1.101.29.7',
+  reaIpForwardEnable => '1.3.6.1.4.1.9.6.1.101.29.7.4',
+  reaIpForwardEnableDefinition => 'CISCOSB-Tuning::reaIpForwardEnable',
+  reaIpxForwardEnable => '1.3.6.1.4.1.9.6.1.101.29.7.5',
+  reaIpxForwardEnableDefinition => 'CISCOSB-Tuning::reaIpxForwardEnable',
+  rsMaxEntriesTuning => '1.3.6.1.4.1.9.6.1.101.29.8',
+  rsMaxBridgeForwardingEntriesTuning => '1.3.6.1.4.1.9.6.1.101.29.8.1',
+  rsMaxBrgFrwEntries => '1.3.6.1.4.1.9.6.1.101.29.8.1.1',
+  rsMaxBrgFrwEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.1.2',
+  rsMaxIpForwardingEntriesTuning => '1.3.6.1.4.1.9.6.1.101.29.8.2',
+  rsMaxIpFrwEntries => '1.3.6.1.4.1.9.6.1.101.29.8.2.1',
+  rsMaxIpFrwEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.2.2',
+  rsMaxArpEntriesTuning => '1.3.6.1.4.1.9.6.1.101.29.8.3',
+  rsMaxArpEntries => '1.3.6.1.4.1.9.6.1.101.29.8.3.1',
+  rsMaxArpEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.3.2',
+  rsMaxIpxForwardingEntriesTuning => '1.3.6.1.4.1.9.6.1.101.29.8.4',
+  rsMaxIpxFrwEntries => '1.3.6.1.4.1.9.6.1.101.29.8.4.1',
+  rsMaxIpxFrwEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.4.2',
+  rsMaxIpxSapEntriesTuning => '1.3.6.1.4.1.9.6.1.101.29.8.5',
+  rsMaxIpxSapEntries => '1.3.6.1.4.1.9.6.1.101.29.8.5.1',
+  rsMaxIpxSapEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.5.2',
+  rsMaxDspClntEntriesTuning => '1.3.6.1.4.1.9.6.1.101.29.8.6',
+  rsMaxDspClntEntries => '1.3.6.1.4.1.9.6.1.101.29.8.6.1',
+  rsMaxDspClntEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.6.2',
+  rsMaxIpFftEntriesTuning => '1.3.6.1.4.1.9.6.1.101.29.8.9',
+  rsMaxIpSFftEntries => '1.3.6.1.4.1.9.6.1.101.29.8.9.1',
+  rsMaxIpSFftEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.9.2',
+  rsMaxIpNFftEntries => '1.3.6.1.4.1.9.6.1.101.29.8.9.3',
+  rsMaxIpNFftEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.9.4',
+  rsMaxIpSFftSysEntries => '1.3.6.1.4.1.9.6.1.101.29.8.9.5',
+  rsMaxIpSFftSysEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.9.6',
+  rsMaxIpNFftSysEntries => '1.3.6.1.4.1.9.6.1.101.29.8.9.7',
+  rsMaxIpNFftSysEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.9.8',
+  rsMaxIpNextHopEntries => '1.3.6.1.4.1.9.6.1.101.29.8.9.9',
+  rsMaxIpNextHopEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.9.10',
+  rsMaxIpxFftEntriesTuning => '1.3.6.1.4.1.9.6.1.101.29.8.10',
+  rsMaxIpxSFftEntries => '1.3.6.1.4.1.9.6.1.101.29.8.10.1',
+  rsMaxIpxSFftEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.10.2',
+  rsMaxIpxNFftEntries => '1.3.6.1.4.1.9.6.1.101.29.8.10.3',
+  rsMaxIpxNFftEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.10.4',
+  rsMaxIpxSFftSysEntries => '1.3.6.1.4.1.9.6.1.101.29.8.10.5',
+  rsMaxIpxSFftSysEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.10.6',
+  rsMaxIpxNFftSysEntries => '1.3.6.1.4.1.9.6.1.101.29.8.10.7',
+  rsMaxIpxNFftSysEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.10.8',
+  rsMaxDhcpTuning => '1.3.6.1.4.1.9.6.1.101.29.8.11',
+  rsMaxDhcpConns => '1.3.6.1.4.1.9.6.1.101.29.8.11.1',
+  rsMaxDhcpConnsAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.11.2',
+  rsMaxIpmTuning => '1.3.6.1.4.1.9.6.1.101.29.8.12',
+  rsMaxIpmFftEntriesTuning => '1.3.6.1.4.1.9.6.1.101.29.8.12.1',
+  rsMaxIpmFftEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.1.1',
+  rsMaxIpmFftEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.1.2',
+  rsIpmFftAging => '1.3.6.1.4.1.9.6.1.101.29.8.12.1.3',
+  rsMaxIgmpTuning => '1.3.6.1.4.1.9.6.1.101.29.8.12.2',
+  rsMaxIgmpInterfaceEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.2.1',
+  rsMaxIgmpInterfaceEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.2.2',
+  rsMaxIgmpCacheEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.2.3',
+  rsMaxIgmpCacheEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.2.4',
+  rsMaxPimTuning => '1.3.6.1.4.1.9.6.1.101.29.8.12.3',
+  rsMaxPimNeighborEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.3.1',
+  rsMaxPimNeighborEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.3.2',
+  rsMaxPimRouteEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.3.3',
+  rsMaxPimRouteEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.3.4',
+  rsMaxPimRouteNextHopEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.3.5',
+  rsMaxPimRouteNextHopEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.3.6',
+  rsMaxPimInterfaceEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.3.7',
+  rsMaxPimInterfaceEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.3.8',
+  rsMaxDvmrpTuning => '1.3.6.1.4.1.9.6.1.101.29.8.12.4',
+  rsMaxDvmrpNeighborEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.4.1',
+  rsMaxDvmrpNeighborEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.4.2',
+  rsMaxDvmrpRouteEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.4.3',
+  rsMaxDvmrpRouteEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.4.4',
+  rsMaxDvmrpMRouteEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.4.5',
+  rsMaxDvmrpMRouteEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.4.6',
+  rsMaxDvmrpInterfaceEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.4.7',
+  rsMaxDvmrpInterfaceEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.4.8',
+  rsMaxPigmpTuning => '1.3.6.1.4.1.9.6.1.101.29.8.12.5',
+  rsMaxPigmpRouteEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.5.1',
+  rsMaxPigmpRouteEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.5.2',
+  rsMaxPimSmTuning => '1.3.6.1.4.1.9.6.1.101.29.8.12.6',
+  rsMaxPimSmNeighborEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.1',
+  rsMaxPimSmNeighborEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.2',
+  rsMaxPimSmRouteEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.3',
+  rsMaxPimSmRouteEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.4',
+  rsMaxPimSmInterfaceEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.5',
+  rsMaxPimSmInterfaceEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.6',
+  rsMaxPimSmRPSetEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.7',
+  rsMaxPimSmRPSetEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.8',
+  rsMaxPimSmCRPEntries => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.9',
+  rsMaxPimSmCRPEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.10',
+  rsMaxNumberRpAddresesInGroupRange => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.11',
+  rsMaxNumberRpAddresesInGroupRangeAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.12.6.12',
+  rsMaxRmonTuning => '1.3.6.1.4.1.9.6.1.101.29.8.13',
+  rsMaxRmonLogEntries => '1.3.6.1.4.1.9.6.1.101.29.8.13.1',
+  rsMaxRmonLogEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.13.2',
+  rsMaxRmonEtherHistoryEntries => '1.3.6.1.4.1.9.6.1.101.29.8.13.3',
+  rsMaxRmonEtherHistoryEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.13.4',
+  rsMaxIgmpSnoopTuning => '1.3.6.1.4.1.9.6.1.101.29.8.14',
+  rsMaxIgmpSnoopGroupEntries => '1.3.6.1.4.1.9.6.1.101.29.8.14.1',
+  rsMaxIgmpSnoopGroupEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.14.2',
+  rsMaxVlansTuning => '1.3.6.1.4.1.9.6.1.101.29.8.15',
+  rsMaxVlansEntries => '1.3.6.1.4.1.9.6.1.101.29.8.15.1',
+  rsMaxVlansEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.15.2',
+  rsMaxPolicyTuning => '1.3.6.1.4.1.9.6.1.101.29.8.16',
+  rsMaxPolicyMaxRulesEntries => '1.3.6.1.4.1.9.6.1.101.29.8.16.1',
+  rsMaxPolicyMaxRulesEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.16.2',
+  rsMaxPolicySimpleMibMaxRulesEntries => '1.3.6.1.4.1.9.6.1.101.29.8.16.3',
+  rsMaxPolicySimpleMibMaxRulesEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.16.4',
+  rsMaxPolicySimpleMibMaxProfilesEntries => '1.3.6.1.4.1.9.6.1.101.29.8.16.5',
+  rsMaxPolicySimpleMibMaxProfilesEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.16.6',
+  rsMaxGvrpVlansTuning => '1.3.6.1.4.1.9.6.1.101.29.8.17',
+  rsMaxGvrpVlans => '1.3.6.1.4.1.9.6.1.101.29.8.17.1',
+  rsMaxGvrpVlansAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.17.2',
+  rsMaxTraceRouteTuning => '1.3.6.1.4.1.9.6.1.101.29.8.18',
+  rsMaxTraceRouteControlEntries => '1.3.6.1.4.1.9.6.1.101.29.8.18.1',
+  rsMaxTraceRouteControlEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.18.2',
+  rsMaxTraceRouteProbeHistoryEntries => '1.3.6.1.4.1.9.6.1.101.29.8.18.3',
+  rsMaxTraceRouteProbeHistoryEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.18.4',
+  rsMaxSnmpTuning => '1.3.6.1.4.1.9.6.1.101.29.8.19',
+  rsMaxSnmpCommunityEntries => '1.3.6.1.4.1.9.6.1.101.29.8.19.1',
+  rsMaxSnmpCommunityEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.19.2',
+  rsMaxSocketTuning => '1.3.6.1.4.1.9.6.1.101.29.8.20',
+  rsMaxNumberOfSockets => '1.3.6.1.4.1.9.6.1.101.29.8.20.1',
+  rsMaxNumberOfSocketsAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.20.2',
+  rsMaxSizeOfSocketDataPool => '1.3.6.1.4.1.9.6.1.101.29.8.20.3',
+  rsMaxSizeOfSocketDataPoolAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.20.4',
+  rsMaxIpRouteTuning => '1.3.6.1.4.1.9.6.1.101.29.8.21',
+  rsMaxIpPrefixes => '1.3.6.1.4.1.9.6.1.101.29.8.21.1',
+  rsMaxIpPrefixesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.21.2',
+  rsMaxIpNextHopSetTuning => '1.3.6.1.4.1.9.6.1.101.29.8.22',
+  rsMaxIpNextHopSetEntries => '1.3.6.1.4.1.9.6.1.101.29.8.22.1',
+  rsMaxIpNextHopSetEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.22.2',
+  rsMaxIpEcmpTuning => '1.3.6.1.4.1.9.6.1.101.29.8.23',
+  rsMaxIpEcmpEntrySize => '1.3.6.1.4.1.9.6.1.101.29.8.23.1',
+  rsMaxIpEcmpEntrySizeAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.23.2',
+  rsMaxdot1xEapRequestTuning => '1.3.6.1.4.1.9.6.1.101.29.8.24',
+  rsMaxdot1xEapRequestEntries => '1.3.6.1.4.1.9.6.1.101.29.8.24.1',
+  rsMaxdot1xEapRequestEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.24.2',
+  rsMaxIpInterfaceTuning => '1.3.6.1.4.1.9.6.1.101.29.8.25',
+  rsMaxIpInterfaces => '1.3.6.1.4.1.9.6.1.101.29.8.25.1',
+  rsMaxIpInterfacesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.25.2',
+  rsMaxIpv6FftEntriesTuning => '1.3.6.1.4.1.9.6.1.101.29.8.26',
+  rsMaxIpv6SFftEntries => '1.3.6.1.4.1.9.6.1.101.29.8.26.1',
+  rsMaxIpv6SFftEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.26.2',
+  rsMaxIpv6SFftSysEntries => '1.3.6.1.4.1.9.6.1.101.29.8.26.3',
+  rsMaxIpv6SFftSysEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.26.4',
+  rsMaxIpv6Prefixes => '1.3.6.1.4.1.9.6.1.101.29.8.26.5',
+  rsMaxIpv6PrefixesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.26.6',
+  rsMaxIpv6NextHopEntries => '1.3.6.1.4.1.9.6.1.101.29.8.26.7',
+  rsMaxIpv6NextHopEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.26.8',
+  rsMaxIpv6NextHopSetEntries => '1.3.6.1.4.1.9.6.1.101.29.8.26.9',
+  rsMaxIpv6NextHopSetEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.26.10',
+  rsMaxIpv6GlobalAddresses => '1.3.6.1.4.1.9.6.1.101.29.8.26.11',
+  rsMaxIpv6GlobalAddressesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.26.12',
+  rsMaxArpTunnelStartEntries => '1.3.6.1.4.1.9.6.1.101.29.8.26.13',
+  rsMaxArpTunnelStartEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.26.14',
+  rsMaxIpv6InterfaceTuning => '1.3.6.1.4.1.9.6.1.101.29.8.27',
+  rsMaxIpv6Interfaces => '1.3.6.1.4.1.9.6.1.101.29.8.27.1',
+  rsMaxIpv6InterfacesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.27.2',
+  rsMaxIpv6AddrPerInterfaces => '1.3.6.1.4.1.9.6.1.101.29.8.27.3',
+  rsMaxIpv6AddrPerInterfacesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.27.4',
+  rsMaxIpRoutesTuning => '1.3.6.1.4.1.9.6.1.101.29.8.28',
+  rsMaxIpv4Routes => '1.3.6.1.4.1.9.6.1.101.29.8.28.1',
+  rsMaxIpv4RoutesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.28.2',
+  rsMaxIpv6Routes => '1.3.6.1.4.1.9.6.1.101.29.8.28.3',
+  rsMaxIpv6RoutesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.28.4',
+  rsMaxIpmv4Routes => '1.3.6.1.4.1.9.6.1.101.29.8.28.5',
+  rsMaxIpmv4RoutesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.28.6',
+  rsMaxIpmv6Routes => '1.3.6.1.4.1.9.6.1.101.29.8.28.7',
+  rsMaxIpmv6RoutesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.8.28.8',
+  rsTcpTuning => '1.3.6.1.4.1.9.6.1.101.29.11',
+  rsTcpMemoryPoolSizeAfterReset => '1.3.6.1.4.1.9.6.1.101.29.11.1',
+  rsTcpMemoryPoolSize => '1.3.6.1.4.1.9.6.1.101.29.11.2',
+  rsRadiusTuning => '1.3.6.1.4.1.9.6.1.101.29.12',
+  rsRadiusMemoryPoolSizeAfterReset => '1.3.6.1.4.1.9.6.1.101.29.12.1',
+  rsRadiusMemoryPoolSize => '1.3.6.1.4.1.9.6.1.101.29.12.2',
+  rlSyslogTuning => '1.3.6.1.4.1.9.6.1.101.29.13',
+  rlSyslogFilePercentToDeleteWhenCompacting => '1.3.6.1.4.1.9.6.1.101.29.13.3',
+  rlSyslogFilePercentToDeleteWhenCompactingAfterReset => '1.3.6.1.4.1.9.6.1.101.29.13.4',
+  rlSyslogCacheSize => '1.3.6.1.4.1.9.6.1.101.29.13.5',
+  rlSyslogCacheSizeAfterReset => '1.3.6.1.4.1.9.6.1.101.29.13.6',
+  rlMngInfTuning => '1.3.6.1.4.1.9.6.1.101.29.14',
+  rlMaxNumberOfAccessRules => '1.3.6.1.4.1.9.6.1.101.29.14.1',
+  rlMaxNumberOfAccessRulesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.14.2',
+  rsDiagnosticTextSource => '1.3.6.1.4.1.9.6.1.101.29.16',
+  rsDiagnosticTextSourceDefinition => 'CISCOSB-Tuning::rsDiagnosticTextSource',
+  rsMultiSession => '1.3.6.1.4.1.9.6.1.101.29.17',
+  rsMultiSessionMaxSessionsAfterReset => '1.3.6.1.4.1.9.6.1.101.29.17.1',
+  rsMultiSessionMaxSessions => '1.3.6.1.4.1.9.6.1.101.29.17.2',
+  rlDnsClTuning => '1.3.6.1.4.1.9.6.1.101.29.18',
+  rlMaxDnsClCacheRREntries => '1.3.6.1.4.1.9.6.1.101.29.18.1',
+  rlMaxDnsClCacheRREntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.18.2',
+  rlMaxDnsClNCacheErrEntries => '1.3.6.1.4.1.9.6.1.101.29.18.3',
+  rlMaxDnsClNCacheErrEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.18.4',
+  rlMaxDnsClNamesEntries => '1.3.6.1.4.1.9.6.1.101.29.18.5',
+  rlMaxDnsClNamesEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.18.6',
+  rlTuningParamsTable => '1.3.6.1.4.1.9.6.1.101.29.19',
+  rlTuningParamsEntry => '1.3.6.1.4.1.9.6.1.101.29.19.1',
+  rlTuningParamsName => '1.3.6.1.4.1.9.6.1.101.29.19.1.1',
+  rlTuningParamsCurrentValue => '1.3.6.1.4.1.9.6.1.101.29.19.1.2',
+  rlTuningParamsAfterResetValue => '1.3.6.1.4.1.9.6.1.101.29.19.1.3',
+  rlTuningParamsDefaultValue => '1.3.6.1.4.1.9.6.1.101.29.19.1.4',
+  rlTuningParamsMinimalValue => '1.3.6.1.4.1.9.6.1.101.29.19.1.5',
+  rlTuningParamsMaximalValue => '1.3.6.1.4.1.9.6.1.101.29.19.1.6',
+  rlHostParamTable => '1.3.6.1.4.1.9.6.1.101.29.20',
+  rlHostParamEntry => '1.3.6.1.4.1.9.6.1.101.29.20.1',
+  rlHostParamName => '1.3.6.1.4.1.9.6.1.101.29.20.1.1',
+  rlHostParamValue => '1.3.6.1.4.1.9.6.1.101.29.20.1.2',
+  rlHostParamType => '1.3.6.1.4.1.9.6.1.101.29.20.1.3',
+  rlHostParamTypeDefinition => 'CISCOSB-Tuning::rlHostParamType',
+  rlHostParamUINT => '1.3.6.1.4.1.9.6.1.101.29.20.1.4',
+  rlHostParamOctetString => '1.3.6.1.4.1.9.6.1.101.29.20.1.5',
+  rlHostParamIpAddress => '1.3.6.1.4.1.9.6.1.101.29.20.1.6',
+  rlHostParamObjectId => '1.3.6.1.4.1.9.6.1.101.29.20.1.7',
+  rlOspfTuning => '1.3.6.1.4.1.9.6.1.101.29.21',
+  rlMaxOspfInterfaces => '1.3.6.1.4.1.9.6.1.101.29.21.1',
+  rlMaxOspfInterfacesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.21.2',
+  rlMaxOspfAreas => '1.3.6.1.4.1.9.6.1.101.29.21.3',
+  rlMaxOspfAreasAfterReset => '1.3.6.1.4.1.9.6.1.101.29.21.4',
+  rlMaxOspfNeighbors => '1.3.6.1.4.1.9.6.1.101.29.21.5',
+  rlMaxOspfNeighborsAfterReset => '1.3.6.1.4.1.9.6.1.101.29.21.6',
+  rlMaxOspfAbrPerArea => '1.3.6.1.4.1.9.6.1.101.29.21.7',
+  rlMaxOspfAbrPerAreaAfterReset => '1.3.6.1.4.1.9.6.1.101.29.21.8',
+  rlMaxOspfNetsInAs => '1.3.6.1.4.1.9.6.1.101.29.21.9',
+  rlMaxOspfNetsInAsAfterReset => '1.3.6.1.4.1.9.6.1.101.29.21.10',
+  rlVlanTuning => '1.3.6.1.4.1.9.6.1.101.29.22',
+  rlVlanDefaultVID => '1.3.6.1.4.1.9.6.1.101.29.22.1',
+  rlVlanDefaultVIDAfterReset => '1.3.6.1.4.1.9.6.1.101.29.22.2',
+  rlVlanUsageForbiddenListTable => '1.3.6.1.4.1.9.6.1.101.29.22.3',
+  rlVlanUsageForbiddenListEntry => '1.3.6.1.4.1.9.6.1.101.29.22.3.1',
+  rlVlanUsageForbiddenListIndex => '1.3.6.1.4.1.9.6.1.101.29.22.3.1.1',
+  rlVlanUsageForbiddenList1to1024 => '1.3.6.1.4.1.9.6.1.101.29.22.3.1.2',
+  rlVlanUsageForbiddenList1025to2048 => '1.3.6.1.4.1.9.6.1.101.29.22.3.1.3',
+  rlVlanUsageForbiddenList2049to3072 => '1.3.6.1.4.1.9.6.1.101.29.22.3.1.4',
+  rlVlanUsageForbiddenList3073to4094 => '1.3.6.1.4.1.9.6.1.101.29.22.3.1.5',
+  rlVlanUsageForbiddenListAfterResetTable => '1.3.6.1.4.1.9.6.1.101.29.22.4',
+  rlVlanUsageForbiddenListAfterResetEntry => '1.3.6.1.4.1.9.6.1.101.29.22.4.1',
+  rlVlanUsageForbiddenListAfterResetIndex => '1.3.6.1.4.1.9.6.1.101.29.22.4.1.1',
+  rlVlanUsageForbiddenListAfterReset1to1024 => '1.3.6.1.4.1.9.6.1.101.29.22.4.1.2',
+  rlVlanUsageForbiddenListAfterReset1025to2048 => '1.3.6.1.4.1.9.6.1.101.29.22.4.1.3',
+  rlVlanUsageForbiddenListAfterReset2049to3072 => '1.3.6.1.4.1.9.6.1.101.29.22.4.1.4',
+  rlVlanUsageForbiddenListAfterReset3073to4094 => '1.3.6.1.4.1.9.6.1.101.29.22.4.1.5',
+  rlDependendFeaturesEnableTuning => '1.3.6.1.4.1.9.6.1.101.29.23',
+  rlDependendFeaturesEnabled => '1.3.6.1.4.1.9.6.1.101.29.23.1',
+  rlDependendFeaturesEnabledAfterReset => '1.3.6.1.4.1.9.6.1.101.29.23.2',
+  rlIpDhcpSnoopingTuning => '1.3.6.1.4.1.9.6.1.101.29.24',
+  rlMaxIpDhcpSnoopingEntries => '1.3.6.1.4.1.9.6.1.101.29.24.1',
+  rlMaxIpDhcpSnoopingEntriesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.24.2',
+  rlIscsiSnoopTuning => '1.3.6.1.4.1.9.6.1.101.29.25',
+  rlIscsiSnoopMaxNumOfConnections => '1.3.6.1.4.1.9.6.1.101.29.25.1',
+  rlIscsiSnoopMaxNumOfConnectionsAfterReset => '1.3.6.1.4.1.9.6.1.101.29.25.2',
+  rlDhcpServerTuning => '1.3.6.1.4.1.9.6.1.101.29.26',
+  rlDhcpSrvMaxAllocatedAddresses => '1.3.6.1.4.1.9.6.1.101.29.26.1',
+  rlDhcpSrvMaxAllocatedAddressesAfterReset => '1.3.6.1.4.1.9.6.1.101.29.26.2',
+  rlBrgMacHashChainLen => '1.3.6.1.4.1.9.6.1.101.29.27',
+  rlBrgMacHashChainLenAfterReset => '1.3.6.1.4.1.9.6.1.101.29.28',
+  rlBrgMacHashFunction => '1.3.6.1.4.1.9.6.1.101.29.29',
+  rlBrgMacHashFunctionDefinition => 'CISCOSB-Tuning::rlBrgMacHashFunction',
+  rlBrgMacHashFunctionAfterReset => '1.3.6.1.4.1.9.6.1.101.29.30',
+  rlBrgMacHashFunctionAfterResetDefinition => 'CISCOSB-Tuning::rlBrgMacHashFunctionAfterReset',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'CISCOSB-TUNING'} = {
+  rlBrgMacHashFunctionAfterReset => {
+    '0' => 'macSqnVlanSqn',
+    '1' => 'macRndVlanSqn',
+    '2' => 'macSqnVlanRnd',
+    '3' => 'macRndVlanRnd',
+  },
+  rlBrgMacHashFunction => {
+    '0' => 'macSqnVlanSqn',
+    '1' => 'macRndVlanSqn',
+    '2' => 'macSqnVlanRnd',
+    '3' => 'macRndVlanRnd',
+  },
+  reaIpxForwardEnable => {
+    '1' => 'enable',
+    '2' => 'disable',
+  },
+  rlHostParamType => {
+    '1' => 'int',
+    '2' => 'uint',
+    '3' => 'octetString',
+    '4' => 'ipV4address',
+    '5' => 'ipV6address',
+    '6' => 'ipV6zAddress',
+    '7' => 'inetAddress',
+    '8' => 'macAddress',
+    '9' => 'objectIdentifier',
+    '10' => 'displayString',
+    '11' => 'truthValue',
+    '12' => 'portlist',
+  },
+  rsDiagnosticTextSource => {
+    '1' => 'fromCLI',
+    '2' => 'fromDiagnosticsTable',
+  },
+  reaIpForwardEnable => {
+    '1' => 'enable',
+    '2' => 'disable',
+  },
+};
 package Monitoring::GLPlugin::SNMP::MibsAndOids::CISCOSTACKIB;
 
 $Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'CISCO-STACK-MIB'} = {
@@ -13838,6 +14725,80 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'ENTITY-SENSOR-MIB'} =
 
 
 
+
+package Monitoring::GLPlugin::SNMP::MibsAndOids::ENTITYSTATEMIB;
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'ENTITY-STATE-MIB'} = {
+  url => '',
+  name => 'ENTITY-STATE-MIB',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'ENTITY-STATE-MIB'} =
+    '1.3.6.1.2.1.131';
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'ENTITY-STATE-MIB'} =
+{
+  entityStateMIB => '1.3.6.1.2.1.131',
+  entStateNotifications => '1.3.6.1.2.1.131.0',
+  entStateObjects => '1.3.6.1.2.1.131.1',
+  entStateTable => '1.3.6.1.2.1.131.1.1',
+  entStateEntry => '1.3.6.1.2.1.131.1.1.1',
+  entStateLastChanged => '1.3.6.1.2.1.131.1.1.1.1',
+  entStateAdmin => '1.3.6.1.2.1.131.1.1.1.2',
+  entStateAdminDefinition => 'ENTITY-STATE-TC-MIB::EntityAdminState',
+  entStateOper => '1.3.6.1.2.1.131.1.1.1.3',
+  entStateOperDefinition => 'ENTITY-STATE-TC-MIB::EntityOperState',
+  entStateUsage => '1.3.6.1.2.1.131.1.1.1.4',
+  entStateUsageDefinition => 'ENTITY-STATE-TC-MIB::EntityUsageState',
+  entStateAlarm => '1.3.6.1.2.1.131.1.1.1.5',
+  entStateAlarmDefinition => 'ENTITY-STATE-TC-MIB::EntityAlarmStatus',
+  entStateStandby => '1.3.6.1.2.1.131.1.1.1.6',
+  entStateStandbyDefinition => 'ENTITY-STATE-TC-MIB::EntityStandbyStatus',
+  entStateConformance => '1.3.6.1.2.1.131.2',
+  entStateCompliances => '1.3.6.1.2.1.131.2.1',
+  entStateGroups => '1.3.6.1.2.1.131.2.2',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'ENTITY-STATE-TC-MIB'} = {
+  EntityAdminState => {
+    1 => 'unknown',
+    2 => 'locked',
+    3 => 'shuttingDown',
+    4 => 'unlocked',
+  },
+  EntityOperState => {
+    1 => 'unknown',
+    2 => 'disabled',
+    3 => 'enabled',
+    4 => 'testing',
+  },
+  EntityUsageState => {
+    1 => 'unknown',
+    2 => 'idle',
+    3 => 'active',
+    4 => 'busy',
+  },
+  EntityAlarmStatus => sub {
+    my $val = shift;
+    # einstweilen wurscht, muss noch genauer angeschaut werden
+    my $dec = unpack("B*", $val);
+    return {
+    0 => 'unknown',
+    1 => 'underRepair',
+    2 => 'critical',
+    3 => 'major',
+    4 => 'minor',
+    5 => 'warning',
+    6 => 'indeterminate',
+    }->{$dec};
+  },
+  EntityStandbyStatus => {
+    1 => 'unknown',
+    2 => 'hotStandby',
+    3 => 'coldStandby',
+    4 => 'providingService',
+  },
+};
 
 package Monitoring::GLPlugin::SNMP::MibsAndOids::F5BIGIPLOCALMIB;
 
@@ -17269,6 +18230,309 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'RESOURCE-MIB'} = {
 
 
 
+package Monitoring::GLPlugin::SNMP::MibsAndOids::RMONMIB;
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'RMON-MIB'} = {
+  url => 'https://www.ietf.org/rfc/rfc1271.txt',
+  name => 'RMON-MIB',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'RMON-MIB'} =
+    '1.3.6.1.2.1.16';
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'RMON-MIB'} = {
+  rmon => '1.3.6.1.2.1.16',
+  rmonEventsV2 => '1.3.6.1.2.1.16.0',
+  statistics => '1.3.6.1.2.1.16.1',
+  etherStatsTable => '1.3.6.1.2.1.16.1.1',
+  etherStatsEntry => '1.3.6.1.2.1.16.1.1.1',
+  etherStatsIndex => '1.3.6.1.2.1.16.1.1.1.1',
+  etherStatsDataSource => '1.3.6.1.2.1.16.1.1.1.2',
+  etherStatsDropEvents => '1.3.6.1.2.1.16.1.1.1.3',
+  etherStatsOctets => '1.3.6.1.2.1.16.1.1.1.4',
+  etherStatsPkts => '1.3.6.1.2.1.16.1.1.1.5',
+  etherStatsBroadcastPkts => '1.3.6.1.2.1.16.1.1.1.6',
+  etherStatsMulticastPkts => '1.3.6.1.2.1.16.1.1.1.7',
+  etherStatsCRCAlignErrors => '1.3.6.1.2.1.16.1.1.1.8',
+  etherStatsUndersizePkts => '1.3.6.1.2.1.16.1.1.1.9',
+  etherStatsOversizePkts => '1.3.6.1.2.1.16.1.1.1.10',
+  etherStatsFragments => '1.3.6.1.2.1.16.1.1.1.11',
+  etherStatsJabbers => '1.3.6.1.2.1.16.1.1.1.12',
+  etherStatsCollisions => '1.3.6.1.2.1.16.1.1.1.13',
+  etherStatsPkts64Octets => '1.3.6.1.2.1.16.1.1.1.14',
+  etherStatsPkts65to127Octets => '1.3.6.1.2.1.16.1.1.1.15',
+  etherStatsPkts128to255Octets => '1.3.6.1.2.1.16.1.1.1.16',
+  etherStatsPkts256to511Octets => '1.3.6.1.2.1.16.1.1.1.17',
+  etherStatsPkts512to1023Octets => '1.3.6.1.2.1.16.1.1.1.18',
+  etherStatsPkts1024to1518Octets => '1.3.6.1.2.1.16.1.1.1.19',
+  etherStatsOwner => '1.3.6.1.2.1.16.1.1.1.20',
+  etherStatsStatus => '1.3.6.1.2.1.16.1.1.1.21',
+  etherStatsStatusDefinition => 'RMON-MIB::EntryStatus',
+  history => '1.3.6.1.2.1.16.2',
+  historyControlTable => '1.3.6.1.2.1.16.2.1',
+  historyControlEntry => '1.3.6.1.2.1.16.2.1.1',
+  historyControlIndex => '1.3.6.1.2.1.16.2.1.1.1',
+  historyControlDataSource => '1.3.6.1.2.1.16.2.1.1.2',
+  historyControlBucketsRequested => '1.3.6.1.2.1.16.2.1.1.3',
+  historyControlBucketsGranted => '1.3.6.1.2.1.16.2.1.1.4',
+  historyControlInterval => '1.3.6.1.2.1.16.2.1.1.5',
+  historyControlOwner => '1.3.6.1.2.1.16.2.1.1.6',
+  historyControlStatus => '1.3.6.1.2.1.16.2.1.1.7',
+  historyControlStatusDefinition => 'RMON-MIB::EntryStatus',
+  etherHistoryTable => '1.3.6.1.2.1.16.2.2',
+  etherHistoryEntry => '1.3.6.1.2.1.16.2.2.1',
+  etherHistoryIndex => '1.3.6.1.2.1.16.2.2.1.1',
+  etherHistorySampleIndex => '1.3.6.1.2.1.16.2.2.1.2',
+  etherHistoryIntervalStart => '1.3.6.1.2.1.16.2.2.1.3',
+  etherHistoryDropEvents => '1.3.6.1.2.1.16.2.2.1.4',
+  etherHistoryOctets => '1.3.6.1.2.1.16.2.2.1.5',
+  etherHistoryPkts => '1.3.6.1.2.1.16.2.2.1.6',
+  etherHistoryBroadcastPkts => '1.3.6.1.2.1.16.2.2.1.7',
+  etherHistoryMulticastPkts => '1.3.6.1.2.1.16.2.2.1.8',
+  etherHistoryCRCAlignErrors => '1.3.6.1.2.1.16.2.2.1.9',
+  etherHistoryUndersizePkts => '1.3.6.1.2.1.16.2.2.1.10',
+  etherHistoryOversizePkts => '1.3.6.1.2.1.16.2.2.1.11',
+  etherHistoryFragments => '1.3.6.1.2.1.16.2.2.1.12',
+  etherHistoryJabbers => '1.3.6.1.2.1.16.2.2.1.13',
+  etherHistoryCollisions => '1.3.6.1.2.1.16.2.2.1.14',
+  etherHistoryUtilization => '1.3.6.1.2.1.16.2.2.1.15',
+  alarm => '1.3.6.1.2.1.16.3',
+  alarmTable => '1.3.6.1.2.1.16.3.1',
+  alarmEntry => '1.3.6.1.2.1.16.3.1.1',
+  alarmIndex => '1.3.6.1.2.1.16.3.1.1.1',
+  alarmInterval => '1.3.6.1.2.1.16.3.1.1.2',
+  alarmVariable => '1.3.6.1.2.1.16.3.1.1.3',
+  alarmSampleType => '1.3.6.1.2.1.16.3.1.1.4',
+  alarmSampleTypeDefinition => 'RMON-MIB::alarmSampleType',
+  alarmValue => '1.3.6.1.2.1.16.3.1.1.5',
+  alarmStartupAlarm => '1.3.6.1.2.1.16.3.1.1.6',
+  alarmStartupAlarmDefinition => 'RMON-MIB::alarmStartupAlarm',
+  alarmRisingThreshold => '1.3.6.1.2.1.16.3.1.1.7',
+  alarmFallingThreshold => '1.3.6.1.2.1.16.3.1.1.8',
+  alarmRisingEventIndex => '1.3.6.1.2.1.16.3.1.1.9',
+  alarmFallingEventIndex => '1.3.6.1.2.1.16.3.1.1.10',
+  alarmOwner => '1.3.6.1.2.1.16.3.1.1.11',
+  alarmStatus => '1.3.6.1.2.1.16.3.1.1.12',
+  alarmStatusDefinition => 'RMON-MIB::EntryStatus',
+  hosts => '1.3.6.1.2.1.16.4',
+  hostControlTable => '1.3.6.1.2.1.16.4.1',
+  hostControlEntry => '1.3.6.1.2.1.16.4.1.1',
+  hostControlIndex => '1.3.6.1.2.1.16.4.1.1.1',
+  hostControlDataSource => '1.3.6.1.2.1.16.4.1.1.2',
+  hostControlTableSize => '1.3.6.1.2.1.16.4.1.1.3',
+  hostControlLastDeleteTime => '1.3.6.1.2.1.16.4.1.1.4',
+  hostControlOwner => '1.3.6.1.2.1.16.4.1.1.5',
+  hostControlStatus => '1.3.6.1.2.1.16.4.1.1.6',
+  hostControlStatusDefinition => 'RMON-MIB::EntryStatus',
+  hostTable => '1.3.6.1.2.1.16.4.2',
+  hostEntry => '1.3.6.1.2.1.16.4.2.1',
+  hostAddress => '1.3.6.1.2.1.16.4.2.1.1',
+  hostCreationOrder => '1.3.6.1.2.1.16.4.2.1.2',
+  hostIndex => '1.3.6.1.2.1.16.4.2.1.3',
+  hostInPkts => '1.3.6.1.2.1.16.4.2.1.4',
+  hostOutPkts => '1.3.6.1.2.1.16.4.2.1.5',
+  hostInOctets => '1.3.6.1.2.1.16.4.2.1.6',
+  hostOutOctets => '1.3.6.1.2.1.16.4.2.1.7',
+  hostOutErrors => '1.3.6.1.2.1.16.4.2.1.8',
+  hostOutBroadcastPkts => '1.3.6.1.2.1.16.4.2.1.9',
+  hostOutMulticastPkts => '1.3.6.1.2.1.16.4.2.1.10',
+  hostTimeTable => '1.3.6.1.2.1.16.4.3',
+  hostTimeEntry => '1.3.6.1.2.1.16.4.3.1',
+  hostTimeAddress => '1.3.6.1.2.1.16.4.3.1.1',
+  hostTimeCreationOrder => '1.3.6.1.2.1.16.4.3.1.2',
+  hostTimeIndex => '1.3.6.1.2.1.16.4.3.1.3',
+  hostTimeInPkts => '1.3.6.1.2.1.16.4.3.1.4',
+  hostTimeOutPkts => '1.3.6.1.2.1.16.4.3.1.5',
+  hostTimeInOctets => '1.3.6.1.2.1.16.4.3.1.6',
+  hostTimeOutOctets => '1.3.6.1.2.1.16.4.3.1.7',
+  hostTimeOutErrors => '1.3.6.1.2.1.16.4.3.1.8',
+  hostTimeOutBroadcastPkts => '1.3.6.1.2.1.16.4.3.1.9',
+  hostTimeOutMulticastPkts => '1.3.6.1.2.1.16.4.3.1.10',
+  hostTopN => '1.3.6.1.2.1.16.5',
+  hostTopNControlTable => '1.3.6.1.2.1.16.5.1',
+  hostTopNControlEntry => '1.3.6.1.2.1.16.5.1.1',
+  hostTopNControlIndex => '1.3.6.1.2.1.16.5.1.1.1',
+  hostTopNHostIndex => '1.3.6.1.2.1.16.5.1.1.2',
+  hostTopNRateBase => '1.3.6.1.2.1.16.5.1.1.3',
+  hostTopNRateBaseDefinition => 'RMON-MIB::hostTopNRateBase',
+  hostTopNTimeRemaining => '1.3.6.1.2.1.16.5.1.1.4',
+  hostTopNDuration => '1.3.6.1.2.1.16.5.1.1.5',
+  hostTopNRequestedSize => '1.3.6.1.2.1.16.5.1.1.6',
+  hostTopNGrantedSize => '1.3.6.1.2.1.16.5.1.1.7',
+  hostTopNStartTime => '1.3.6.1.2.1.16.5.1.1.8',
+  hostTopNOwner => '1.3.6.1.2.1.16.5.1.1.9',
+  hostTopNStatus => '1.3.6.1.2.1.16.5.1.1.10',
+  hostTopNStatusDefinition => 'RMON-MIB::EntryStatus',
+  hostTopNTable => '1.3.6.1.2.1.16.5.2',
+  hostTopNEntry => '1.3.6.1.2.1.16.5.2.1',
+  hostTopNReport => '1.3.6.1.2.1.16.5.2.1.1',
+  hostTopNIndex => '1.3.6.1.2.1.16.5.2.1.2',
+  hostTopNAddress => '1.3.6.1.2.1.16.5.2.1.3',
+  hostTopNRate => '1.3.6.1.2.1.16.5.2.1.4',
+  matrix => '1.3.6.1.2.1.16.6',
+  matrixControlTable => '1.3.6.1.2.1.16.6.1',
+  matrixControlEntry => '1.3.6.1.2.1.16.6.1.1',
+  matrixControlIndex => '1.3.6.1.2.1.16.6.1.1.1',
+  matrixControlDataSource => '1.3.6.1.2.1.16.6.1.1.2',
+  matrixControlTableSize => '1.3.6.1.2.1.16.6.1.1.3',
+  matrixControlLastDeleteTime => '1.3.6.1.2.1.16.6.1.1.4',
+  matrixControlOwner => '1.3.6.1.2.1.16.6.1.1.5',
+  matrixControlStatus => '1.3.6.1.2.1.16.6.1.1.6',
+  matrixControlStatusDefinition => 'RMON-MIB::EntryStatus',
+  matrixSDTable => '1.3.6.1.2.1.16.6.2',
+  matrixSDEntry => '1.3.6.1.2.1.16.6.2.1',
+  matrixSDSourceAddress => '1.3.6.1.2.1.16.6.2.1.1',
+  matrixSDDestAddress => '1.3.6.1.2.1.16.6.2.1.2',
+  matrixSDIndex => '1.3.6.1.2.1.16.6.2.1.3',
+  matrixSDPkts => '1.3.6.1.2.1.16.6.2.1.4',
+  matrixSDOctets => '1.3.6.1.2.1.16.6.2.1.5',
+  matrixSDErrors => '1.3.6.1.2.1.16.6.2.1.6',
+  matrixDSTable => '1.3.6.1.2.1.16.6.3',
+  matrixDSEntry => '1.3.6.1.2.1.16.6.3.1',
+  matrixDSSourceAddress => '1.3.6.1.2.1.16.6.3.1.1',
+  matrixDSDestAddress => '1.3.6.1.2.1.16.6.3.1.2',
+  matrixDSIndex => '1.3.6.1.2.1.16.6.3.1.3',
+  matrixDSPkts => '1.3.6.1.2.1.16.6.3.1.4',
+  matrixDSOctets => '1.3.6.1.2.1.16.6.3.1.5',
+  matrixDSErrors => '1.3.6.1.2.1.16.6.3.1.6',
+  filter => '1.3.6.1.2.1.16.7',
+  filterTable => '1.3.6.1.2.1.16.7.1',
+  filterEntry => '1.3.6.1.2.1.16.7.1.1',
+  filterIndex => '1.3.6.1.2.1.16.7.1.1.1',
+  filterChannelIndex => '1.3.6.1.2.1.16.7.1.1.2',
+  filterPktDataOffset => '1.3.6.1.2.1.16.7.1.1.3',
+  filterPktData => '1.3.6.1.2.1.16.7.1.1.4',
+  filterPktDataMask => '1.3.6.1.2.1.16.7.1.1.5',
+  filterPktDataNotMask => '1.3.6.1.2.1.16.7.1.1.6',
+  filterPktStatus => '1.3.6.1.2.1.16.7.1.1.7',
+  filterPktStatusMask => '1.3.6.1.2.1.16.7.1.1.8',
+  filterPktStatusNotMask => '1.3.6.1.2.1.16.7.1.1.9',
+  filterOwner => '1.3.6.1.2.1.16.7.1.1.10',
+  filterStatus => '1.3.6.1.2.1.16.7.1.1.11',
+  filterStatusDefinition => 'RMON-MIB::EntryStatus',
+  channelTable => '1.3.6.1.2.1.16.7.2',
+  channelEntry => '1.3.6.1.2.1.16.7.2.1',
+  channelIndex => '1.3.6.1.2.1.16.7.2.1.1',
+  channelIfIndex => '1.3.6.1.2.1.16.7.2.1.2',
+  channelAcceptType => '1.3.6.1.2.1.16.7.2.1.3',
+  channelAcceptTypeDefinition => 'RMON-MIB::channelAcceptType',
+  channelDataControl => '1.3.6.1.2.1.16.7.2.1.4',
+  channelDataControlDefinition => 'RMON-MIB::channelDataControl',
+  channelTurnOnEventIndex => '1.3.6.1.2.1.16.7.2.1.5',
+  channelTurnOffEventIndex => '1.3.6.1.2.1.16.7.2.1.6',
+  channelEventIndex => '1.3.6.1.2.1.16.7.2.1.7',
+  channelEventStatus => '1.3.6.1.2.1.16.7.2.1.8',
+  channelEventStatusDefinition => 'RMON-MIB::channelEventStatus',
+  channelMatches => '1.3.6.1.2.1.16.7.2.1.9',
+  channelDescription => '1.3.6.1.2.1.16.7.2.1.10',
+  channelOwner => '1.3.6.1.2.1.16.7.2.1.11',
+  channelStatus => '1.3.6.1.2.1.16.7.2.1.12',
+  channelStatusDefinition => 'RMON-MIB::EntryStatus',
+  capture => '1.3.6.1.2.1.16.8',
+  bufferControlTable => '1.3.6.1.2.1.16.8.1',
+  bufferControlEntry => '1.3.6.1.2.1.16.8.1.1',
+  bufferControlIndex => '1.3.6.1.2.1.16.8.1.1.1',
+  bufferControlChannelIndex => '1.3.6.1.2.1.16.8.1.1.2',
+  bufferControlFullStatus => '1.3.6.1.2.1.16.8.1.1.3',
+  bufferControlFullStatusDefinition => 'RMON-MIB::bufferControlFullStatus',
+  bufferControlFullAction => '1.3.6.1.2.1.16.8.1.1.4',
+  bufferControlFullActionDefinition => 'RMON-MIB::bufferControlFullAction',
+  bufferControlCaptureSliceSize => '1.3.6.1.2.1.16.8.1.1.5',
+  bufferControlDownloadSliceSize => '1.3.6.1.2.1.16.8.1.1.6',
+  bufferControlDownloadOffset => '1.3.6.1.2.1.16.8.1.1.7',
+  bufferControlMaxOctetsRequested => '1.3.6.1.2.1.16.8.1.1.8',
+  bufferControlMaxOctetsGranted => '1.3.6.1.2.1.16.8.1.1.9',
+  bufferControlCapturedPackets => '1.3.6.1.2.1.16.8.1.1.10',
+  bufferControlTurnOnTime => '1.3.6.1.2.1.16.8.1.1.11',
+  bufferControlOwner => '1.3.6.1.2.1.16.8.1.1.12',
+  bufferControlStatus => '1.3.6.1.2.1.16.8.1.1.13',
+  bufferControlStatusDefinition => 'RMON-MIB::EntryStatus',
+  captureBufferTable => '1.3.6.1.2.1.16.8.2',
+  captureBufferEntry => '1.3.6.1.2.1.16.8.2.1',
+  captureBufferControlIndex => '1.3.6.1.2.1.16.8.2.1.1',
+  captureBufferIndex => '1.3.6.1.2.1.16.8.2.1.2',
+  captureBufferPacketID => '1.3.6.1.2.1.16.8.2.1.3',
+  captureBufferPacketData => '1.3.6.1.2.1.16.8.2.1.4',
+  captureBufferPacketLength => '1.3.6.1.2.1.16.8.2.1.5',
+  captureBufferPacketTime => '1.3.6.1.2.1.16.8.2.1.6',
+  captureBufferPacketStatus => '1.3.6.1.2.1.16.8.2.1.7',
+  event => '1.3.6.1.2.1.16.9',
+  eventTable => '1.3.6.1.2.1.16.9.1',
+  eventEntry => '1.3.6.1.2.1.16.9.1.1',
+  eventIndex => '1.3.6.1.2.1.16.9.1.1.1',
+  eventDescription => '1.3.6.1.2.1.16.9.1.1.2',
+  eventType => '1.3.6.1.2.1.16.9.1.1.3',
+  eventTypeDefinition => 'RMON-MIB::eventType',
+  eventCommunity => '1.3.6.1.2.1.16.9.1.1.4',
+  eventLastTimeSent => '1.3.6.1.2.1.16.9.1.1.5',
+  eventOwner => '1.3.6.1.2.1.16.9.1.1.6',
+  eventStatus => '1.3.6.1.2.1.16.9.1.1.7',
+  eventStatusDefinition => 'RMON-MIB::EntryStatus',
+  logTable => '1.3.6.1.2.1.16.9.2',
+  logEntry => '1.3.6.1.2.1.16.9.2.1',
+  logEventIndex => '1.3.6.1.2.1.16.9.2.1.1',
+  logIndex => '1.3.6.1.2.1.16.9.2.1.2',
+  logTime => '1.3.6.1.2.1.16.9.2.1.3',
+  logDescription => '1.3.6.1.2.1.16.9.2.1.4',
+  rmonConformance => '1.3.6.1.2.1.16.20',
+  rmonMibModule => '1.3.6.1.2.1.16.20.8',
+  rmonCompliances => '1.3.6.1.2.1.16.20.9',
+  rmonGroups => '1.3.6.1.2.1.16.20.10',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'RMON-MIB'} = {
+  channelDataControl => {
+    '1' => 'on',
+    '2' => 'off',
+  },
+  alarmSampleType => {
+    '1' => 'absoluteValue',
+    '2' => 'deltaValue',
+  },
+  hostTopNRateBase => {
+    '1' => 'hostTopNInPkts',
+    '2' => 'hostTopNOutPkts',
+    '3' => 'hostTopNInOctets',
+    '4' => 'hostTopNOutOctets',
+    '5' => 'hostTopNOutErrors',
+    '6' => 'hostTopNOutBroadcastPkts',
+    '7' => 'hostTopNOutMulticastPkts',
+  },
+  channelEventStatus => {
+    '1' => 'eventReady',
+    '2' => 'eventFired',
+    '3' => 'eventAlwaysReady',
+  },
+  bufferControlFullAction => {
+    '1' => 'lockWhenFull',
+    '2' => 'wrapWhenFull',
+  },
+  bufferControlFullStatus => {
+    '1' => 'spaceAvailable',
+    '2' => 'full',
+  },
+  eventType => {
+    '1' => 'none',
+    '2' => 'log',
+    '3' => 'snmptrap',
+    '4' => 'logandtrap',
+  },
+  channelAcceptType => {
+    '1' => 'acceptMatched',
+    '2' => 'acceptFailed',
+  },
+  alarmStartupAlarm => {
+    '1' => 'risingAlarm',
+    '2' => 'fallingAlarm',
+    '3' => 'risingOrFallingAlarm',
+  },
+  EntryStatus => {
+    '1' => 'valid',
+    '2' => 'createRequest',
+    '3' => 'underCreation',
+    '4' => 'invalid',
+  },
+};
 package Monitoring::GLPlugin::SNMP::MibsAndOids::S5CHASSISMIB;
 
 $Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'S5-CHASSIS-MIB'} = {
@@ -17669,6 +18933,28 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'SYSTEM-RESOURCES-MIB'
 
 
 
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'UCD-DISKIO-MIB'} = {
+  url => 'http://www.circitor.fr/Mibs/Files/UCD-DISKIO-MIB.mib',
+  name => 'UCD-DISKIO-MIB',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'UCD-DISKIO-MIB'} =
+    '1.3.6.1.4.1.2021.13.15';
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'UCD-DISKIO-MIB'} = {
+  ucdDiskIOMIB => '1.3.6.1.4.1.2021.13.15',
+  diskIOTable => '1.3.6.1.4.1.2021.13.15.1',
+  diskIOEntry => '1.3.6.1.4.1.2021.13.15.1.1',
+  diskIOIndex => '1.3.6.1.4.1.2021.13.15.1.1.1',
+  diskIODevice => '1.3.6.1.4.1.2021.13.15.1.1.2',
+  diskIONRead => '1.3.6.1.4.1.2021.13.15.1.1.3',
+  diskIONWritten => '1.3.6.1.4.1.2021.13.15.1.1.4',
+  diskIOReads => '1.3.6.1.4.1.2021.13.15.1.1.5',
+  diskIOWrites => '1.3.6.1.4.1.2021.13.15.1.1.6',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'UCD-DISKIO-MIB'} = {
+};
 package Monitoring::GLPlugin::SNMP::MibsAndOids::UCDSNMPMIB;
 
 $Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'UCD-SNMP-MIB'} = {
@@ -17860,13 +19146,13 @@ $Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'UCD-SNMP-MIB'} = {
 };
 
 $Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'UCD-SNMP-MIB'} = {
-  UCDErrorFix => {
-    '0' => 'noError',
-    '1' => 'runFix',
-  },
   UCDErrorFlag => {
     '0' => 'noError',
     '1' => 'error',
+  },
+  UCDErrorFix => {
+    '0' => 'noError',
+    '1' => 'runFix',
   },
 };
 package Monitoring::GLPlugin::SNMP::MibsAndOids::USAGEMIB;
@@ -18872,13 +20158,17 @@ sub init {
     $self->update_device_cache(1);
     foreach my $ain (keys %{$self->{device_cache}}) {
       my $name = $self->{device_cache}->{$ain}->{name};
-      printf "%02d %s\n", $ain, $name;
+      printf "%s %s\n", $ain, $name;
     }
   } elsif ($self->mode =~ /smarthome::device/) {
     $self->update_device_cache(0);
     my @indices = $self->get_device_indices();
     foreach my $ain (map {$_->[0]} @indices) {
-      my %tmp_dev = (ain => $ain, name => $self->{device_cache}->{$ain}->{name});
+      my %tmp_dev = (
+          ain => $ain,
+          name => $self->{device_cache}->{$ain}->{name},
+          functionbitmask => $self->{device_cache}->{$ain}->{functionbitmask},
+      );
       push(@{$self->{smart_home_devices}},
           Classes::UPNP::AVM::FritzBox7390::Component::SmartHomeSubsystem::Device->new(%tmp_dev));
     }
@@ -18915,14 +20205,14 @@ sub update_device_cache {
   if ($force || ! -f $statefile || ((stat $statefile)[9]) < ($update)) {
     $self->debug('force update of device cache');
     $self->{device_cache} = {};
-    my $switchlist = $self->http_get('/webservices/homeautoswitch.lua?switchcmd=getswitchlist');
-    my @ains = split(",", $switchlist);
-    foreach my $ain (@ains) {
-      chomp $ain;
-      my $name = $self->http_get('/webservices/homeautoswitch.lua?switchcmd=getswitchname&ain='.$ain);
-      chomp $name;
-      $self->{device_cache}->{$ain}->{name} = $name;
-    }
+    my $switchlist = $self->http_get('/webservices/homeautoswitch.lua?switchcmd=getdevicelistinfos');
+    $switchlist = join(",", map {
+        /<device identifier="(.*?)"/;
+        my $ain = $1; $ain =~ s/\s//g;
+        /<name>(.*?)<\/name>/; $self->{device_cache}->{$ain}->{name} = $1;
+        /functionbitmask="(.*?)"/; $self->{device_cache}->{$ain}->{functionbitmask} = $1;
+       $ain;
+    } ($switchlist =~ /<device.*?<\/device>/g));
     $self->save_device_cache();
   }
   $self->load_device_cache();
@@ -18958,7 +20248,7 @@ sub load_device_cache {
     $self->{device_cache} = $VAR1;
     eval {
       foreach (keys %{$self->{device_cache}}) {
-        /^\d+$/ || die "newrelease";
+        /^[\d\s]+$/ || die "newrelease";
       }
     };
     if($@) {
@@ -19006,26 +20296,37 @@ use strict;
 
 sub finish {
   my $self = shift;
+  $self->{cometdect} = ($self->{functionbitmask} & 0b000001000000) ? 1 : 0;
+  $self->{energy} = ($self->{functionbitmask} & 0b000010000000) ? 1 : 0;
+  $self->{temperature} = ($self->{functionbitmask} & 0b000100000000) ? 1 : 0;
+  $self->{schaltsteck} = ($self->{functionbitmask} & 0b001000000000) ? 1 : 0;
+  $self->{dectrepeater} = ($self->{functionbitmask} & 0b010000000000) ? 1 : 0;
   if ($self->mode =~ /smarthome::device::status/) {
     $self->{connected} = $self->http_get('/webservices/homeautoswitch.lua?switchcmd=getswitchpresent&ain='.$self->{ain});
     $self->{switched} = $self->http_get('/webservices/homeautoswitch.lua?switchcmd=getswitchstate&ain='.$self->{ain});
     chomp $self->{connected};
     chomp $self->{switched};
-  } elsif ($self->mode =~ /smarthome::device::energy/) {
+  } elsif ($self->mode =~ /smarthome::device::energy/ && $self->{energy}) {
     eval {
       $self->{last_watt} = $self->http_get('/webservices/homeautoswitch.lua?switchcmd=getswitchpower&ain='.$self->{ain});
       $self->{last_watt} /= 1000;
     };
-  } elsif ($self->mode =~ /smarthome::device::consumption/) {
+  } elsif ($self->mode =~ /smarthome::device::consumption/ && $self->{energy}) {
     eval {
       $self->{kwh} = $self->http_get('/webservices/homeautoswitch.lua?switchcmd=getswitchenergy&ain='.$self->{ain});
       $self->{kwh} /= 1000;
+    };
+  } elsif ($self->mode =~ /smarthome::device::temperature/ && $self->{temperature}) {
+    eval {
+      $self->{celsius} = $self->http_get('/webservices/homeautoswitch.lua?switchcmd=gettemperature&ain='.$self->{ain});
+      $self->{celsius} /= 10;
     };
   }
 }
 
 sub check {
   my $self = shift;
+  my $label = $self->{name};
   if ($self->mode =~ /smarthome::device::status/) {
     $self->add_info(sprintf "device %s is %sconnected and switched %s",
         $self->{name}, $self->{connected} ? "" : "not ", $self->{switched} ? "on" : "off");
@@ -19034,25 +20335,38 @@ sub check {
     } else {
       $self->add_ok(sprintf "device %s ok", $self->{name});
     }
-  } elsif ($self->mode =~ /smarthome::device::energy/) {
+  } elsif ($self->mode =~ /smarthome::device::energy/ && $self->{energy}) {
     $self->add_info(sprintf "device %s consumes %.4f watts",
         $self->{name}, $self->{last_watt});
-    $self->set_thresholds(
-        warning => 80 / 100 * 220 * 10, 
-        critical => 90 / 100 * 220 * 10);
-    $self->add_message($self->check_thresholds($self->{last_watt}));
+    $self->set_thresholds(metric => $label."_watt",
+        warning => 80 / 100 * 220 * 10, critical => 90 / 100 * 220 * 10);
+    $self->add_message($self->check_thresholds(
+        metric => $label."_watt", value => $self->{last_watt}));
     $self->add_perfdata(
-        label => 'watt',
+        label => $label."_watt",
         value => $self->{last_watt},
     );
-  } elsif ($self->mode =~ /smarthome::device::consumption/) {
+  } elsif ($self->mode =~ /smarthome::device::consumption/ && $self->{energy}) {
     $self->add_info(sprintf "device %s consumed %.4f kwh",
         $self->{name}, $self->{kwh});
-    $self->set_thresholds(warning => 1000, critical => 1000);
-    $self->add_message($self->check_thresholds($self->{kwh}));
+    $self->set_thresholds(metric => $label."_kwh",
+        warning => 1000, critical => 1000);
+    $self->add_message($self->check_thresholds(
+        metric => $label."_kwh", value => $self->{kwh}));
     $self->add_perfdata(
-        label => 'kwh',
+        label => $label."_kwh",
         value => $self->{kwh},
+    );
+  } elsif ($self->mode =~ /smarthome::device::temperature/ && $self->{temperature}) {
+    $self->add_info(sprintf "device %s temperature is %.4f C",
+        $self->{name}, $self->{celsius});
+    $self->set_thresholds(metric => $label."_temperature",
+        warning => 40, critical => 50);
+    $self->add_message($self->check_thresholds(
+        metric => $label."_temperature", value => $self->{celsius}));
+    $self->add_perfdata(
+        label => $label."_temperature",
+        value => $self->{celsius},
     );
   }
 }
@@ -19172,10 +20486,13 @@ sub analyze_cpu_subsystem {
   if ($html =~ /uiSubmitLogin/) {
     $self->add_critical("wrong login");
     $self->{cpu_usage} = 0;
-  } else {
+  } elsif ($html =~ /StatCPU/) {
     my $cpu = (grep /StatCPU/, split(/\n/, $html))[0];
     my @cpu = ($cpu =~ /= "(.*?)"/ && split(/,/, $1));
     $self->{cpu_usage} = $cpu[0];
+  } elsif ($html =~ /uiViewCpu/) {
+    $html =~ /Query1 = "(.*?)"/;
+    $self->{cpu_usage} = (split(",", $1))[0];
   }
 }
 
@@ -19185,7 +20502,7 @@ sub analyze_mem_subsystem {
   if ($html =~ /uiSubmitLogin/) {
     $self->add_critical("wrong login");
     $self->{ram_used} = 0;
-  } else {
+  } elsif ($html =~ /StatRAMCacheUsed/) {
     my $ramcacheused = (grep /StatRAMCacheUsed/, split(/\n/, $html))[0];
     my @ramcacheused = ($ramcacheused =~ /= "(.*?)"/ && split(/,/, $1));
     $self->{ram_cache_used} = $ramcacheused[0];
@@ -19196,6 +20513,14 @@ sub analyze_mem_subsystem {
     my @ramstrictlyused = ($ramstrictlyused =~ /= "(.*?)"/ && split(/,/, $1));
     $self->{ram_strictly_used} = $ramstrictlyused[0];
     $self->{ram_used} = $self->{ram_strictly_used} + $self->{ram_cache_used};
+  } elsif ($html =~ /uiViewRamValue/) {
+    $html =~ /Query1 ="(.*?)"/;
+    $self->{ram_free} = (split(",", $1))[0];
+    $html =~ /Query2 ="(.*?)"/;
+    $self->{ram_dynamic} = (split(",", $1))[0];
+    $html =~ /Query3 ="(.*?)"/;
+    $self->{ram_fix} = (split(",", $1))[0];
+    $self->{ram_used} = $self->{ram_fix} + $self->{ram_dynamic};
   }
 }
 
@@ -20031,6 +21356,7 @@ use strict;
 
 sub init {
   my $self = shift;
+  $self->bulk_is_baeh();
   # there is temperature/sensor information in these mibs
   # mib-sensor.mib mib-box.mib mib-sysped.mib mib-sysiny.mib mibsysx8.mib
   # but i don't have a device which implements them
@@ -20044,6 +21370,7 @@ use strict;
 
 sub init {
   my $self = shift;
+  $self->bulk_is_baeh();
   $self->get_snmp_tables('BIANCA-BRICK-MIBRES-MIB', [
       ['mem', 'memoryTable', 'Classes::Bintec::Bibo::Component::MemSubsystem::Memory'],
   ]);
@@ -20074,6 +21401,7 @@ use strict;
 sub check {
   my $self = shift;
   $self->{memoryDescr} = $self->unhex_octet_string($self->{memoryDescr});
+  $self->{memoryDescr} =~ s/\0//g;
   $self->add_info(sprintf '%s usage is %.2f%%',
       $self->{memoryDescr}, $self->{usage});
   my $label = 'memory_'.$self->{memoryDescr}.'_usage';
@@ -20094,6 +21422,7 @@ use strict;
 sub check {
   my $self = shift;
   $self->{memoryDescr} = $self->unhex_octet_string($self->{memoryDescr});
+  $self->{memoryDescr} =~ s/\0//g;
   $self->add_info(sprintf '%s usage is %.2f%%',
       $self->{memoryDescr}, $self->{usage});
   my $label = 'memory_'.$self->{memoryDescr}.'_usage';
@@ -20129,6 +21458,7 @@ use strict;
 
 sub init {
   my $self = shift;
+  $self->bulk_is_baeh();
   $self->get_snmp_tables('BIANCA-BRICK-MIBRES-MIB', [
       ['cpus', 'cpuTable', 'Classes::Bintec::Bibo::Component::CpuSubsystem::Cpu'],
   ]);
@@ -20606,6 +21936,15 @@ sub check {
   my $label = sprintf('sens_%s_%s', $self->{entSensorType}, $self->{entPhysicalIndex});
   my $warningx = ($self->get_thresholds(metric => $label))[0];
   my $criticalx = ($self->get_thresholds(metric => $label))[1];
+  if (scalar(@{$self->{thresholds}} == 4)) {
+    # sowos gits aa.
+    # an entSensorType: voltsAC mied 3249milli, der wou 4 thresholds hod.
+    # owa: entSensorThresholdEvaluation: unknown_0,
+    # entSensorThresholdSeverity: other
+    # entSensorThresholdValue: 3630, entSensorThresholdRelation: lessThan
+    # und de andern: entSensorThresholdValue: 3465, 2970, 3135
+    # wos wuellsd ejtz do mocha? i dou jednfalls nix. es kinnts me.
+  }
   if (scalar(@{$self->{thresholds}} == 2)) {
     # reparaturlauf
     foreach my $idx (0..1) {
@@ -20658,7 +21997,7 @@ sub check {
         warning => defined($warningx) ? $warningx : $warning,
         critical => defined($criticalx) ? $criticalx : $critical,
     );
-  } elsif ($self->{entSensorValue}) {
+  } elsif (defined $self->{entSensorValue}) {
     if ((defined($criticalx) && 
         $self->check_thresholds(metric => $label, value => $self->{entSensorValue}) == CRITICAL) ||
        (defined($warningx) && 
@@ -20701,6 +22040,11 @@ sub check {
           label => $label,
           value => $self->{entSensorValue},
           warning => $self->{ciscoEnvMonSensorThreshold},
+      );
+    } else {
+      $self->add_perfdata(
+          label => $label,
+          value => $self->{entSensorValue},
       );
     }
   } elsif (scalar(grep { $_->{entSensorThresholdEvaluation} eq "true" }
@@ -21695,6 +23039,14 @@ sub init {
   my $self = shift;
   if ($self->implements_mib('CISCO-ENHANCED-MEMPOOL-MIB')) {
     $self->analyze_and_check_mem_subsystem("Classes::Cisco::CISCOENHANCEDMEMPOOLMIB::Component::MemSubsystem");
+    if (! exists $self->{mems} || scalar(@{$self->{mems}}) == 0) {
+      # satz mix x....
+      # der hier: Cisco IOS Software, IOS-XE Software, Catalyst L3 Switch Software (CAT3K_CAA-UNIVERSALK9-M), Version 03.03.02SE RELEASE SOFTWARE (fc2)
+      # hat nicht mehr zu bieten als eine einzige oid
+      # cempMemBufferNotifyEnabled .1.3.6.1.4.1.9.9.221.1.2.1.0 = INTEGER: 2
+      # deshalb:
+      $self->analyze_and_check_mem_subsystem("Classes::Cisco::CISCOMEMORYPOOLMIB::Component::MemSubsystem");
+    }
   } else {
     $self->analyze_and_check_mem_subsystem("Classes::Cisco::CISCOMEMORYPOOLMIB::Component::MemSubsystem");
   }
@@ -22389,24 +23741,45 @@ use strict;
 
 sub init {
   my $self = shift;
-  $self->{name} = $self->get_snmp_object('MIB-2-MIB', 'sysName', 0);
-  $self->get_snmp_tables('AIRESPACE-WIRELESS-MIB', [
-      ['aps', 'bsnAPTable', 'Classes::Cisco::WLC::Component::WlanSubsystem::AP', sub { return $self->filter_name(shift->{bsnAPName}) } ],
-      ['ifs', 'bsnAPIfTable', 'Classes::Cisco::WLC::Component::WlanSubsystem::AP' ],
-      ['ifloads', 'bsnAPIfLoadParametersTable', 'Classes::Cisco::WLC::Component::WlanSubsystem::IFLoad' ],
-  ]);
-  $self->assign_loads_to_ifs();
-  $self->assign_ifs_to_aps();
+  if ($self->mode =~ /device::wlan::aps::clients/) {
+    $self->get_snmp_tables('AIRESPACE-WIRELESS-MIB', [
+        ['mobilestations', 'bsnMobileStationTable', 'Classes::Cisco::WLC::Component::WlanSubsystem::MobileStation', sub { return $self->filter_name(shift->{bsnMobileStationSsid}) } ],
+    ]);
+  } else {
+    $self->{name} = $self->get_snmp_object('MIB-2-MIB', 'sysName', 0);
+    $self->get_snmp_tables('AIRESPACE-WIRELESS-MIB', [
+        ['aps', 'bsnAPTable', 'Classes::Cisco::WLC::Component::WlanSubsystem::AP', sub { return $self->filter_name(shift->{bsnAPName}) } ],
+        ['ifs', 'bsnAPIfTable', 'Classes::Cisco::WLC::Component::WlanSubsystem::AP' ],
+        ['ifloads', 'bsnAPIfLoadParametersTable', 'Classes::Cisco::WLC::Component::WlanSubsystem::IFLoad' ],
+    ]);
+    $self->assign_loads_to_ifs();
+    $self->assign_ifs_to_aps();
+  }
 }
 
 sub check {
   my $self = shift;
   $self->add_info('checking access points');
-  $self->{numOfAPs} = scalar (@{$self->{aps}});
-  $self->{apNameList} = [map { $_->{bsnAPName} } @{$self->{aps}}];
-  if (scalar (@{$self->{aps}}) == 0) {
-    $self->add_unknown('no access points found');
+  if ($self->mode =~ /device::wlan::aps::clients/) {
+    my $ssids = {};
+    map { $ssids->{$_->{bsnMobileStationSsid}} += 1 } @{$self->{mobilestations}};
+    foreach my $ssid (sort keys %{$ssids}) {
+      $self->set_thresholds(metric => $ssid.'_clients',
+          warning => '0:', critical => ':0');
+      $self->add_message($self->check_thresholds(metric => $ssid.'_clients',
+          value => $ssids->{$ssid}),
+          sprintf 'SSID %s has %d clients',
+          $ssid, $ssids->{$ssid});
+      $self->add_perfdata(label => $ssid.'_clients',
+          value => $ssids->{$ssid});
+    }
   } else {
+    $self->{numOfAPs} = scalar (@{$self->{aps}});
+    $self->{apNameList} = [map { $_->{bsnAPName} } @{$self->{aps}}];
+    if (scalar (@{$self->{aps}}) == 0) {
+      $self->add_unknown('no access points found');
+      return;
+    }
     foreach (@{$self->{aps}}) {
       $_->check();
     }
@@ -22522,6 +23895,15 @@ sub check {
   }
 }
 
+package Classes::Cisco::WLC::Component::WlanSubsystem::MobileStation;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my $self = shift;
+  $self->{bsnMobileStationMacAddress} = 
+      $self->unhex_mac($self->{bsnMobileStationMacAddress});
+}
 package Classes::Cisco::WLC;
 our @ISA = qw(Classes::Cisco);
 use strict;
@@ -22548,6 +23930,7 @@ use strict;
 sub init {
   my $self = shift;
   if ($self->mode =~ /device::hardware::health/) {
+    #$self->analyze_and_check_environmental_subsystem("Classes::Cisco::CISCOENTITYFRUCONTROLMIB::Component::EnvironmentalSubsystem");
     $self->analyze_and_check_environmental_subsystem("Classes::HOSTRESOURCESMIB::Component::EnvironmentalSubsystem");
   } elsif ($self->mode =~ /device::hardware::load/) {
     $self->analyze_and_check_cpu_subsystem("Classes::HOSTRESOURCESMIB::Component::CpuSubsystem");
@@ -22957,6 +24340,133 @@ sub init {
   }
 }
 
+package Classes::Cisco::SB::Component::MemSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  # schaut eher schlecht aus, das zeugs ist nicht main memory wie ueblich
+  $self->get_snmp_objects('CISCOSB-SYSMNG-MIB', (qw(
+      rlSysmngResourcePerUnitEntry
+  )));
+  $self->xget_snmp_tables('CISCOSB-SYSMNG-MIB', [
+    ['tcamallocs', 'rlSysmngTcamAllocationsTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+    ['resources', 'rlSysmngResourceTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+    ['resourceusage', 'rlSysmngResourceUsageTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+    ['resperunit', 'rlSysmngResourcePerUnitTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+  ]);
+}
+
+sub check {
+  my $self = shift;
+}
+
+package Classes::Cisco::SB::Component::CpuSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  my $type = 0;
+  $self->get_snmp_objects('CISCOSB-RNDMNG', (qw(
+      rlCpuUtilDuringLast5Minutes)));
+}
+
+sub check {
+  my $self = shift;
+  if ($self->{rlCpuUtilDuringLast5Minutes} == 101) {
+    $self->add_unknown('cpu measurement disabled');
+    return;
+  }
+  $self->add_info(sprintf 'cpu usage is %.2f%%',
+      $self->{rlCpuUtilDuringLast5Minutes});
+  $self->set_thresholds(warning => 80, critical => 90);
+  $self->add_message($self->check_thresholds(
+      $self->{rlCpuUtilDuringLast5Minutes}));
+  $self->add_perfdata(
+      label => 'cpu_usage',
+      value => $self->{rlCpuUtilDuringLast5Minutes},
+      uom => '%',
+  );
+}
+
+package Classes::Cisco::SB::Component::EnvironmentalSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('CISCOSB-HWENVIROMENT', [
+      ['fans', 'rlEnvMonFanStatusTable', 'Classes::Cisco::SB::Component::EnvironmentalSubsystem::Fan'],
+      ['powersupplies', 'rlEnvMonSupplyStatusTable', 'Classes::Cisco::SB::Component::EnvironmentalSubsystem::Powersupply'],
+  ]);
+  $self->get_snmp_tables('ENTITY-MIB', [
+    ['entities', 'entPhysicalTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+  ]);
+
+}
+
+
+package Classes::Cisco::SB::Component::EnvironmentalSubsystem::Fan;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf 'status of fan %s is %s',
+      $self->{flat_indices}, $self->{rlEnvMonFanState});
+  if ($self->{rlEnvMonFanState} eq 'notPresent') {
+  } elsif ($self->{rlEnvMonFanState} eq 'normal') {
+    $self->add_ok();
+  } elsif ($self->{rlEnvMonFanState} eq 'warning') {
+    $self->add_warning();
+  } else {
+    $self->add_critical();
+  }
+}
+
+package Classes::Cisco::SB::Component::EnvironmentalSubsystem::Powersupply;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf 'status of supply %s is %s',
+      $self->{flat_indices}, $self->{rlEnvMonSupplyState});
+  if ($self->{rlEnvMonSupplyState} eq 'notPresent') {
+  } elsif ($self->{rlEnvMonSupplyState} eq 'normal') {
+    $self->add_ok();
+  } elsif ($self->{rlEnvMonSupplyState} eq 'warning') {
+    $self->add_warning();
+  } else {
+    $self->add_critical();
+  }
+}
+
+
+package Classes::Cisco::SB;
+our @ISA = qw(Classes::Cisco);
+use strict;
+
+sub init {
+  my $self = shift;
+  if ($self->mode =~ /device::hardware::health/) {
+    $self->analyze_and_check_environmental_subsystem("Classes::Cisco::SB::Component::EnvironmentalSubsystem");
+    if (! $self->check_messages()) {
+      $self->clear_messages(0);
+      $self->add_ok("environmental hardware working fine");
+    }
+  } elsif ($self->mode =~ /device::hardware::load/) {
+    $self->analyze_and_check_environmental_subsystem("Classes::Cisco::SB::Component::CpuSubsystem");
+  } elsif ($self->mode =~ /device::hardware::memory/) {
+    $self->no_such_mode();
+    #$self->analyze_and_check_environmental_subsystem("Classes::Cisco::SB::Component::MemSubsystem");
+  } else {
+    $self->no_such_mode();
+  }
+}
+
 package Classes::Cisco;
 our @ISA = qw(Classes::Device);
 use strict;
@@ -23019,9 +24529,14 @@ sub init {
   } elsif ($self->get_snmp_object('MIB-2-MIB', 'sysObjectID', 0) eq '1.3.6.1.4.1.9.1.746') {
     bless $self, 'Classes::Cisco::CCM';
     $self->debug('using Classes::Cisco::CCM');
+  } elsif ($self->get_snmp_object('MIB-2-MIB', 'sysObjectID', 0) =~ /.1.3.6.1.4.1.9.6.1.83/) {
+    bless $self, 'Classes::Cisco::SB';
+    $self->debug('using Classes::Cisco::SB');
   }
   if (ref($self) ne "Classes::Cisco") {
     $self->init();
+  } else {
+    $self->no_such_mode();
   }
 }
 
@@ -23645,6 +25160,462 @@ sub init {
   }
 }
 
+package Classes::Juniper::SRX::Component::CpuSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('JUNIPER-MIB', [
+    ['operatins', 'jnxOperatingTable', 'Classes::Juniper::SRX::Component::CpuSubsystem::OperatingItem', sub { shift->{jnxOperatingDescr} =~ /engine/i; }],
+    ['objects', 'jnxJsSPUMonitoringObjectsTable ', 'Classes::Juniper::SRX::Component::CpuSubsystem::OperatingItem2'],
+  ]);
+}
+
+package Classes::Juniper::SRX::Component::CpuSubsystem::OperatingItem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf '%s cpu usage is %.2f%%',
+      $self->{jnxOperatingDescr}, $self->{jnxOperatingCPU});
+  my $label = 'cpu_'.$self->{jnxOperatingDescr}.'_usage';
+  $self->set_thresholds(metric => $label, warning => 50, critical => 90);
+  $self->add_message($self->check_thresholds(metric => $label, 
+      value => $self->{jnxOperatingCPU}));
+  $self->add_perfdata(
+      label => $label,
+      value => $self->{jnxOperatingCPU},
+      uom => '%',
+  );
+}
+
+package Classes::Juniper::SRX::Component::CpuSubsystem::OperatingItem2;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf 'cpu usage is %.2f%%', $self->{jnxJsSPUMonitoringCPUUsage});
+  $self->set_thresholds(warning => 50, critical => 90);
+  $self->add_message($self->check_thresholds($self->{jnxJsSPUMonitoringCPUUsage}));
+  $self->add_perfdata(
+      label => 'cpu_usage',
+      value => $self->{jnxJsSPUMonitoringCPUUsage},
+      uom => '%',
+  );
+}
+package Classes::Juniper::SRX::Component::MemSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('JUNIPER-MIB', [
+    ['operatins', 'jnxOperatingTable', 'Classes::Juniper::SRX::Component::MemSubsystem::OperatingItem', sub { shift->{jnxOperatingDescr} =~ /engine/i; }],
+    ['objects', 'jnxJsSPUMonitoringObjectsTable ', 'Classes::Juniper::SRX::Component::MemSubsystem::OperatingItem2'],
+  ]);
+}
+
+package Classes::Juniper::SRX::Component::MemSubsystem::OperatingItem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf '%s buffer usage is %.2f%%',
+      $self->{jnxOperatingDescr}, $self->{jnxOperatingBuffer});
+  my $label = 'buffer_'.$self->{jnxOperatingDescr}.'_usage';
+  $self->set_thresholds(metric => $label, warning => 90, critical => 95);
+  $self->add_message($self->check_thresholds(metric => $label, 
+      value => $self->{jnxOperatingBuffer}));
+  $self->add_perfdata(
+      label => $label,
+      value => $self->{jnxOperatingBuffer},
+      uom => '%',
+  );
+}
+
+package Classes::Juniper::SRX::Component::MemSubsystem::OperatingItem2;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+
+sub check {
+  my $self = shift;
+  $self->add_info(sprintf 'cpu usage is %.2f%%', $self->{jnxJsSPUMonitoringCPUUsage});
+  $self->set_thresholds(warning => 50, critical => 90);
+  $self->add_message($self->check_thresholds($self->{jnxJsSPUMonitoringCPUUsage}));
+  $self->add_perfdata(
+      label => 'cpu_usage',
+      value => $self->{jnxJsSPUMonitoringCPUUsage},
+      uom => '%',
+  );
+}
+package Classes::Juniper::SRX;
+our @ISA = qw(Classes::Juniper);
+use strict;
+
+
+sub init {
+  my $self = shift;
+  if ($self->mode =~ /device::hardware::health/) {
+$self->get_snmp_tables('JUNIPER-MIB', [
+  ['leds', 'jnxLEDTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+  ['operatins', 'jnxOperatingTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+  ['containers', 'jnxContainersTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+  ['fru', 'jnxFruTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+  ['redun', 'jnxRedundancyTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+  ['contents', 'jnxContentsTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+]);
+    #$self->analyze_and_check_environmental_subsystem("Classes::Juniper::SRX::Component::EnvironmentalSubsystem");
+    $self->analyze_and_check_cpu_subsystem("Classes::HOSTRESOURCESMIB::Component::EnvironmentalSubsystem");
+    $self->dump();
+  } elsif ($self->mode =~ /device::hardware::load/) {
+    $self->analyze_and_check_cpu_subsystem("Classes::Juniper::SRX::Component::CpuSubsystem");
+  } elsif ($self->mode =~ /device::hardware::memory/) {
+    $self->analyze_and_check_cpu_subsystem("Classes::Juniper::SRX::Component::MemSubsystem");
+  } else {
+    $self->no_such_mode();
+  }
+}
+
+package Monitoring::GLPlugin::SNMP::MibsAndOids::JUNIPERMIB;
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::origin->{'JUNIPER-MIB'} = {
+  url => '',
+  name => 'JUNIPER-MIB',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mib_ids->{'JUNIPER-MIB'} =
+  '1.3.6.1.4.1.2636.3.1';
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::mibs_and_oids->{'JUNIPER-MIB'} = {
+  jnxBoxAnatomy => '1.3.6.1.4.1.2636.3.1',
+  jnxBoxClass => '1.3.6.1.4.1.2636.3.1.1',
+  jnxBoxDescr => '1.3.6.1.4.1.2636.3.1.2',
+  jnxBoxSerialNo => '1.3.6.1.4.1.2636.3.1.3',
+  jnxBoxRevision => '1.3.6.1.4.1.2636.3.1.4',
+  jnxBoxInstalled => '1.3.6.1.4.1.2636.3.1.5',
+  jnxContainersTable => '1.3.6.1.4.1.2636.3.1.6',
+  jnxContainersEntry => '1.3.6.1.4.1.2636.3.1.6.1',
+  jnxContainersIndex => '1.3.6.1.4.1.2636.3.1.6.1.1',
+  jnxContainersView => '1.3.6.1.4.1.2636.3.1.6.1.2',
+  jnxContainersLevel => '1.3.6.1.4.1.2636.3.1.6.1.3',
+  jnxContainersWithin => '1.3.6.1.4.1.2636.3.1.6.1.4',
+  jnxContainersType => '1.3.6.1.4.1.2636.3.1.6.1.5',
+  jnxContainersDescr => '1.3.6.1.4.1.2636.3.1.6.1.6',
+  jnxContainersCount => '1.3.6.1.4.1.2636.3.1.6.1.7',
+  jnxContentsLastChange => '1.3.6.1.4.1.2636.3.1.7',
+  jnxContentsTable => '1.3.6.1.4.1.2636.3.1.8',
+  jnxContentsEntry => '1.3.6.1.4.1.2636.3.1.8.1',
+  jnxContentsContainerIndex => '1.3.6.1.4.1.2636.3.1.8.1.1',
+  jnxContentsL1Index => '1.3.6.1.4.1.2636.3.1.8.1.2',
+  jnxContentsL2Index => '1.3.6.1.4.1.2636.3.1.8.1.3',
+  jnxContentsL3Index => '1.3.6.1.4.1.2636.3.1.8.1.4',
+  jnxContentsType => '1.3.6.1.4.1.2636.3.1.8.1.5',
+  jnxContentsDescr => '1.3.6.1.4.1.2636.3.1.8.1.6',
+  jnxContentsSerialNo => '1.3.6.1.4.1.2636.3.1.8.1.7',
+  jnxContentsRevision => '1.3.6.1.4.1.2636.3.1.8.1.8',
+  jnxContentsInstalled => '1.3.6.1.4.1.2636.3.1.8.1.9',
+  jnxContentsPartNo => '1.3.6.1.4.1.2636.3.1.8.1.10',
+  jnxContentsChassisId => '1.3.6.1.4.1.2636.3.1.8.1.11',
+  jnxContentsChassisIdDefinition => 'JUNIPER-MIB::JnxChassisId',
+  jnxContentsChassisDescr => '1.3.6.1.4.1.2636.3.1.8.1.12',
+  jnxContentsChassisCleiCode => '1.3.6.1.4.1.2636.3.1.8.1.13',
+  jnxLEDLastChange => '1.3.6.1.4.1.2636.3.1.9',
+  jnxLEDTable => '1.3.6.1.4.1.2636.3.1.10',
+  jnxLEDEntry => '1.3.6.1.4.1.2636.3.1.10.1',
+  jnxLEDAssociateTable => '1.3.6.1.4.1.2636.3.1.10.1.1',
+  jnxLEDAssociateTableDefinition => 'JUNIPER-MIB::jnxLEDAssociateTable',
+  jnxLEDAssociateIndex => '1.3.6.1.4.1.2636.3.1.10.1.2',
+  jnxLEDL1Index => '1.3.6.1.4.1.2636.3.1.10.1.3',
+  jnxLEDL2Index => '1.3.6.1.4.1.2636.3.1.10.1.4',
+  jnxLEDL3Index => '1.3.6.1.4.1.2636.3.1.10.1.5',
+  jnxLEDOriginator => '1.3.6.1.4.1.2636.3.1.10.1.6',
+  jnxLEDDescr => '1.3.6.1.4.1.2636.3.1.10.1.7',
+  jnxLEDState => '1.3.6.1.4.1.2636.3.1.10.1.8',
+  jnxLEDStateDefinition => 'JUNIPER-MIB::jnxLEDState',
+  jnxLEDStateOrdered => '1.3.6.1.4.1.2636.3.1.10.1.9',
+  jnxLEDStateOrderedDefinition => 'JUNIPER-MIB::jnxLEDStateOrdered',
+  jnxFilledLastChange => '1.3.6.1.4.1.2636.3.1.11',
+  jnxFilledTable => '1.3.6.1.4.1.2636.3.1.12',
+  jnxFilledEntry => '1.3.6.1.4.1.2636.3.1.12.1',
+  jnxFilledContainerIndex => '1.3.6.1.4.1.2636.3.1.12.1.1',
+  jnxFilledL1Index => '1.3.6.1.4.1.2636.3.1.12.1.2',
+  jnxFilledL2Index => '1.3.6.1.4.1.2636.3.1.12.1.3',
+  jnxFilledL3Index => '1.3.6.1.4.1.2636.3.1.12.1.4',
+  jnxFilledDescr => '1.3.6.1.4.1.2636.3.1.12.1.5',
+  jnxFilledState => '1.3.6.1.4.1.2636.3.1.12.1.6',
+  jnxFilledStateDefinition => 'JUNIPER-MIB::jnxFilledState',
+  jnxFilledChassisId => '1.3.6.1.4.1.2636.3.1.12.1.7',
+  jnxFilledChassisIdDefinition => 'JUNIPER-MIB::JnxChassisId',
+  jnxFilledChassisDescr => '1.3.6.1.4.1.2636.3.1.12.1.8',
+  jnxOperatingTable => '1.3.6.1.4.1.2636.3.1.13',
+  jnxOperatingEntry => '1.3.6.1.4.1.2636.3.1.13.1',
+  jnxOperatingContentsIndex => '1.3.6.1.4.1.2636.3.1.13.1.1',
+  jnxOperatingL1Index => '1.3.6.1.4.1.2636.3.1.13.1.2',
+  jnxOperatingL2Index => '1.3.6.1.4.1.2636.3.1.13.1.3',
+  jnxOperatingL3Index => '1.3.6.1.4.1.2636.3.1.13.1.4',
+  jnxOperatingDescr => '1.3.6.1.4.1.2636.3.1.13.1.5',
+  jnxOperatingState => '1.3.6.1.4.1.2636.3.1.13.1.6',
+  jnxOperatingStateDefinition => 'JUNIPER-MIB::jnxOperatingState',
+  jnxOperatingTemp => '1.3.6.1.4.1.2636.3.1.13.1.7',
+  jnxOperatingCPU => '1.3.6.1.4.1.2636.3.1.13.1.8',
+  jnxOperatingISR => '1.3.6.1.4.1.2636.3.1.13.1.9',
+  jnxOperatingDRAMSize => '1.3.6.1.4.1.2636.3.1.13.1.10',
+  jnxOperatingBuffer => '1.3.6.1.4.1.2636.3.1.13.1.11',
+  jnxOperatingHeap => '1.3.6.1.4.1.2636.3.1.13.1.12',
+  jnxOperatingUpTime => '1.3.6.1.4.1.2636.3.1.13.1.13',
+  jnxOperatingLastRestart => '1.3.6.1.4.1.2636.3.1.13.1.14',
+  jnxOperatingMemory => '1.3.6.1.4.1.2636.3.1.13.1.15',
+  jnxOperatingStateOrdered => '1.3.6.1.4.1.2636.3.1.13.1.16',
+  jnxOperatingStateOrderedDefinition => 'JUNIPER-MIB::jnxOperatingStateOrdered',
+  jnxOperatingChassisId => '1.3.6.1.4.1.2636.3.1.13.1.17',
+  jnxOperatingChassisIdDefinition => 'JUNIPER-MIB::JnxChassisId',
+  jnxOperatingChassisDescr => '1.3.6.1.4.1.2636.3.1.13.1.18',
+  jnxOperatingRestartTime => '1.3.6.1.4.1.2636.3.1.13.1.19',
+  jnxRedundancyTable => '1.3.6.1.4.1.2636.3.1.14',
+  jnxRedundancyEntry => '1.3.6.1.4.1.2636.3.1.14.1',
+  jnxRedundancyContentsIndex => '1.3.6.1.4.1.2636.3.1.14.1.1',
+  jnxRedundancyL1Index => '1.3.6.1.4.1.2636.3.1.14.1.2',
+  jnxRedundancyL2Index => '1.3.6.1.4.1.2636.3.1.14.1.3',
+  jnxRedundancyL3Index => '1.3.6.1.4.1.2636.3.1.14.1.4',
+  jnxRedundancyDescr => '1.3.6.1.4.1.2636.3.1.14.1.5',
+  jnxRedundancyConfig => '1.3.6.1.4.1.2636.3.1.14.1.6',
+  jnxRedundancyConfigDefinition => 'JUNIPER-MIB::jnxRedundancyConfig',
+  jnxRedundancyState => '1.3.6.1.4.1.2636.3.1.14.1.7',
+  jnxRedundancyStateDefinition => 'JUNIPER-MIB::jnxRedundancyState',
+  jnxRedundancySwitchoverCount => '1.3.6.1.4.1.2636.3.1.14.1.8',
+  jnxRedundancySwitchoverTime => '1.3.6.1.4.1.2636.3.1.14.1.9',
+  jnxRedundancySwitchoverReason => '1.3.6.1.4.1.2636.3.1.14.1.10',
+  jnxRedundancySwitchoverReasonDefinition => 'JUNIPER-MIB::jnxRedundancySwitchoverReason',
+  jnxRedundancyKeepaliveHeartbeat => '1.3.6.1.4.1.2636.3.1.14.1.11',
+  jnxRedundancyKeepaliveTimeout => '1.3.6.1.4.1.2636.3.1.14.1.12',
+  jnxRedundancyKeepaliveElapsed => '1.3.6.1.4.1.2636.3.1.14.1.13',
+  jnxRedundancyKeepaliveLoss => '1.3.6.1.4.1.2636.3.1.14.1.14',
+  jnxRedundancyChassisId => '1.3.6.1.4.1.2636.3.1.14.1.15',
+  jnxRedundancyChassisIdDefinition => 'JUNIPER-MIB::JnxChassisId',
+  jnxRedundancyChassisDescr => '1.3.6.1.4.1.2636.3.1.14.1.16',
+  jnxFruTable => '1.3.6.1.4.1.2636.3.1.15',
+  jnxFruEntry => '1.3.6.1.4.1.2636.3.1.15.1',
+  jnxFruContentsIndex => '1.3.6.1.4.1.2636.3.1.15.1.1',
+  jnxFruL1Index => '1.3.6.1.4.1.2636.3.1.15.1.2',
+  jnxFruL2Index => '1.3.6.1.4.1.2636.3.1.15.1.3',
+  jnxFruL3Index => '1.3.6.1.4.1.2636.3.1.15.1.4',
+  jnxFruName => '1.3.6.1.4.1.2636.3.1.15.1.5',
+  jnxFruType => '1.3.6.1.4.1.2636.3.1.15.1.6',
+  jnxFruTypeDefinition => 'JUNIPER-MIB::jnxFruType',
+  jnxFruSlot => '1.3.6.1.4.1.2636.3.1.15.1.7',
+  jnxFruState => '1.3.6.1.4.1.2636.3.1.15.1.8',
+  jnxFruStateDefinition => 'JUNIPER-MIB::jnxFruState',
+  jnxFruTemp => '1.3.6.1.4.1.2636.3.1.15.1.9',
+  jnxFruOfflineReason => '1.3.6.1.4.1.2636.3.1.15.1.10',
+  jnxFruOfflineReasonDefinition => 'JUNIPER-MIB::jnxFruOfflineReason',
+  jnxFruLastPowerOff => '1.3.6.1.4.1.2636.3.1.15.1.11',
+  jnxFruLastPowerOn => '1.3.6.1.4.1.2636.3.1.15.1.12',
+  jnxFruPowerUpTime => '1.3.6.1.4.1.2636.3.1.15.1.13',
+  jnxFruChassisId => '1.3.6.1.4.1.2636.3.1.15.1.14',
+  jnxFruChassisIdDefinition => 'JUNIPER-MIB::JnxChassisId',
+  jnxFruChassisDescr => '1.3.6.1.4.1.2636.3.1.15.1.15',
+  jnxFruPsdAssignment => '1.3.6.1.4.1.2636.3.1.15.1.16',
+  jnxBoxKernelMemoryUsedPercent => '1.3.6.1.4.1.2636.3.1.16',
+  jnxBoxSystemDomainType => '1.3.6.1.4.1.2636.3.1.17',
+  jnxBoxSystemDomainTypeDefinition => 'JUNIPER-MIB::jnxBoxSystemDomainType',
+};
+
+$Monitoring::GLPlugin::SNMP::MibsAndOids::definitions->{'JUNIPER-MIB'} = {
+  jnxFruState => {
+    '1' => 'unknown',
+    '2' => 'empty',
+    '3' => 'present',
+    '4' => 'ready',
+    '5' => 'announceOnline',
+    '6' => 'online',
+    '7' => 'anounceOffline',
+    '8' => 'offline',
+    '9' => 'diagnostic',
+    '10' => 'standby',
+  },
+  jnxLEDAssociateTable => {
+    '1' => 'other',
+    '2' => 'jnxContainersTable',
+    '3' => 'jnxContentsTable',
+  },
+  jnxFruType => {
+    '1' => 'other',
+    '2' => 'clockGenerator',
+    '3' => 'flexiblePicConcentrator',
+    '4' => 'switchingAndForwardingModule',
+    '5' => 'controlBoard',
+    '6' => 'routingEngine',
+    '7' => 'powerEntryModule',
+    '8' => 'frontPanelModule',
+    '9' => 'switchInterfaceBoard',
+    '10' => 'processorMezzanineBoardForSIB',
+    '11' => 'portInterfaceCard',
+    '12' => 'craftInterfacePanel',
+    '13' => 'fan',
+    '14' => 'lineCardChassis',
+    '15' => 'forwardingEngineBoard',
+    '16' => 'protectedSystemDomain',
+  },
+  jnxOperatingState => {
+    '1' => 'unknown',
+    '2' => 'running',
+    '3' => 'ready',
+    '4' => 'reset',
+    '5' => 'runningAtFullSpeed',
+    '6' => 'down',
+    '7' => 'standby',
+  },
+  jnxRedundancySwitchoverReason => {
+    '1' => 'other',
+    '2' => 'neverSwitched',
+    '3' => 'userSwitched',
+    '4' => 'autoSwitched',
+  },
+  jnxFilledState => {
+    '1' => 'unknown',
+    '2' => 'empty',
+    '3' => 'filled',
+  },
+  jnxBoxSystemDomainType => {
+    '1' => 'notApplicable',
+    '2' => 'rootSystemDomain',
+    '3' => 'protectedSystemDomain',
+  },
+  JnxChassisId => {
+    '1' => 'unknown',
+    '2' => 'singleChassis',
+    '3' => 'scc',
+    '4' => 'lcc0',
+    '5' => 'lcc1',
+    '6' => 'lcc2',
+    '7' => 'lcc3',
+    '8' => 'jcs1',
+    '9' => 'jcs2',
+    '10' => 'jcs3',
+    '11' => 'jcs4',
+    '12' => 'node0',
+    '13' => 'node1',
+    '14' => 'sfc0',
+    '15' => 'sfc1',
+    '16' => 'sfc2',
+    '17' => 'sfc3',
+    '18' => 'sfc4',
+    '19' => 'lcc4',
+    '20' => 'lcc5',
+    '21' => 'lcc6',
+    '22' => 'lcc7',
+    '23' => 'lcc8',
+    '24' => 'lcc9',
+    '25' => 'lcc10',
+    '26' => 'lcc11',
+    '27' => 'lcc12',
+    '28' => 'lcc13',
+    '29' => 'lcc14',
+    '30' => 'lcc15',
+  },
+  jnxRedundancyConfig => {
+    '1' => 'unknown',
+    '2' => 'master',
+    '3' => 'backup',
+    '4' => 'disabled',
+    '5' => 'notApplicable',
+  },
+  jnxLEDState => {
+    '1' => 'other',
+    '2' => 'green',
+    '3' => 'yellow',
+    '4' => 'red',
+    '5' => 'blue',
+    '6' => 'amber',
+  },
+  jnxOperatingStateOrdered => {
+    '1' => 'running',
+    '2' => 'standby',
+    '3' => 'ready',
+    '4' => 'runningAtFullSpeed',
+    '5' => 'reset',
+    '6' => 'down',
+    '7' => 'unknown',
+  },
+  jnxFruOfflineReason => {
+    '1' => 'unknown',
+    '2' => 'none',
+    '3' => 'error',
+    '4' => 'noPower',
+    '5' => 'configPowerOff',
+    '6' => 'configHoldInReset',
+    '7' => 'cliCommand',
+    '8' => 'buttonPress',
+    '9' => 'cliRestart',
+    '10' => 'overtempShutdown',
+    '11' => 'masterClockDown',
+    '12' => 'singleSfmModeChange',
+    '13' => 'packetSchedulingModeChange',
+    '14' => 'physicalRemoval',
+    '15' => 'unresponsiveRestart',
+    '16' => 'sonetClockAbsent',
+    '17' => 'rddPowerOff',
+    '18' => 'majorErrors',
+    '19' => 'minorErrors',
+    '20' => 'lccHardRestart',
+    '21' => 'lccVersionMismatch',
+    '22' => 'powerCycle',
+    '23' => 'reconnect',
+    '24' => 'overvoltage',
+    '25' => 'pfeVersionMismatch',
+    '26' => 'febRddCfgChange',
+    '27' => 'fpcMisconfig',
+    '28' => 'fruReconnectFail',
+    '29' => 'fruFwddReset',
+    '30' => 'fruFebSwitch',
+    '31' => 'fruFebOffline',
+    '32' => 'fruInServSoftUpgradeError',
+    '33' => 'fruChasdPowerRatingExceed',
+    '34' => 'fruConfigOffline',
+    '35' => 'fruServiceRestartRequest',
+    '36' => 'spuResetRequest',
+    '37' => 'spuFlowdDown',
+    '38' => 'spuSpi4Down',
+    '39' => 'spuWatchdogTimeout',
+    '40' => 'spuCoreDump',
+    '41' => 'fpgaSpi4LinkDown',
+    '42' => 'i3Spi4LinkDown',
+    '43' => 'cppDisconnect',
+    '44' => 'cpuNotBoot',
+    '45' => 'spuCoreDumpComplete',
+    '46' => 'rstOnSpcSpuFailure',
+    '47' => 'softRstOnSpcSpuFailure',
+    '48' => 'hwAuthenticationFailure',
+    '49' => 'reconnectFpcFail',
+    '50' => 'fpcAppFailed',
+    '51' => 'fpcKernelCrash',
+    '52' => 'spuFlowdDownNoCore',
+    '53' => 'spuFlowdCoreDumpIncomplete',
+    '54' => 'spuFlowdCoreDumpComplete',
+    '55' => 'spuIdpdDownNoCore',
+    '56' => 'spuIdpdCoreDumpIncomplete',
+    '57' => 'spuIdpdCoreDumpComplete',
+    '58' => 'spuCoreDumpIncomplete',
+    '59' => 'spuIdpdDown',
+    '60' => 'fruPfeReset',
+    '61' => 'fruReconnectNotReady',
+    '62' => 'fruSfLinkDown',
+  },
+  jnxRedundancyState => {
+    '1' => 'unknown',
+    '2' => 'master',
+    '3' => 'backup',
+    '4' => 'disabled',
+  },
+  jnxLEDStateOrdered => {
+    '1' => 'blue',
+    '2' => 'green',
+    '3' => 'amber',
+    '4' => 'yellow',
+    '5' => 'red',
+    '6' => 'other',
+  },
+};
 package Classes::Juniper;
 our @ISA = qw(Classes::Device);
 use strict;
@@ -25534,8 +27505,9 @@ our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
 
 sub init {
-  my $self = shift;
+  my ($self) = @_;
   $self->{interfaces} = [];
+  $self->{etherstats} = [];
   #$self->session_translate(['-octetstring' => 1]);
   if ($self->mode =~ /device::interfaces::list/) {
     $self->update_interface_cache(1);
@@ -25553,7 +27525,9 @@ sub init {
               flat_indices => $ifIndex,
           ));
     }
-  } else {
+    my @indices = $self->get_interface_indices();
+    # die sind mit etherStatsDataSource verknuepft
+  } elsif ($self->mode =~ /device::interfaces/) {
     $self->update_interface_cache(0);
     #next if $self->opts->can('name') && $self->opts->name && 
     #    $self->opts->name ne $_->{ifDescr};
@@ -25561,18 +27535,50 @@ sub init {
     # name is a number -> get_table with extra param
     # name is a regexp -> list of names -> list of numbers
     my @indices = $self->get_interface_indices();
+    my @etherpatterns = map {
+        '('.$_.')';
+    } map {
+        s/\./\\./g; $_;
+    } map {
+        '.1.3.6.1.2.1.2.2.1.1.'.$_;
+    } map {
+        $_->[0];
+    } @indices;
     if (scalar(@indices) > 0) {
       foreach ($self->get_snmp_table_objects(
           'IFMIB', 'ifTable+ifXTable', \@indices)) {
         push(@{$self->{interfaces}},
             Classes::IFMIB::Component::InterfaceSubsystem::Interface->new(%{$_}));
       }
+      if ($self->mode =~ /device::interfaces::etherstats/) {
+
+        $self->override_opt('name', '^('.join('|', @etherpatterns).')$');
+        $self->override_opt('regexp', 1);
+        # key=etherStatsDataSource-//-index, value=index
+        $self->update_entry_cache(0, 'RMON-MIB', 'etherStatsTable', 'etherStatsDataSource');
+        # Value von etherStatsDataSource ist ifIndex              
+        foreach my $etherstat ($self->get_snmp_table_objects_with_cache(
+            'RMON-MIB', 'etherStatsTable', 'etherStatsDataSource')) {
+          foreach my $interface (@{$self->{interfaces}}) {
+            if ('.1.3.6.1.2.1.2.2.1.1.'.$interface->{ifIndex} eq $etherstat->{etherStatsDataSource}) {
+              foreach my $key (grep /^ether/, keys %{$etherstat}) {
+                $interface->{$key} = $etherstat->{$key};
+              }
+              $interface->init_etherstats;
+              last;
+            }
+          }
+        }
+        @{$self->{interfaces}} = grep {
+            exists $_->{etherStatsDataSource};
+        } @{$self->{interfaces}};
+      }
     }
   }
 }
 
 sub check {
-  my $self = shift;
+  my ($self) = @_;
   $self->add_info('checking interfaces');
   if (scalar(@{$self->{interfaces}}) == 0) {
     $self->add_unknown('no interfaces');
@@ -25654,7 +27660,7 @@ sub check {
       }
     }
     foreach (qw(ifIndex ifDescr ifType ifSpeed ifAdminStatus ifOperStatus Duration ifStatusDuration ifAvailable ifSpeedText)) {
-      $column_length->{$_} = "%".($column_length->{$_} + 3)."s|";
+      $column_length->{$_} = "%".($column_length->{$_} + 3)."s I";
     }
     $column_length->{ifSpeed} = $column_length->{ifSpeedText};
     $column_length->{Duration} = $column_length->{ifStatusDuration};
@@ -25698,7 +27704,7 @@ sub check {
 }
 
 sub update_interface_cache {
-  my $self = shift;
+  my ($self) = @_;
   my $force = shift;
   my $statefile = $self->create_interface_cache_file();
   $self->get_snmp_objects('IFMIB', qw(ifTableLastChange));
@@ -25754,7 +27760,7 @@ sub update_interface_cache {
 }
 
 sub save_interface_cache {
-  my $self = shift;
+  my ($self) = @_;
   $self->create_statefilesdir();
   my $statefile = $self->create_interface_cache_file();
   my $tmpfile = $self->statefilesdir().'/check_nwc_health_tmp_'.$$;
@@ -25770,7 +27776,7 @@ sub save_interface_cache {
 }
 
 sub load_interface_cache {
-  my $self = shift;
+  my ($self) = @_;
   my $statefile = $self->create_interface_cache_file();
   if ( -f $statefile) {
     our $VAR1;
@@ -25797,11 +27803,12 @@ sub load_interface_cache {
 }
 
 sub get_interface_indices {
-  my $self = shift;
+  my ($self) = @_;
   my @indices = ();
   foreach my $ifIndex (keys %{$self->{interface_cache}}) {
     my $ifDescr = $self->{interface_cache}->{$ifIndex}->{ifDescr};
     my $ifAlias = $self->{interface_cache}->{$ifIndex}->{ifAlias} || '________';
+    # Check ifDescr (using --name)
     if ($self->opts->name) {
       if ($self->opts->regexp) {
         my $pattern = $self->opts->name;
@@ -25819,6 +27826,19 @@ sub get_interface_indices {
           }
         }
       }
+    # Check ifAlias (using --name3)
+    } elsif ($self->opts->name3) {
+      if ($self->opts->regexp) {
+        my $pattern = $self->opts->name3;
+        if ($ifAlias =~ /$pattern/i) {
+          push(@indices, [$ifIndex]);
+        }
+      } else {
+        if (lc $ifAlias eq lc $self->opts->name3) {
+          push(@indices, [$ifIndex]);
+        }
+      }
+    # take all interfaces
     } else {
       push(@indices, [$ifIndex]);
     }
@@ -25827,92 +27847,25 @@ sub get_interface_indices {
 }
 
 
+package Classes::IFMIB::Component::InterfaceSubsystem::EtherStat;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub finish {
+  my ($self) = @_;
+  #printf "%s\n", Data::Dumper::Dumper($self);
+}
+
 package Classes::IFMIB::Component::InterfaceSubsystem::Interface;
 our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
 use strict;
 
-sub new_ {
-  my $class = shift;
-  my %params = @_;
-  my $self = {
-    flat_indices => $params{flat_indices},
-    ifTable => $params{ifTable},
-    ifEntry => $params{ifEntry},
-    ifIndex => $params{ifIndex},
-    ifDescr => $params{ifDescr},
-    ifAlias => $params{ifAlias},
-    ifType => $params{ifType},
-    ifMtu => $params{ifMtu},
-    ifSpeed => $params{ifSpeed},
-    ifPhysAddress => $params{ifPhysAddress},
-    ifAdminStatus => $params{ifAdminStatus},
-    ifOperStatus => $params{ifOperStatus},
-    ifLastChange => $params{ifLastChange},
-    ifInOctets => $params{ifInOctets},
-    ifInUcastPkts => $params{ifInUcastPkts},
-    ifInNUcastPkts => $params{ifInNUcastPkts},
-    ifInDiscards => $params{ifInDiscards},
-    ifInErrors => $params{ifInErrors},
-    ifInUnknownProtos => $params{ifInUnknownProtos},
-    ifOutOctets => $params{ifOutOctets},
-    ifOutUcastPkts => $params{ifOutUcastPkts},
-    ifOutNUcastPkts => $params{ifOutNUcastPkts},
-    ifOutDiscards => $params{ifOutDiscards},
-    ifOutErrors => $params{ifOutErrors},
-    ifOutQLen => $params{ifOutQLen},
-    ifSpecific => $params{ifSpecific},
-    blacklisted => 0,
-    info => undef,
-    extendedinfo => undef,
-  };
+sub finish {
+  my ($self) = @_;
   foreach my $key (keys %{$self}) {
     next if $key !~ /^if/;
-    $self->{$key} = 0 if ! defined $params{$key};
+    $self->{$key} = 0 if ! defined $self->{$key};
   }
-  $self->{ifDescr} = unpack("Z*", $self->{ifDescr}); # windows has trailing nulls
-  bless $self, $class;
-  if ($self->opts->name2 && $self->opts->name2 =~ /\(\.\*\?*\)/) {
-    if ($self->{ifDescr} =~ $self->opts->name2) {
-      $self->{ifDescr} = $1;
-    }
-  }
-  # Manche Stinkstiefel haben ifName, ifHighSpeed und z.b. ifInMulticastPkts,
-  # aber keine ifHC*Octets. Gesehen bei Cisco Switch Interface Nul0 o.ae.
-  if ($params{ifName} && defined $params{ifHCInOctets} && 
-      defined $params{ifHCOutOctets} && $params{ifHCInOctets} ne "noSuchObject") {
-    my $self64 = {
-      ifName => $params{ifName},
-      ifInMulticastPkts => $params{ifInMulticastPkts},
-      ifInBroadcastPkts => $params{ifInBroadcastPkts},
-      ifOutMulticastPkts => $params{ifOutMulticastPkts},
-      ifOutBroadcastPkts => $params{ifOutBroadcastPkts},
-      ifHCInOctets => $params{ifHCInOctets},
-      ifHCInUcastPkts => $params{ifHCInUcastPkts},
-      ifHCInMulticastPkts => $params{ifHCInMulticastPkts},
-      ifHCInBroadcastPkts => $params{ifHCInBroadcastPkts},
-      ifHCOutOctets => $params{ifHCOutOctets},
-      ifHCOutUcastPkts => $params{ifHCOutUcastPkts},
-      ifHCOutMulticastPkts => $params{ifHCOutMulticastPkts},
-      ifHCOutBroadcastPkts => $params{ifHCOutBroadcastPkts},
-      ifLinkUpDownTrapEnable => $params{ifLinkUpDownTrapEnable},
-      ifHighSpeed => $params{ifHighSpeed},
-      ifPromiscuousMode => $params{ifPromiscuousMode},
-      ifConnectorPresent => $params{ifConnectorPresent},
-      ifAlias => $params{ifAlias} || $params{ifName}, # kommt vor bei linux lo
-      ifCounterDiscontinuityTime => $params{ifCounterDiscontinuityTime},
-    };
-    map { $self->{$_} = $self64->{$_} } keys %{$self64};
-    $self->{ifName} = unpack("Z*", $self->{ifName});
-    $self->{ifAlias} = unpack("Z*", $self->{ifAlias});
-    $self->{ifAlias} =~ s/\|/!/g if $self->{ifAlias};
-    bless $self, 'Classes::IFMIB::Component::InterfaceSubsystem::Interface::64bit';
-  }
-  $self->init();
-  return $self;
-}
-
-sub finish {
-  my $self = shift;
   $self->{ifDescr} = unpack("Z*", $self->{ifDescr}); # windows has trailing nulls
   if ($self->opts->name2 && $self->opts->name2 =~ /\(\.\*\?*\)/) {
     if ($self->{ifDescr} =~ $self->opts->name2) {
@@ -25936,7 +27889,7 @@ sub finish {
 }
 
 sub init {
-  my $self = shift;
+  my ($self) = @_;
   if ($self->mode =~ /device::interfaces::complete/) {
     # uglatto, but $self->mode is an lvalue
     $Monitoring::GLPlugin::mode = "device::interfaces::operstatus";
@@ -26041,8 +27994,27 @@ sub init {
   return $self;
 }
 
+sub init_etherstats {
+  my ($self) = @_;
+  if ($self->mode =~ /device::interfaces::etherstats/) {
+    $self->valdiff({name => $self->{ifDescr}}, qw(etherStatsBroadcastPkts
+        etherStatsCRCAlignErrors etherStatsCollisions etherStatsDropEvents
+        etherStatsFragments etherStatsJabbers etherStatsMulticastPkts 
+        etherStatsOctets etherStatsOversizePkts etherStatsPkts
+        etherStatsUndersizePkts));
+    for my $stat (qw(etherStatsBroadcastPkts etherStatsCRCAlignErrors
+        etherStatsCollisions etherStatsDropEvents etherStatsFragments
+        etherStatsJabbers etherStatsMulticastPkts etherStatsOversizePkts
+        etherStatsUndersizePkts)) {
+      $self->{$stat.'Percent'} = $self->{delta_etherStatsPkts} ?
+          100 * $self->{'delta_'.$stat} / $self->{delta_etherStatsPkts} : 0;
+    }
+  }
+  return $self;
+}
+
 sub check {
-  my $self = shift;
+  my ($self) = @_;
   my $full_descr = sprintf "%s%s",
       $self->{ifDescr},
       $self->{ifAlias} && $self->{ifAlias} ne $self->{ifDescr} ?
@@ -26235,11 +28207,35 @@ sub check {
         $self->{ifDescr}, ($self->{ifAvailable} eq "true" ? "" : "un"),
         $self->{ifOperStatus}, $self->{ifAdminStatus},
         $self->{ifStatusDuration});
+  } elsif ($self->mode =~ /device::interfaces::etherstats/) {
+    for my $stat (qw(etherStatsBroadcastPkts etherStatsCRCAlignErrors
+        etherStatsCollisions etherStatsDropEvents etherStatsFragments
+        etherStatsJabbers etherStatsMulticastPkts etherStatsOversizePkts
+        etherStatsUndersizePkts)) {
+      my $label = $stat.'Percent';
+      $label =~ s/^etherStats//g;
+      $label =~ s/(?:\b|(?<=([a-z])))([A-Z][a-z]+)/(defined($1) ? "_" : "") . lc($2)/eg;
+      $label = $self->{ifDescr}.'_'.$label;
+      $self->add_info(sprintf 'interface %s %s is %.2f%%',
+          $full_descr, $stat.'Percent', $self->{$stat.'Percent'});
+      $self->set_thresholds(
+          metric => $label,
+          warning => 1,
+          critical => 10
+      );
+      $self->add_message(
+          $self->check_thresholds(metric => $label, value => $self->{$stat.'Percent'}));
+      $self->add_perfdata(
+          label => $label,
+          value => $self->{$stat.'Percent'},
+          uom => '%',
+      );
+    }
   }
 }
 
 sub list {
-  my $self = shift;
+  my ($self) = @_;
   if ($self->mode =~ /device::interfaces::listdetail/) {
     my $cL2L3IfModeOper = $self->get_snmp_object('CISCO-L2L3-INTERFACE-CONFIG-MIB', 'cL2L3IfModeOper', $self->{ifIndex}) || "unknown";
     my $vlanTrunkPortDynamicStatus = $self->get_snmp_object('CISCO-VTP-MIB', 'vlanTrunkPortDynamicStatus', $self->{ifIndex}) || "unknown";
@@ -26256,7 +28252,7 @@ our @ISA = qw(Classes::IFMIB::Component::InterfaceSubsystem::Interface);
 use strict;
 
 sub init {
-  my $self = shift;
+  my ($self) = @_;
   if ($self->mode =~ /device::interfaces::usage/) {
     $self->valdiff({name => $self->{ifIndex}.'#'.$self->{ifDescr}}, qw(ifHCInOctets ifHCOutOctets));
     $self->{delta_ifInBits} = $self->{delta_ifHCInOctets} * 8;
@@ -26632,13 +28628,16 @@ use strict;
 
 sub check {
   my $self = shift;
-  my $free = 100 - 100 * $self->{hrStorageUsed} / $self->{hrStorageSize};
+  my $free = 100;
+  eval {
+     $free = 100 - 100 * $self->{hrStorageUsed} / $self->{hrStorageSize};
+  };
   $self->add_info(sprintf 'storage %s (%s) has %.2f%% free space left',
       $self->{hrStorageIndex},
       $self->{hrStorageDescr},
       $free);
-  if ($self->{hrStorageDescr} eq "/dev" || $self->{hrStorageDescr} =~ /.*cdrom.*/) {
-    # /dev is usually full, so we ignore it.
+  if ($self->{hrStorageDescr} eq "/dev" || $self->{hrStorageDescr} =~ /.*cdrom.*/ || $self->{hrStorageSize} == 0) {
+    # /dev is usually full, so we ignore it. size 0 is virtual crap
     $self->set_thresholds(metric => sprintf('%s_free_pct', $self->{hrStorageDescr}),
         warning => '0:', critical => '0:');
   } else {
@@ -26717,8 +28716,33 @@ use strict;
 sub init {
   my $self = shift;
   $self->get_snmp_tables('HOST-RESOURCES-MIB', [
-      ['storagesram', 'hrStorageTable', 'Classes::HOSTRESOURCESMIB::Component::DiskSubsystem::Storage', sub { return shift->{hrStorageType} eq 'hrStorageRam' } ],
+      ['storagesram', 'hrStorageTable', 'Classes::HOSTRESOURCESMIB::Component::MemSubsystem::Ram', sub { return shift->{hrStorageType} eq 'hrStorageRam' } ],
   ]);
+}
+
+package Classes::HOSTRESOURCESMIB::Component::MemSubsystem::Ram;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+sub check {
+  my $self = shift;
+  my $used = 100;
+  eval {
+     $used = 100 * $self->{hrStorageUsed} / $self->{hrStorageSize};
+  };
+  $self->add_info(sprintf 'memory %s (%s) usage is %.2f%%',
+      $self->{hrStorageIndex},
+      $self->{hrStorageDescr},
+      $used);
+  my $label = sprintf 'memory_%s_usage', $self->{hrStorageDescr};
+  $self->set_thresholds(metric => $label, warning => '10:', critical => '5:');
+  $self->add_message($self->check_thresholds(metric => $label,
+      value => $used));
+  $self->add_perfdata(
+      label => $label,
+      value => $used,
+      uom => '%',
+  );
 }
 
 package Classes::HOSTRESOURCESMIB::Component::UptimeSubsystem;
@@ -26752,7 +28776,7 @@ our @ISA = qw(Classes::Device);
 use strict;
 
 package Classes::LMSENSORSMIB::Component::EnvironmentalSubsystem;
-our @ISA = qw(GLPlugin::SNMP::Item);
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
 use strict;
 
 sub init {
@@ -26910,6 +28934,9 @@ use strict;
 
 sub finish {
   my $self = shift;
+  if ($self->{entPhySensorPrecision} && $self->{entPhySensorValue}) {
+    $self->{entPhySensorValue} /= 10 ** $self->{entPhySensorPrecision};
+  }
   if ($self->{entPhySensorType} eq 'rpm') {
     bless $self, 'Classes::ENTITYSENSORMIB::Component::EnvironmentalSubsystem::Sensor::Fan';
   } elsif ($self->{entPhySensorType} eq 'celsius') {
@@ -27695,7 +29722,7 @@ sub check {
           : ''
   );
   if ($self->{'laErrorFlag'} eq 'error') {
-    $self->add_message(Monitoring::GLPlugin::CRITICAL);
+    $self->add_critical();
   } else {
     $self->add_message($self->check_thresholds(
         metric => lc $self->{laNames},
@@ -27811,10 +29838,9 @@ sub check {
 
   # raise critical error if errorflag is set
   if ($self->{dskErrorFlag} eq 'error') {
-    $self->add_message(Monitoring::GLPlugin::CRITICAL);
-
-  # otherwise check thresholds
+    $self->add_critical();
   } else {
+    # otherwise check thresholds
     $self->add_message($self->check_thresholds(
         metric => sprintf('%s_free_pct', $self->{dskPath}),
         value => $free));
@@ -27908,7 +29934,7 @@ sub check {
       warning => $threshold,
       critical => $threshold);
   if ($self->{prErrorFlag} eq 'error') {
-    $self->add_message(Monitoring::GLPlugin::CRITICAL);
+    $self->add_critical();
   } else {
     $self->add_message($self->check_thresholds(
         metric => $self->{prNames},
@@ -31563,7 +33589,22 @@ use strict;
 sub init {
   my $self = shift;
   if ($self->mode =~ /device::hardware::health/) {
+    #$self->get_snmp_tables("UCD-DISKIO-MIB", [
+    #    ['diskios', 'diskIOTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+    #]);
+    $self->override_opt('warningx', { 'temp_.*' => '68'});
     $self->analyze_and_check_environmental_subsystem("Classes::LMSENSORSMIB::Component::EnvironmentalSubsystem");
+    $self->{components}->{environmental_subsystem} = Classes::HOSTRESOURCESMIB::Component::EnvironmentalSubsystem->new();
+    @{$self->{components}->{environmental_subsystem}->{disk_subsystem}->{storages}} = grep {
+      $_->{hrStorageDescr} ne '/mnt/root-ro';
+    } @{$self->{components}->{environmental_subsystem}->{disk_subsystem}->{storages}} ;
+    $self->{components}->{environmental_subsystem}->check();
+    $self->{components}->{environmental_subsystem}->dump()
+        if $self->opts->verbose >= 2;
+  } elsif ($self->mode =~ /device::hardware::load/) {
+    $self->analyze_and_check_cpu_subsystem("Classes::HOSTRESOURCESMIB::Component::CpuSubsystem");
+  } elsif ($self->mode =~ /device::hardware::memory/) {
+    $self->analyze_and_check_mem_subsystem("Classes::HOSTRESOURCESMIB::Component::MemSubsystem");
   } else {
     $self->no_such_mode();
   }
@@ -31613,6 +33654,201 @@ sub check {
     $self->add_ok();
   } else {
     $self->add_critical();
+  }
+}
+
+package Classes::Arista::Component::EnvironmentalSubsystem;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::Item);
+use strict;
+
+sub init {
+  my $self = shift;
+  $self->get_snmp_tables('ENTITY-MIB', [
+    ['entities', 'entPhysicalTable',
+      'Classes::Arista::Component::EnvironmentalSubsystem::Entity',
+      undef,
+      ['entPhysicalClass', 'entPhysicalDescr', 'entPhysicalName']
+    ],
+  ]);
+  $self->get_snmp_tables('ENTITY-SENSOR-MIB', [
+    ['sensorvalues', 'entPhySensorTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+  ]);
+  $self->get_snmp_tables('ENTITY-STATE-MIB', [
+    ['sensorstates', 'entStateTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+  ]);
+  $self->get_snmp_tables('ARISTA-ENTITY-SENSOR-MIB', [
+    ['sensorthresholds', 'aristaEntSensorThresholdTable', 'Monitoring::GLPlugin::SNMP::TableItem'],
+  ]);
+  $self->merge_tables("entities", "sensorvalues", "sensorstates", "sensorthresholds");
+  foreach (@{$self->{entities}}) {
+    $_->rebless();
+    $_->finish() if $_->can('finish');
+  }
+  @{$self->{entities}} = grep {
+    ! exists $_->{valid} || $_->{valid};
+  } @{$self->{entities}};
+}
+
+package Classes::Arista::Component::EnvironmentalSubsystem::Entity;
+our @ISA = qw(Monitoring::GLPlugin::SNMP::TableItem);
+use strict;
+
+
+sub rebless {
+  my $self = shift;
+  bless $self,
+      'Classes::Arista::Component::EnvironmentalSubsystem::Chassis' if
+      $self->{entPhysicalClass} eq 'chassis';
+  bless $self,
+      'Classes::Arista::Component::EnvironmentalSubsystem::Container' if
+      $self->{entPhysicalClass} eq 'container';
+  bless $self,
+      'Classes::Arista::Component::EnvironmentalSubsystem::Fan' if
+      $self->{entPhysicalClass} eq 'fan';
+  bless $self,
+      'Classes::Arista::Component::EnvironmentalSubsystem::Module' if
+      $self->{entPhysicalClass} eq 'module';
+  bless $self,
+      'Classes::Arista::Component::EnvironmentalSubsystem::Port' if
+      $self->{entPhysicalClass} eq 'port';
+  bless $self,
+      'Classes::Arista::Component::EnvironmentalSubsystem::Powersupply' if
+      $self->{entPhysicalClass} eq 'powerSupply';
+  bless $self,
+      'Classes::Arista::Component::EnvironmentalSubsystem::Sensor' if
+      $self->{entPhysicalClass} eq 'sensor';
+}
+
+sub check_state {
+  my $self = shift;
+  $self->add_info(sprintf "%s is %s (admin %s, oper %s)",
+      $self->{entPhysicalDescr}, $self->{entStateUsage},
+      $self->{entStateAdmin}, $self->{entStateOper});
+  if ($self->{entStateAdmin} eq "unlocked") {
+    if ($self->{entStateOper} eq "enabled") {
+      if ($self->{entStateUsage} eq "idle") {
+        $self->add_ok();
+      } elsif ($self->{entStateUsage} eq "active") {
+        $self->add_ok();
+      } elsif ($self->{entStateUsage} eq "busy") {
+        $self->add_warning();
+      } else {
+        $self->add_unknown();
+      }
+    } elsif ($self->{entStateOper} eq "disabled") {
+      $self->add_critical();
+    } else {
+      $self->add_unknown();
+    }
+  } else {
+    $self->add_ok(); # admin disabled, ignore
+  }
+}
+
+package Classes::Arista::Component::EnvironmentalSubsystem::Chassis;
+our @ISA = qw(Classes::Arista::Component::EnvironmentalSubsystem::Entity);
+use strict;
+
+package Classes::Arista::Component::EnvironmentalSubsystem::Container;
+our @ISA = qw(Classes::Arista::Component::EnvironmentalSubsystem::Entity);
+use strict;
+
+package Classes::Arista::Component::EnvironmentalSubsystem::Fan;
+our @ISA = qw(Classes::Arista::Component::EnvironmentalSubsystem::Entity);
+use strict;
+
+sub check {
+  my $self = shift;
+  $self->check_state();
+}
+
+package Classes::Arista::Component::EnvironmentalSubsystem::Module;
+our @ISA = qw(Classes::Arista::Component::EnvironmentalSubsystem::Entity);
+use strict;
+
+package Classes::Arista::Component::EnvironmentalSubsystem::Port;
+our @ISA = qw(Classes::Arista::Component::EnvironmentalSubsystem::Entity);
+use strict;
+
+package Classes::Arista::Component::EnvironmentalSubsystem::Powersupply;
+our @ISA = qw(Classes::Arista::Component::EnvironmentalSubsystem::Entity);
+use strict;
+
+sub check {
+  my $self = shift;
+  $self->check_state();
+}
+
+package Classes::Arista::Component::EnvironmentalSubsystem::Sensor;
+our @ISA = qw(Classes::Arista::Component::EnvironmentalSubsystem::Entity);
+use strict;
+
+sub finish {
+  my $self = shift;
+  
+  $self->{valid} = ($self->{entPhySensorValue} == -1000000000 || $self->{entPhySensorValue} == 1000000000)
+      ? 0 : 1;
+  foreach (qw(entPhySensorValue
+      aristaEntSensorThresholdLowWarning aristaEntSensorThresholdHighWarning
+      aristaEntSensorThresholdLowCritical aristaEntSensorThresholdHighCritical)) {
+    delete $self->{$_} if defined $self->{$_} && $_ ne 'entPhySensorValue' &&
+        ($self->{$_} == -1000000000 || $self->{$_} == 1000000000);
+    if ($self->{entPhySensorPrecision} && $self->{$_}) {
+      $self->{$_} /= 10 ** $self->{entPhySensorPrecision};
+    }
+  }
+}
+
+sub check {
+  my $self = shift;
+  $self->check_state();
+  my ($warn, $crit) = (undef, undef);
+  if ($self->{aristaEntSensorStatusDescr} =~ /no thresholds/i) {
+  } else {
+    $warn =
+        ($self->{aristaEntSensorThresholdLowWarning} ?
+        $self->{aristaEntSensorThresholdLowWarning} : '').':'.
+        ($self->{aristaEntSensorThresholdHighWarning} ?
+        $self->{aristaEntSensorThresholdHighWarning} : '');
+    $crit =
+        ($self->{aristaEntSensorThresholdLowCritical} ?
+        $self->{aristaEntSensorThresholdLowCritical} : '').':'.
+        ($self->{aristaEntSensorThresholdHighCritical} ?
+        $self->{aristaEntSensorThresholdHighCritical} : '');
+  }
+  $self->add_thresholds(metric => $self->{entPhysicalDescr}.'_'.$self->{entPhySensorUnitsDisplay},
+      warning => $warn, critical => $crit);
+  $self->add_perfdata(
+      label => $self->{entPhysicalDescr}.'_'.$self->{entPhySensorUnitsDisplay},
+      value => $self->{entPhySensorValue},
+      warning => $warn, critical => $crit,
+  );
+}
+
+
+package Classes::Arista;
+our @ISA = qw(Classes::Device);
+use strict;
+
+sub init {
+  my $self = shift;
+  if ($self->mode =~ /device::hardware::health/) {
+    $self->mult_snmp_max_msg_size(10);
+    $self->analyze_and_check_environmental_subsystem("Classes::Arista::Component::EnvironmentalSubsystem");
+    if (! $self->check_messages()) {
+      $self->clear_messages(0);
+      $self->add_ok("environmental hardware working fine");
+    }
+  } elsif ($self->mode =~ /device::hardware::load/) {
+    # CPU util on management plane
+    # Utilization of CPUs on dataplane that are used for system functions
+    $self->analyze_and_check_cpu_subsystem("Classes::HOSTRESOURCESMIB::Component::CpuSubsystem");
+  } elsif ($self->mode =~ /device::hardware::memory/) {
+    $self->analyze_and_check_mem_subsystem("Classes::HOSTRESOURCESMIB::Component::MemSubsystem");
+  } elsif ($self->mode =~ /device::ha::/) {
+    $self->analyze_and_check_ha_subsystem("Classes::Arista::Component::HaSubsystem");
+  } else {
+    $self->no_such_mode();
   }
 }
 
@@ -31731,6 +33967,9 @@ sub classify {
         # Juniper Networks,Inc,MAG-SMx60,7.4R8
         bless $self, 'Classes::Juniper::IVE';
         $self->debug('using Classes::Juniper::IVE');
+      } elsif ($self->implements_mib('JUNIPER-MIB')) {
+        bless $self, 'Classes::Juniper::SRX';
+        $self->debug('using Classes::Juniper::SRX');
       } elsif ($self->{productname} =~ /NetScreen/i) {
         bless $self, 'Classes::Juniper';
         $self->debug('using Classes::Juniper');
@@ -31799,9 +34038,12 @@ sub classify {
       } elsif ($self->{sysobjectid} =~ /1\.3\.6\.1\.4\.1\.9\./) {
         bless $self, 'Classes::Cisco';
         $self->debug('using Classes::Cisco');
+      } elsif ($self->{productname} =~ /Arista.*EOS.*/) {
+        bless $self, 'Classes::Arista';
+        $self->debug('using Classes::Arista');
       } elsif ($self->{sysobjectid} =~ /1\.3\.6\.1\.4\.1\.272\./) {
         bless $self, 'Classes::Bintec::Bibo';
-        $self->debug('using Classes::Cisco');
+        $self->debug('using Classes::Bintec::Bibo');
       } elsif ($self->{productname} =~ /^Linux/i) {
         bless $self, 'Classes::Server::Linux';
         $self->debug('using Classes::Server::Linux');
@@ -31884,7 +34126,7 @@ my $plugin = Classes::Device->new(
         '--mode <what-to-do> '.
         '--hostname <network-component> --community <snmp-community>'.
         '  ...]',
-    version => '$Revision: 5.7.1 $',
+    version => '$Revision: 5.10.0.2 $',
     blurb => 'This plugin checks various parameters of network components ',
     url => 'http://labs.consol.de/nagios/check_nwc_health',
     timeout => 60,
@@ -31979,6 +34221,12 @@ $plugin->add_mode(
     spec => 'link-aggregation-availability',
     alias => undef,
     help => 'Check the percentage of up interfaces in a link aggregation',
+);
+$plugin->add_mode(
+    internal => 'device::interfaces::etherstats',
+    spec => 'interface-etherstats',
+    alias => undef,
+    help => 'Check the ethernet statistics of interfaces',
 );
 $plugin->add_mode(
     internal => 'device::routes::list',
@@ -32222,6 +34470,12 @@ $plugin->add_mode(
     help => 'Check if access points appear and disappear (use --lookup)',
 );
 $plugin->add_mode(
+    internal => 'device::wlan::aps::clients',
+    spec => 'count-accesspoint-clients',
+    alias => undef,
+    help => 'Check if the number of access point clients is within a certain range',
+);
+$plugin->add_mode(
     internal => 'device::wlan::aps::list',
     spec => 'list-accesspoints',
     alias => undef,
@@ -32249,7 +34503,7 @@ $plugin->add_mode(
     internal => 'device::smarthome::device::status',
     spec => 'smart-home-device-status',
     alias => undef,
-    help => 'Check if a Fritz!DECT 200 plug is on',
+    help => 'Check if a Fritz!DECT 200 plug is on (or Comet DECT)',
 );
 $plugin->add_mode(
     internal => 'device::smarthome::device::energy',
@@ -32262,6 +34516,12 @@ $plugin->add_mode(
     spec => 'smart-home-device-consumption',
     alias => undef,
     help => 'Show the cumulated power consumption of a Fritz!DECT 200 plug',
+);
+$plugin->add_mode(
+    internal => 'device::smarthome::device::temperature',
+    spec => 'smart-home-device-temperature',
+    alias => undef,
+    help => 'Show the temperature measured by a Fritz! compatible device',
 );
 $plugin->add_snmp_modes();
 $plugin->add_snmp_args();
