@@ -31,7 +31,4 @@ CRONTAB_EXEC_USER=""
 
 ##########################
 # Cron for Centreon-Partitioning
-0 4 * * * root php /usr/share/centreon/bin/centreon-partitioning -u /etc/centreon/partition.d/partitioning-data_bin.xml >> /var/log/centreon/centreon-purge.log 2>&1
-0 4 * * * root php /usr/share/centreon/bin/centreon-partitioning -u /etc/centreon/partition.d/partitioning-logs.xml >> /var/log/centreon/centreon-purge.log 2>&1
-0 4 * * * root php /usr/share/centreon/bin/centreon-partitioning -u /etc/centreon/partition.d/partitioning-log_archive_host.xml >> /var/log/centreon/centreon-purge.log 2>&1
-0 4 * * * root php /usr/share/centreon/bin/centreon-partitioning -u /etc/centreon/partition.d/partitioning-log_archive_service.xml >> /var/log/centreon/centreon-purge.log 2>&1
+0 4 * * * centreon /usr/bin/php /usr/share/centreon/cron/centreon-partitioning.php >> /var/log/centreon/centreon-partitioning.log 2>&1
