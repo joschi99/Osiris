@@ -8,12 +8,15 @@ i-Vertix 2017 - 2.4.0
 		- Upgrade Fusioninventory 9.1+1.1
 	Network
 		- Upgrade rancid 3.6.1
+		- Remove Packetbeat
 	Syslog, Log- & Datamanagement
 		- Upgrade Elasticsearch 5.1.1
 		- Upgrade Logstash 5.1.1
 		- Upgrade Kibana 5.1.1
 		- Upgrade Curator 4.2.4
 		- Upgrade RSyslog 8.23.0
+	System
+		- Remove TopBeat
 i-Vertix 2016 - 2.3.0
 	Monitoring
 		- Upgrade Centreon Web 2.7.7
