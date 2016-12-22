@@ -1,8 +1,8 @@
 Osiris 2.2.0
 	Monitoring
-		- Upgrade Centreon Core 2.7.6
+		- Upgrade Centreon Core 2.7.8
 		- Upgrade Centreon Broker 2.11.5
-		- Upgrade Centreon Engine 1.5.1
+		- Upgrade Centreon Engine 1.5.2
 		- Upgrade Selenium 2.53
 	Inventory
 		- Upgrade GLPI 0.90.5
