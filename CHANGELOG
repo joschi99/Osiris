@@ -17,6 +17,8 @@ i-Vertix 2017 - 2.4.0
 		- Upgrade RSyslog 8.23.0
 	System
 		- Remove TopBeat
+	Others
+		- Upgrade Mediawiki 1.26.4
 i-Vertix 2016 - 2.3.0
 	Monitoring
 		- Upgrade Centreon Web 2.7.7
