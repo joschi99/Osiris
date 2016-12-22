@@ -24,7 +24,7 @@ Osiris 2.2.0
 		- New Topbeat 1.3.0
 		- no more Redis Server
 		- Upgrade freetds 0.95.8
-		- Upgrade MariaDB 5.5.51
+		- Upgrade MariaDB 5.5.53
 		- Upgrade Webmin 1.791
 Osiris 2.1.1
 	Monitoring
