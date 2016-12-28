@@ -14,7 +14,7 @@ i-Vertix 2017 - 2.4.0
 		- Upgrade Elasticsearch 5.1.1
 		- Upgrade Logstash 5.1.1
 		- Upgrade Kibana 5.1.1
-		- Upgrade Curator 4.2.4
+		- Upgrade Curator 4.2.5
 		- Upgrade RSyslog 8.23.0
 	System
 		- Remove TopBeat
