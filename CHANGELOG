@@ -19,6 +19,7 @@ i-Vertix 2017 - 2.4.0
 	System
 		- Remove TopBeat
 		- Upgrade MariaDB 5.5.54
+		- Upgrade phpSysInfo 3.2.6
 	Others
 		- Upgrade Mediawiki 1.26.4
 i-Vertix 2016 - 2.3.0
