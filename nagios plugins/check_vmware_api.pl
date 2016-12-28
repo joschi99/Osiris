@@ -37,8 +37,8 @@ package CheckVMwareAPI;
 use strict;
 use warnings;
 use vars qw($PROGNAME $VERSION $output $values $result $defperfargs);
-use Nagios::Plugin::Functions qw(%STATUS_TEXT);
-use Nagios::Plugin;
+use Monitoring::Plugin::Functions qw(%STATUS_TEXT);
+use Monitoring::Plugin;
 use File::Basename;
 use HTTP::Date;
 use Data::Dumper qw(Dumper);
@@ -110,7 +110,7 @@ sub main {
 	$PROGNAME = basename($0);
 	$VERSION = '0.7.1';
 
-	my $np = Nagios::Plugin->new(
+	my $np = Monitoring::Plugin->new(
 		usage => "Usage: %s -D <data_center> | -H <host_name> [ -C <cluster_name> ] [ -N <vm_name> ]\n"
 		. "    -u <user> -p <pass> | -f <authfile>\n"
 		. "    -l <command> [ -s <subcommand> ] [ -T <timeshift> ] [ -i <interval> ]\n"
@@ -544,7 +544,7 @@ sub main {
 
 	eval {
 		require VMware::VIRuntime;
-	} or Nagios::Plugin::Functions::nagios_exit(UNKNOWN, "Missing perl module VMware::VIRuntime. Download and install \'VMware vSphere SDK for Perl\', available at https://my.vmware.com/group/vmware/downloads\n $perl_module_instructions"); #This is, potentially, a lie. This might just as well fail if a dependency of VMware::VIRuntime is missing (i.e VIRuntime itself requires something which in turn fails).
+	} or Monitoring::Plugin::Functions::plugin_exit(UNKNOWN, "Missing perl module VMware::VIRuntime. Download and install \'VMware vSphere SDK for Perl\', available at https://my.vmware.com/group/vmware/downloads\n $perl_module_instructions"); #This is, potentially, a lie. This might just as well fail if a dependency of VMware::VIRuntime is missing (i.e VIRuntime itself requires something which in turn fails).
 
 
 	alarm($timeout) if $timeout;
@@ -608,7 +608,7 @@ sub main {
 		}
 		else
 		{
-			$np->nagios_exit(CRITICAL, "No Host or Datacenter specified");
+			$np->plugin_exit(CRITICAL, "No Host or Datacenter specified");
 		}
 
 		$host_address .= ":443" if (index($host_address, ":") == -1);
@@ -822,7 +822,7 @@ sub main {
 		print TEST_SCRIPT "#" . $output . "\n";
 		print TEST_SCRIPT "-" . $result;
 	}
-	$np->nagios_exit($result, $output);
+	$np->plugin_exit($result, $output);
 }
 main unless defined caller;
 #######################################################################################################################################################################
@@ -1231,7 +1231,7 @@ sub datastore_volumes_info
 				}
 
 				$state = $np->check_threshold(check => $perc?$value2:$value1);
-				$res = Nagios::Plugin::Functions::max_state($res, $state);
+				$res = Monitoring::Plugin::Functions::max_state($res, $state);
 				$np->add_perfdata(label => $name, value => $perc?$value2:$value1, uom => $perc?'%':'MB', threshold => $np->threshold);
 				$output .= "'$name'" . ($usedflag ? "(used)" : "(free)") . "=". $value1 . " MB (" . $value2 . "%), " if (!$briefflag || $state != OK);
 			}
@@ -1323,7 +1323,7 @@ sub host_cpu_info
 			}
 			if (defined($value))
 			{
-				$np->add_perfdata(label => "cpu_usagemhz", value => $value, uom => 'MHz', threshold => $np->threshold);
+				$np->add_perfdata(label => "cpu_usagemhz", value => $value, uom => '', threshold => $np->threshold);
 				$output = "cpu usagemhz=" . $value . " MHz";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -1361,7 +1361,7 @@ sub host_cpu_info
 		}
 		if (defined($value1) && defined($value2))
 		{
-			$np->add_perfdata(label => "cpu_usagemhz", value => $value1, uom => 'MHz', threshold => $np->threshold);
+			$np->add_perfdata(label => "cpu_usagemhz", value => $value1, uom => '', threshold => $np->threshold);
 			$np->add_perfdata(label => "cpu_usage", value => $value2, uom => '%', threshold => $np->threshold);
 			$res = OK;
 			$output = "cpu usage=" . $value1 . " MHz (" . $value2 . "%)";
@@ -1572,7 +1572,7 @@ sub host_net_info
 			if (defined($values))
 			{
 				my $value = simplify_number(convert_number($$values[0][0]->value));
-				$np->add_perfdata(label => "net_usage", value => $value, uom => 'KBps', threshold => $np->threshold);
+				$np->add_perfdata(label => "net_usage", value => $value, uom => '', threshold => $np->threshold);
 				$output = "net usage=" . $value . " KBps";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -1584,7 +1584,7 @@ sub host_net_info
 			if (defined($values))
 			{
 				my $value = simplify_number(convert_number($$values[0][0]->value));
-				$np->add_perfdata(label => "net_receive", value => $value, uom => 'KBps', threshold => $np->threshold);
+				$np->add_perfdata(label => "net_receive", value => $value, uom => '', threshold => $np->threshold);
 				$output = "net receive=" . $value . " KBps";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -1596,7 +1596,7 @@ sub host_net_info
 			if (defined($values))
 			{
 				my $value = simplify_number(convert_number($$values[0][0]->value));
-				$np->add_perfdata(label => "net_send", value => $value, uom => 'KBps', threshold => $np->threshold);
+				$np->add_perfdata(label => "net_send", value => $value, uom => '', threshold => $np->threshold);
 				$output = "net send=" . $value . " KBps";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -1730,8 +1730,8 @@ sub host_net_info
 
 				$res = OK;
 				$output = "net receive=" . $value1 . " KBps, send=" . $value2 . " KBps, ";
-				$np->add_perfdata(label => "net_receive", value => $value1, uom => 'KBps', threshold => $np->threshold);
-				$np->add_perfdata(label => "net_send", value => $value2, uom => 'KBps', threshold => $np->threshold);
+				$np->add_perfdata(label => "net_receive", value => $value1, uom => '', threshold => $np->threshold);
+				$np->add_perfdata(label => "net_send", value => $value2, uom => '', threshold => $np->threshold);
 
 				if (!$BadCount)
 				{
@@ -1905,7 +1905,7 @@ sub host_runtime_info
 		'Volts' => 'V',
 		'Amps' => 'A',
 		'Watts' => 'W',
-		'Percentage' => 'Pct'
+		'Percentage' => '%'
 	);
 	my $blackregexpflag;
 	my $listitems;
@@ -1956,7 +1956,7 @@ sub host_runtime_info
 							summary => $_->status->summary
 						};
 						push(@{$components->{$state}{CPU}}, $itemref);
-						$res = Nagios::Plugin::Functions::max_state_alt($res, $state);
+						$res = Monitoring::Plugin::Functions::max_state_alt($res, $state);
 						if ($state != OK) {
 							$AlertCount++;
 						} else {
@@ -1981,7 +1981,7 @@ sub host_runtime_info
 							summary => $_->status->summary
 						};
 						push(@{$components->{$state}{Storage}}, $itemref);
-						$res = Nagios::Plugin::Functions::max_state_alt($res, $state);
+						$res = Monitoring::Plugin::Functions::max_state_alt($res, $state);
 						if ($state != OK) {
 							$AlertCount++;
 						} else {
@@ -2006,7 +2006,7 @@ sub host_runtime_info
 							summary => $_->status->summary
 						};
 						push(@{$components->{$state}{Memory}}, $itemref);
-						$res = Nagios::Plugin::Functions::max_state_alt($res, $state);
+						$res = Monitoring::Plugin::Functions::max_state_alt($res, $state);
 						if ($state != OK) {
 							$AlertCount++;
 						} else {
@@ -2031,7 +2031,7 @@ sub host_runtime_info
 							summary => $_->healthState->summary
 						};
 						push(@{$components->{$state}{$_->sensorType}}, $itemref);
-						$res = Nagios::Plugin::Functions::max_state_alt($res, $state);
+						$res = Monitoring::Plugin::Functions::max_state_alt($res, $state);
 						if ($state != OK) {
 							$AlertCount++;
 						} else {
@@ -2102,7 +2102,7 @@ sub host_runtime_info
 					$components->{$state}{"Storage"}{$_->name} = $_->status->summary;
 					if ($state != OK)
 					{
-						$res = Nagios::Plugin::Functions::max_state($res, $state);
+						$res = Monitoring::Plugin::Functions::max_state($res, $state);
 						$AlertCount++;
 					} else {
 						$OKCount++;
@@ -2152,16 +2152,21 @@ sub host_runtime_info
 					{
 						# print "Sensor Name = ". $_->name .", Type = ". $_->sensorType . ", Label = ". $_->healthState->label . ", Summary = ". $_->healthState->summary . ", Key = " . $_->healthState->key . "\n";
 						next if (uc($_->sensorType) ne 'TEMPERATURE');
+						# Workaround for HP server reporting sensor name with status ' --- Normal'
+						# If the status later changes it will create a new performance metric,
+						# simply removing that part from the name solves this problem.
+						my $label = $_->name;
+						$label =~ s/\s---\s.+//;
 						if (defined($blacklist))
 						{
-							my $name = $_->name;
-							next if ($blackregexpflag?$name =~ /$blacklist/:$blacklist =~ m/(^|\s|\t|,)\Q$name\E($|\s|\t|,)/);
+							next if ($blackregexpflag?$_->name =~ /$blacklist/:$blacklist =~ m/(^|\s|\t|,)\Q$_->name\E($|\s|\t|,)/);
 						}
 
 						my $state = check_health_state($_->healthState->key);
 						$_->name =~ m/(.*?)\sTemp\s.+/;
 						my $itemref = {
 							name => $_->name,
+							label => $label,
 							power10 => $_->unitModifier,
 							state => $_->healthState->key,
 							value => $_->currentReading,
@@ -2170,21 +2175,16 @@ sub host_runtime_info
 						push(@{$components->{$state}}, $itemref);
 						if ($state != OK)
 						{
-							$res = Nagios::Plugin::Functions::max_state($res, $state);
+							$res = Monitoring::Plugin::Functions::max_state($res, $state);
 							$AlertCount++;
 						}
 						else
 						{
 							$OKCount++;
 						}
-						if (exists($base_units{$itemref->{unit}}))
-						{
-							$np->add_perfdata(label => $itemref->{name}, value => ($itemref->{value} * 10 ** $itemref->{power10}), uom => $base_units{$itemref->{unit}});
-						}
-						else
-						{
-							$np->add_perfdata(label => $itemref->{name}, value => ($itemref->{value} * 10 ** $itemref->{power10}));
-						}
+						# Since the temperature units are not valid uom we do not include them in
+						# the perfdata.
+						$np->add_perfdata(label => $itemref->{label}, value => ($itemref->{value} * 10 ** $itemref->{power10}));
 					}
 				}
 
@@ -2273,13 +2273,18 @@ sub host_runtime_info
 		elsif ($subcommand eq "MAINTENANCE")
 		{
 			my %host_maintenance_state = (0 => "no", 1 => "yes");
-			$output = "maintenance=" . $host_maintenance_state{$runtime->inMaintenanceMode};
+			my $state = $runtime->inMaintenanceMode;
+			$output = "maintenance=" . $host_maintenance_state{$state};
 			$res = OK;
-			if ($addopts eq "maintwarn") {
-				$res = WARNING;
-			}
-			elsif ($addopts eq "maintcrit") {
-				$res = CRITICAL;
+			if ($state) {
+				if (!defined($addopts)) {
+				}
+				elsif ($addopts eq "maintwarn") {
+					$res = WARNING;
+				}
+				elsif ($addopts eq "maintcrit") {
+					$res = CRITICAL;
+				}
 			}
 		}
 		elsif (($subcommand eq "LIST") || ($subcommand eq "LISTVM"))
@@ -2679,7 +2684,7 @@ sub host_storage_info
 			{
 				$res = UNKNOWN;
 			}
-			$state = Nagios::Plugin::Functions::max_state($state, $status);
+			$state = Monitoring::Plugin::Functions::max_state($state, $status);
 		}
 		$np->add_perfdata(label => "adapters", value => $count, uom => 'units', threshold => $np->threshold);
 		$output .= $count . "/" . @{$storage->storageDeviceInfo->hostBusAdapter} . " adapters online, ";
@@ -2724,7 +2729,7 @@ sub host_storage_info
 					$res = UNKNOWN;
 					$status = UNKNOWN;
 				}
-				$state = Nagios::Plugin::Functions::max_state($state, $status);
+				$state = Monitoring::Plugin::Functions::max_state($state, $status);
 			}
 		}
 		$np->add_perfdata(label => "LUNs", value => $count, uom => 'units', threshold => $np->threshold);
@@ -2772,7 +2777,7 @@ sub host_storage_info
 						$res = UNKNOWN;
 						$status = UNKNOWN;
 					}
-					$state = Nagios::Plugin::Functions::max_state($state, $status);
+					$state = Monitoring::Plugin::Functions::max_state($state, $status);
 					$amount++;
 				}
 			}
@@ -2942,7 +2947,7 @@ sub vm_cpu_info
 			if (defined($values))
 			{
 				my $value = simplify_number(convert_number($$values[0][0]->value));
-				$np->add_perfdata(label => "cpu_usagemhz", value => $value, uom => 'MHz', threshold => $np->threshold);
+				$np->add_perfdata(label => "cpu_usagemhz", value => $value, uom => '', threshold => $np->threshold);
 				$output = "\"$vmname\" cpu usage=" . $value . " MHz";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -2984,7 +2989,7 @@ sub vm_cpu_info
 			my $value2 = simplify_number(convert_number($$values[0][1]->value) * 0.01);
 			my $value3 = simplify_number(convert_number($$values[0][2]->value));
 			my $value4 = simplify_number(convert_number($$values[0][3]->value));
-			$np->add_perfdata(label => "cpu_usagemhz", value => $value1, uom => 'MHz', threshold => $np->threshold);
+			$np->add_perfdata(label => "cpu_usagemhz", value => $value1, uom => '', threshold => $np->threshold);
 			$np->add_perfdata(label => "cpu_usage", value => $value2, uom => '%', threshold => $np->threshold);
 			$np->add_perfdata(label => "cpu_wait", value => $value3, uom => 'ms', threshold => $np->threshold);
 			$np->add_perfdata(label => "cpu_ready", value => $value4, uom => 'ms', threshold => $np->threshold);
@@ -3154,7 +3159,7 @@ sub vm_net_info
 			if (defined($values))
 			{
 				my $value = simplify_number(convert_number($$values[0][0]->value));
-				$np->add_perfdata(label => "net_usage", value => $value, uom => 'KBps', threshold => $np->threshold);
+				$np->add_perfdata(label => "net_usage", value => $value, uom => '', threshold => $np->threshold);
 				$output = "\"$vmname\" net usage=" . $value . " KBps";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -3165,7 +3170,7 @@ sub vm_net_info
 			if (defined($values))
 			{
 				my $value = simplify_number(convert_number($$values[0][0]->value));
-				$np->add_perfdata(label => "net_receive", value => $value, uom => 'KBps', threshold => $np->threshold);
+				$np->add_perfdata(label => "net_receive", value => $value, uom => '', threshold => $np->threshold);
 				$output = "\"$vmname\" net receive=" . $value . " KBps";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -3176,7 +3181,7 @@ sub vm_net_info
 			if (defined($values))
 			{
 				my $value = simplify_number(convert_number($$values[0][0]->value));
-				$np->add_perfdata(label => "net_send", value => $value, uom => 'KBps', threshold => $np->threshold);
+				$np->add_perfdata(label => "net_send", value => $value, uom => '', threshold => $np->threshold);
 				$output = "\"$vmname\" net send=" . $value . " KBps";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -3194,8 +3199,8 @@ sub vm_net_info
 		{
 			my $value1 = simplify_number(convert_number($$values[0][0]->value));
 			my $value2 = simplify_number(convert_number($$values[0][1]->value));
-			$np->add_perfdata(label => "net_receive", value => $value1, uom => 'KBps', threshold => $np->threshold);
-			$np->add_perfdata(label => "net_send", value => $value2, uom => 'KBps', threshold => $np->threshold);
+			$np->add_perfdata(label => "net_receive", value => $value1, uom => '', threshold => $np->threshold);
+			$np->add_perfdata(label => "net_send", value => $value2, uom => '', threshold => $np->threshold);
 			$res = OK;
 			$output = "\"$vmname\" net receive=" . $value1 . " KBps, send=" . $value2 . " KBps";
 		}
@@ -3230,7 +3235,7 @@ sub vm_disk_io_info
 			if (defined($values))
 			{
 				my $value = simplify_number(convert_number($$values[0][0]->value) / 1024);
-				$np->add_perfdata(label => "io_read", value => $value, uom => 'MB/s', threshold => $np->threshold);
+				$np->add_perfdata(label => "io_read", value => $value, uom => '', threshold => $np->threshold);
 				$output = "\"$vmname\" io read=" . $value . " MB/s";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -3241,7 +3246,7 @@ sub vm_disk_io_info
 			if (defined($values))
 			{
 				my $value = simplify_number(convert_number($$values[0][0]->value) / 1024);
-				$np->add_perfdata(label => "io_write", value => $value, uom => 'MB/s', threshold => $np->threshold);
+				$np->add_perfdata(label => "io_write", value => $value, uom => '', threshold => $np->threshold);
 				$output = "\"$vmname\" io write=" . $value . " MB/s";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -3261,8 +3266,8 @@ sub vm_disk_io_info
 			my $value2 = simplify_number(convert_number($$values[0][1]->value) / 1024);
 			my $value3 = simplify_number(convert_number($$values[0][2]->value) / 1024);
 			$np->add_perfdata(label => "io_usage", value => $value1, uom => 'MB', threshold => $np->threshold);
-			$np->add_perfdata(label => "io_read", value => $value2, uom => 'MB/s', threshold => $np->threshold);
-			$np->add_perfdata(label => "io_write", value => $value3, uom => 'MB/s', threshold => $np->threshold);
+			$np->add_perfdata(label => "io_read", value => $value2, uom => '', threshold => $np->threshold);
+			$np->add_perfdata(label => "io_write", value => $value3, uom => '', threshold => $np->threshold);
 			$res = OK;
 			$output = "\"$vmname\" io usage=" . $value1 . " MB, read=" . $value2 . " MB/s, write=" . $value3 . " MB/s";
 		}
@@ -3520,7 +3525,7 @@ sub dc_cpu_info
 			}
 			if (defined($value))
 			{
-				$np->add_perfdata(label => "cpu_usagemhz", value => $value, uom => 'MHz', threshold => $np->threshold);
+				$np->add_perfdata(label => "cpu_usagemhz", value => $value, uom => '', threshold => $np->threshold);
 				$output = "cpu usagemhz=" . $value . " MHz";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -3561,7 +3566,7 @@ sub dc_cpu_info
 		}
 		if (defined($value1) && defined($value2))
 		{
-			$np->add_perfdata(label => "cpu_usagemhz", value => $value1, uom => 'MHz', threshold => $np->threshold);
+			$np->add_perfdata(label => "cpu_usagemhz", value => $value1, uom => '', threshold => $np->threshold);
 			$np->add_perfdata(label => "cpu_usage", value => $value2, uom => '%', threshold => $np->threshold);
 			$res = OK;
 			$output = "cpu usage=" . $value1 . " MHz (" . $value2 . "%)";
@@ -3750,7 +3755,7 @@ sub dc_net_info
 				my $value = 0;
 				grep($value += convert_number($$_[0]->value), @$values);
 				$value = simplify_number($value);
-				$np->add_perfdata(label => "net_usage", value => $value, uom => 'KBps', threshold => $np->threshold);
+				$np->add_perfdata(label => "net_usage", value => $value, uom => '', threshold => $np->threshold);
 				$output = "net usage=" . $value . " KBps";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -3763,7 +3768,7 @@ sub dc_net_info
 				my $value = 0;
 				grep($value += convert_number($$_[0]->value), @$values);
 				$value = simplify_number($value);
-				$np->add_perfdata(label => "net_receive", value => $value, uom => 'KBps', threshold => $np->threshold);
+				$np->add_perfdata(label => "net_receive", value => $value, uom => '', threshold => $np->threshold);
 				$output = "net receive=" . $value . " KBps";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -3776,7 +3781,7 @@ sub dc_net_info
 				my $value = 0;
 				grep($value += convert_number($$_[0]->value), @$values);
 				$value = simplify_number($value);
-				$np->add_perfdata(label => "net_send", value => $value, uom => 'KBps', threshold => $np->threshold);
+				$np->add_perfdata(label => "net_send", value => $value, uom => '', threshold => $np->threshold);
 				$output = "net send=" . $value . " KBps";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -3798,8 +3803,8 @@ sub dc_net_info
 			grep($value2 += convert_number($$_[1]->value), @$values);
 			$value1 = simplify_number($value1);
 			$value2 = simplify_number($value2);
-			$np->add_perfdata(label => "net_receive", value => $value1, uom => 'KBps', threshold => $np->threshold);
-			$np->add_perfdata(label => "net_send", value => $value2, uom => 'KBps', threshold => $np->threshold);
+			$np->add_perfdata(label => "net_receive", value => $value1, uom => '', threshold => $np->threshold);
+			$np->add_perfdata(label => "net_send", value => $value2, uom => '', threshold => $np->threshold);
 			$res = OK;
 			$output = "net receive=" . $value1 . " KBps, send=" . $value2 . " KBps";
 		}
@@ -4165,12 +4170,12 @@ sub dc_runtime_info
 					$output .= $dc->name . " overall status=" . $status . ", ";
 					$status = check_health_state($status);
 					$res = UNKNOWN if ($status == UNKNOWN);
-					$res = Nagios::Plugin::Functions::max_state($res, $status) if (($res != UNKNOWN) || ($status != OK));
+					$res = Monitoring::Plugin::Functions::max_state($res, $status) if (($res != UNKNOWN) || ($status != OK));
 				}
 				else
 				{
 					$output .= "Insufficient rights to access " . $dc->name . " status info on the DC, ";
-					$res = Nagios::Plugin::Functions::max_state($res, WARNING);
+					$res = Monitoring::Plugin::Functions::max_state($res, WARNING);
 				}
 			}
 			if ($output) {
@@ -4315,7 +4320,7 @@ sub cluster_cpu_info
 			if (defined($values))
 			{
 				my $value = simplify_number(convert_number($$values[0][0]->value));
-				$np->add_perfdata(label => "cpu_usagemhz", value => $value, uom => 'MHz', threshold => $np->threshold);
+				$np->add_perfdata(label => "cpu_usagemhz", value => $value, uom => '', threshold => $np->threshold);
 				$output = "cpu usagemhz=" . $value . " MHz";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -4333,7 +4338,7 @@ sub cluster_cpu_info
 		{
 			my $value1 = simplify_number(convert_number($$values[0][0]->value));
 			my $value2 = simplify_number(convert_number($$values[0][1]->value) * 0.01);
-			$np->add_perfdata(label => "cpu_usagemhz", value => $value1, uom => 'MHz', threshold => $np->threshold);
+			$np->add_perfdata(label => "cpu_usagemhz", value => $value1, uom => '', threshold => $np->threshold);
 			$np->add_perfdata(label => "cpu_usage", value => $value2, uom => '%', threshold => $np->threshold);
 			$res = OK;
 			$output = "cpu usage=" . $value1 . " MHz (" . $value2 . "%)";
@@ -4487,7 +4492,7 @@ sub cluster_cluster_info
 			if (defined($values))
 			{
 				my $value = simplify_number(convert_number($$values[0][0]->value) * 0.01);
-				$np->add_perfdata(label => "effective cpu", value => $value, uom => 'MHz', threshold => $np->threshold);
+				$np->add_perfdata(label => "effective cpu", value => $value, uom => '', threshold => $np->threshold);
 				$output = "effective cpu=" . $value . " MHz";
 				$res = $np->check_threshold(check => $value);
 			}
@@ -4549,7 +4554,7 @@ sub cluster_cluster_info
 		{
 			my $value1 = simplify_number(convert_number($$values[0][0]->value));
 			my $value2 = simplify_number(convert_number($$values[0][1]->value) / 1024);
-			$np->add_perfdata(label => "effective cpu", value => $value1, uom => 'MHz', threshold => $np->threshold);
+			$np->add_perfdata(label => "effective cpu", value => $value1, uom => '', threshold => $np->threshold);
 			$np->add_perfdata(label => "effective mem", value => $value2, uom => 'MB', threshold => $np->threshold);
 			$res = OK;
 			$output = "effective cpu=" . $value1 . " MHz, effective Mem=" . $value2 . " MB";
